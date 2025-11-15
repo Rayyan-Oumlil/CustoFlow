@@ -1,14 +1,50 @@
-"""Long-term memory management using ADK MemoryService with ingestion."""
+"""
+Long-Term Memory Management with Automatic Ingestion
+
+This module provides long-term memory capabilities that persist across sessions,
+enabling the agent to learn from past interactions and provide personalized service.
+
+Key Concepts:
+- Sessions: Short-term conversation context (current conversation)
+- Memory: Long-term persistent knowledge (across all conversations)
+- Ingestion: Process of converting session data into long-term memory
+
+Memory Consolidation:
+After a session ends, key information can be ingested into long-term memory,
+allowing the agent to remember:
+- Customer preferences
+- Past issues and resolutions
+- Sentiment history
+- Common patterns
+
+This enables personalized service and faster resolution of recurring issues.
+"""
 from google.adk.memory import InMemoryMemoryService, MemoryService
 from typing import Optional, Dict, Any
 from google.genai import types
 
 
 class MemoryManager:
-    """Wrapper for ADK memory management with automatic ingestion."""
+    """
+    Memory Manager with Automatic Ingestion
+    
+    Manages long-term memory storage and provides methods to ingest
+    session data into persistent memory.
+    
+    Usage:
+        memory_manager = MemoryManager()
+        service = memory_manager.get_service()
+        await memory_manager.ingest_session_data(...)
+    """
     
     def __init__(self):
-        """Initialize memory service."""
+        """
+        Initialize memory service.
+        
+        Uses InMemoryMemoryService for demonstration. In production,
+        use a persistent storage backend like DatabaseMemoryService
+        or Vertex AI Memory Bank.
+        """
         self.memory_service = InMemoryMemoryService()
     
     def get_service(self) -> MemoryService:

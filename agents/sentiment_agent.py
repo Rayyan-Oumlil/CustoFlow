@@ -1,4 +1,22 @@
-"""Sentiment Agent for analyzing customer sentiment."""
+"""
+Sentiment Agent - Customer Emotion Analysis Specialist
+
+This agent analyzes customer messages to determine:
+- Sentiment: positive, neutral, or negative
+- Emotion: specific emotion (happy, frustrated, angry, etc.)
+- Urgency: low, medium, or high
+- Escalation recommendation: whether human intervention is needed
+
+Output Format:
+Returns structured JSON with sentiment analysis results that can be used
+by the orchestrator to make routing and escalation decisions.
+
+Use Cases:
+- Pre-routing sentiment check for frustrated customers
+- Escalation trigger based on negative sentiment
+- Priority assignment for tickets
+- Customer satisfaction monitoring
+"""
 import os
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -6,19 +24,24 @@ from google.genai import types
 
 from config.settings import settings
 
-# Set API key in environment
+# Set API key in environment (required for Gemini)
 os.environ["GOOGLE_API_KEY"] = settings.google_api_key
 
-# Configure retry options
+# Configure retry options for reliability
 retry_config = types.HttpRetryOptions(
-    attempts=5,
-    exp_base=7,
-    initial_delay=1,
-    http_status_codes=[429, 500, 503, 504],
+    attempts=5,  # Maximum retry attempts
+    exp_base=7,  # Exponential backoff base
+    initial_delay=1,  # Initial delay
+    http_status_codes=[429, 500, 503, 504],  # Retry on rate limit and server errors
 )
 
 
-# Create Sentiment agent
+# ============================================================================
+# Sentiment Agent
+# ============================================================================
+# Analyzes customer sentiment and emotion to inform routing decisions.
+# Returns structured JSON for programmatic use by orchestrator.
+# ============================================================================
 sentiment_agent = LlmAgent(
     name="sentiment_agent",
     model=Gemini(

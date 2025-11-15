@@ -4,30 +4,14 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Environment
-.env
-.venv
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
+.venv
+
+# Environment
+.env
+.env.local
 
 # IDE
 .vscode/
@@ -36,15 +20,26 @@ venv.bak/
 *.swo
 *~
 
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
 # Logs
 *.log
 logs/
+observability/logs/
+
+# Generated diagrams (keep source, ignore generated)
+docs/images/*.png
+docs/images/*.pdf
+docs/images/*.svg
 
 # OS
 .DS_Store
 Thumbs.db
 
 # Project specific
-*.csv
-*.xlsx
-
+*.pyc
+.cache/

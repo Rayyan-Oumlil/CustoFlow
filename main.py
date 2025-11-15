@@ -10,6 +10,8 @@ from memory.session_store import session_manager
 from google.adk.runners import Runner
 from observability.logging_config import setup_logging, get_logger, get_logging_plugin
 from observability.metrics import metrics
+from utils.validation import validate_message, sanitize_message
+from utils.rate_limiter import rate_limiter
 
 # Setup logging
 setup_logging()
@@ -67,13 +69,28 @@ async def chat_loop():
                 print("\nThank you for using our customer support. Goodbye!")
                 break
             
+            # Validate message
+            is_valid, error_msg = validate_message(user_message)
+            if not is_valid:
+                print(f"Error: {error_msg}")
+                continue
+            
+            # Rate limiting (for CLI, use user_id)
+            is_allowed, rate_error = rate_limiter.is_allowed(user_id)
+            if not is_allowed:
+                print(f"Rate limit: {rate_error}")
+                continue
+            
+            # Sanitize message
+            sanitized_message = sanitize_message(user_message)
+            
             # Increment metrics
             metrics.increment("messages_received")
             
-            # Create message
+            # Create message with sanitized content
             message = types.Content(
                 role="user",
-                parts=[types.Part(text=user_message)]
+                parts=[types.Part(text=sanitized_message)]
             )
             
             # Get agent response

@@ -12,8 +12,19 @@ from agents.orchestrator_agent import orchestrator_agent
 from google.adk.runners import InMemoryRunner
 
 
-# Test cases for evaluation
+# ============================================================================
+# Evaluation Test Cases
+# ============================================================================
+# Comprehensive test suite covering all agent types and routing scenarios
+# Each test case includes:
+# - id: Unique test identifier
+# - query: Customer query to test
+# - agent: Which agent should handle it
+# - expected_keywords: Keywords that should appear in response
+# - category: Test category for reporting
+# ============================================================================
 TEST_CASES = [
+    # FAQ Agent Tests
     {
         "id": "faq_1",
         "query": "What is your refund policy?",
@@ -36,6 +47,21 @@ TEST_CASES = [
         "category": "FAQ"
     },
     {
+        "id": "faq_4",
+        "query": "What are your payment methods?",
+        "agent": "faq_agent",
+        "expected_keywords": ["payment", "card"],
+        "category": "FAQ"
+    },
+    {
+        "id": "faq_5",
+        "query": "Do you ship internationally?",
+        "agent": "faq_agent",
+        "expected_keywords": ["ship", "international"],
+        "category": "FAQ"
+    },
+    # Order Agent Tests
+    {
         "id": "order_1",
         "query": "What's the status of order 12345?",
         "agent": "order_agent",
@@ -49,6 +75,14 @@ TEST_CASES = [
         "expected_keywords": ["67890", "order"],
         "category": "Order"
     },
+    {
+        "id": "order_3",
+        "query": "Tell me about order 11111",
+        "agent": "order_agent",
+        "expected_keywords": ["11111", "order"],
+        "category": "Order"
+    },
+    # Orchestrator Routing Tests
     {
         "id": "orchestrator_1",
         "query": "I want to know about refunds",
@@ -68,6 +102,20 @@ TEST_CASES = [
         "query": "I'm very frustrated with my order!",
         "agent": "orchestrator_agent",
         "expected_keywords": ["order", "frustrated"],
+        "category": "Routing"
+    },
+    {
+        "id": "orchestrator_4",
+        "query": "I need help with a damaged product",
+        "agent": "orchestrator_agent",
+        "expected_keywords": ["help", "damaged", "product"],
+        "category": "Routing"
+    },
+    {
+        "id": "orchestrator_5",
+        "query": "What's your return policy and where is order 12345?",
+        "agent": "orchestrator_agent",
+        "expected_keywords": ["return", "12345"],
         "category": "Routing"
     },
 ]

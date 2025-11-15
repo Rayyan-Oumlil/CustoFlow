@@ -1,4 +1,25 @@
-"""Ticket creation tool with Long-Running Operation (LRO) support for human approval."""
+"""
+Long-Running Operation (LRO) Tool for Ticket Creation
+
+This tool demonstrates the Long-Running Operations pattern from the course,
+where an agent can pause tool execution and wait for human approval before
+continuing. This is essential for high-priority or sensitive operations.
+
+LRO Pattern:
+1. Agent calls tool with high-priority request
+2. Tool pauses execution using ToolContext.pause()
+3. Human reviews and approves/rejects
+4. Tool resumes after approval
+5. Operation completes
+
+Use Case:
+- High-priority tickets requiring manager approval
+- Urgent escalations needing verification
+- Sensitive operations requiring oversight
+
+This pattern allows agents to handle complex workflows that require
+human judgment while maintaining automation for routine tasks.
+"""
 from typing import Dict, Optional
 from datetime import datetime
 import uuid

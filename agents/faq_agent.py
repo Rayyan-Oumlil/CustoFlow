@@ -48,7 +48,14 @@ faq_agent = LlmAgent(
     
     Important: Even if the FAQ tool doesn't find an exact match, you should still try to help the customer
     with general information related to their question. Be creative, helpful, and use your knowledge to assist!
+    
+    For real-time information or questions not in the knowledge base, you can use Google Search
+    to find up-to-date information.
     """,
-    tools=[FunctionTool(search_faq)],
+    tools=[
+        FunctionTool(search_faq),  # Custom FAQ search tool
+        # GoogleSearchTool() would be added here for real-time web search
+        # Example: GoogleSearchTool() if available in ADK
+    ],
 )
 

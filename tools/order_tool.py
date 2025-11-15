@@ -1,10 +1,40 @@
-"""Order lookup tool for customer support."""
+"""
+Order Lookup Tool for Customer Support
+
+This tool provides order information retrieval capabilities. In production,
+this would connect to a real order management system (database, API, or CRM).
+
+Current Implementation:
+- Mock order database for demonstration purposes
+- Supports order lookup by ID
+- Supports customer order history
+- Provides helpful error messages with guidance
+- Response caching for performance
+
+Production Integration:
+- Replace _MOCK_ORDERS with database queries or API calls
+- See tools/order_tool_production_example.py for integration patterns
+"""
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import random
+import sys
+from pathlib import Path
+
+# Add utils to path for cache import
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.cache import order_cache, generate_cache_key
+from utils.validation import validate_order_id
 
 
-# Mock order database (in production, this would query a real database)
+# ============================================================================
+# Mock Order Database
+# ============================================================================
+# In production, this would be replaced with:
+# - Database queries (PostgreSQL, MySQL, etc.)
+# - API calls to order management system
+# - CRM integration (Salesforce, etc.)
+# ============================================================================
 _MOCK_ORDERS = {
     "12345": {
         "order_id": "12345",
@@ -66,41 +96,80 @@ def lookup_order(order_id: str) -> Dict[str, any]:
     """
     Look up order information by order ID.
     
-    This tool searches the order database to retrieve order details including
-    status, items, shipping information, and tracking numbers.
+    This tool searches the order database to retrieve comprehensive order details
+    including status, items, shipping information, and tracking numbers.
+    
+    Implementation Details:
+    - Validates order ID format
+    - Searches mock database (replace with real DB/API in production)
+    - Returns structured response with all order information
+    - Provides helpful error messages with guidance
     
     Args:
         order_id: The order ID to look up (e.g., "12345")
         
     Returns:
         Dictionary with status and order information:
-        - Success: {"status": "success", "order": {...}}
-        - Error: {"status": "error", "error_message": "..."}
+        - Success: {
+            "status": "success",
+            "order": {
+                "order_id": str,
+                "customer_id": str,
+                "status": str,  # processing, shipped, delivered, cancelled
+                "items": List[Dict],
+                "total": float,
+                "order_date": str,
+                "shipped_date": str | None,
+                "tracking_number": str | None,
+                "estimated_delivery": str | None
+            }
+          }
+        - Error: {
+            "status": "error",
+            "error_message": str,
+            "helpful_info": str  # Guidance for customer
+          }
     """
     try:
-        order_id = str(order_id).strip()
-        
-        if not order_id:
+        # Validate order ID
+        is_valid, error_msg = validate_order_id(str(order_id))
+        if not is_valid:
             return {
                 "status": "error",
-                "error_message": "Order ID cannot be empty"
+                "error_message": error_msg,
+                "helpful_info": "Order IDs are typically 5-10 alphanumeric characters. You can find your order number in your confirmation email or account dashboard."
             }
+        
+        order_id = str(order_id).strip()
+        
+        # Check cache first
+        cache_key = generate_cache_key("order", order_id)
+        cached_result = order_cache.get(cache_key)
+        if cached_result:
+            return cached_result
         
         # Look up order in mock database
         order = _MOCK_ORDERS.get(order_id)
         
         if order:
-            return {
+            result = {
                 "status": "success",
                 "order": order
             }
+            # Cache successful result
+            order_cache.set(cache_key, result)
+            return result
         else:
             # Provide helpful guidance even when order not found
-            return {
+            result = {
                 "status": "error",
                 "error_message": f"Order {order_id} not found. Please check the order ID and try again.",
                 "helpful_info": "Order IDs are typically 5-10 digits. You can find your order number in your confirmation email or account dashboard. If you're having trouble, please contact support with your email address or customer ID."
             }
+            # Cache error result briefly (5 minutes) to avoid repeated lookups
+            error_cache_key = generate_cache_key("order_error", order_id)
+            order_cache.set(error_cache_key, result)
+            return result
     
     except Exception as e:
         return {

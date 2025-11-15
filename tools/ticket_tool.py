@@ -1,10 +1,35 @@
-"""Ticket creation tool for escalation."""
+"""
+Ticket Creation and Status Lookup Tool
+
+This tool manages support ticket creation and status retrieval.
+In production, this would integrate with a ticket management system
+like Zendesk, Jira, or a custom ticketing system.
+
+Features:
+- Ticket creation with priority levels (low, normal, high, urgent)
+- Ticket status lookup
+- Unique ticket ID generation
+- Priority-based routing
+
+Production Integration:
+- Replace _TICKETS with database or API calls
+- Integrate with existing ticketing system
+- Add webhook notifications
+- Add ticket assignment logic
+"""
 from typing import Dict, Optional
 from datetime import datetime
 import uuid
 
 
-# Mock ticket storage (in production, this would create a ticket in a ticketing system)
+# ============================================================================
+# Mock Ticket Storage
+# ============================================================================
+# In production, replace with:
+# - Database table (tickets)
+# - Ticket management API (Zendesk, Jira, etc.)
+# - CRM integration
+# ============================================================================
 _TICKETS = {}
 
 

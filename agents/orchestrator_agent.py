@@ -1,6 +1,21 @@
-"""Orchestrator Agent that routes customer queries to specialized agents."""
+"""
+Orchestrator Agent - CustoFlow's Main Routing Agent
+
+This module implements the main orchestrator agent that intelligently routes
+customer queries to specialized agents based on query type, sentiment, and urgency.
+
+Architecture:
+- Uses AgentTool pattern to treat specialized agents as tools
+- Implements intelligent routing logic based on query analysis
+- Supports both local agents (AgentTool) and remote agents (A2A Protocol)
+
+Design Decisions:
+- Orchestrator pattern chosen for centralized control and easy extensibility
+- Sentiment analysis first to detect urgent/frustrated customers
+- Fallback to FAQ agent for general queries when uncertain
+"""
 import os
-from google.adk.agents import LlmAgent
+from google.adk.agents import LlmAgent, SequentialAgent, ParallelAgent
 from google.adk.tools import AgentTool
 from google.adk.models.google_llm import Gemini
 from google.genai import types
@@ -13,19 +28,31 @@ from agents.sentiment_agent import sentiment_agent
 # Note: RemoteA2aAgent would be imported here for A2A Protocol
 # from google.adk.agents import RemoteA2aAgent
 
-# Set API key in environment
+# Set API key in environment (required for Gemini model initialization)
 os.environ["GOOGLE_API_KEY"] = settings.google_api_key
 
-# Configure retry options
+# Configure retry options for reliability
+# Exponential backoff with base 7 means delays: 1s, 7s, 49s, 343s, 2401s
+# This handles rate limiting and transient errors gracefully
 retry_config = types.HttpRetryOptions(
-    attempts=5,
-    exp_base=7,
-    initial_delay=1,
-    http_status_codes=[429, 500, 503, 504],
+    attempts=5,  # Maximum retry attempts
+    exp_base=7,  # Exponential base for backoff calculation
+    initial_delay=1,  # Initial delay in seconds
+    http_status_codes=[429, 500, 503, 504],  # Retry on rate limit and server errors
 )
 
 
-# Create Orchestrator agent
+# ============================================================================
+# Main Orchestrator Agent
+# ============================================================================
+# This is the primary entry point for all customer queries.
+# It analyzes the query and routes to the most appropriate specialized agent.
+#
+# Routing Strategy:
+# 1. Sentiment-first: If customer seems frustrated, analyze sentiment first
+# 2. Query-type-based: Route based on keywords and intent
+# 3. Fallback: Default to FAQ agent for general queries
+# ============================================================================
 orchestrator_agent = LlmAgent(
     name="CustoFlow",
     model=Gemini(
@@ -76,4 +103,28 @@ orchestrator_agent = LlmAgent(
         # ),
     ],
 )
+
+
+# ============================================================================
+# Advanced Agent Patterns: Sequential and Parallel Agents
+# ============================================================================
+# These demonstrate additional multi-agent patterns from the course:
+# - SequentialAgent: Chain agents in sequence (output of one feeds into next)
+# - ParallelAgent: Run multiple agents concurrently for efficiency
+#
+# Note: SequentialAgent and ParallelAgent are available in ADK but require
+# specific initialization. The orchestrator pattern (AgentTool) is used here
+# for flexibility. For production use cases requiring sequential or parallel
+# execution, refer to ADK documentation for proper initialization.
+#
+# Example Sequential Pattern (conceptual):
+#   sentiment_result = await sentiment_agent.run(query)
+#   routed_response = await orchestrator_agent.run(sentiment_result + query)
+#
+# Example Parallel Pattern (conceptual):
+#   faq_result, order_result = await asyncio.gather(
+#       faq_agent.run(query),
+#       order_agent.run(query)
+#   )
+# ============================================================================
 
