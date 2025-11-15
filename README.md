@@ -99,8 +99,6 @@ graph TB
     style Escalation fill:#F44336,stroke:#B71C1C,color:#fff
 ```
 
-![Architecture Diagram](docs/images/architecture.png)
-
 ### Data Flow
 
 ```mermaid
@@ -121,8 +119,6 @@ flowchart LR
     style K fill:#4CAF50
 ```
 
-![Data Flow Diagram](docs/images/data_flow.png)
-
 ### Agent Coordination
 
 ```mermaid
@@ -139,8 +135,6 @@ graph TB
     style Response fill:#81C784,color:#fff
 ```
 
-![Agent Coordination Diagram](docs/images/agent_coordination.png)
-
 ### Memory Architecture
 
 ```mermaid
@@ -153,15 +147,12 @@ graph TB
     style LongTerm fill:#4CAF50,color:#fff
 ```
 
-![Memory Architecture Diagram](docs/images/memory_architecture.png)
-
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Python 3.10+
 - Google AI Studio API key ([Get one here](https://aistudio.google.com/app/apikey))
-- Graphviz (optional, for diagram generation): `pip install graphviz` + system package
 
 ### Installation
 
@@ -181,13 +172,7 @@ pip install -r requirements.txt
 GOOGLE_API_KEY=your_api_key_here
 ```
 
-4. **Generate diagrams (optional):**
-```bash
-# Install Graphviz system package first (see docs/images/README.md)
-python scripts/generate_diagrams.py
-```
-
-5. **Run tests to verify setup:**
+4. **Run tests to verify setup:**
 ```bash
 python -m pytest tests/
 ```
@@ -559,50 +544,6 @@ This project demonstrates **7+ key concepts** from the Kaggle 5-Day AI Agents In
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Visual Concept Map
-
-```
-                    ┌─────────────────────┐
-                    │   CustoFlow         │
-                    │   Multi-Agent       │
-                    │   System            │
-                    └──────────┬──────────┘
-                               │
-        ┌──────────────────────┼──────────────────────┐
-        │                      │                      │
-        ▼                      ▼                      ▼
-┌───────────────┐    ┌──────────────┐    ┌──────────────┐
-│   Agents      │    │    Tools     │    │   Memory     │
-│               │    │              │    │              │
-│ • Orchestrator│    │ • FAQ Tool   │    │ • Sessions   │
-│ • FAQ         │    │ • Order Tool │    │ • History    │
-│ • Order       │    │ • Ticket Tool│    │ • Long-term  │
-│ • Sentiment   │    │ • LRO Tool   │    │              │
-│ • Escalation  │    │              │    │              │
-└───────┬───────┘    └──────┬───────┘    └──────┬───────┘
-        │                  │                   │
-        └──────────────────┼───────────────────┘
-                           │
-                           ▼
-                ┌──────────────────────┐
-                │   Observability      │
-                │                      │
-                │ • Logging            │
-                │ • Metrics            │
-                │ • Tracing            │
-                │ • Analytics          │
-                └──────────────────────┘
-                           │
-                           ▼
-                ┌──────────────────────┐
-                │   Deployment        │
-                │                      │
-                │ • FastAPI Server    │
-                │ • Health Checks      │
-                │ • Rate Limiting      │
-                │ • Security          │
-                └──────────────────────┘
-```
 
 ## 📚 Documentation
 
@@ -620,6 +561,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 Built for the Kaggle 5-Day AI Agents Intensive Course with Google.
 
----
-
-**Note on Diagrams**: The README includes Mermaid diagrams that render automatically on GitHub. To generate high-quality PNG versions, install Graphviz and run `python scripts/generate_diagrams.py`. See [docs/images/README.md](docs/images/README.md) for details.
