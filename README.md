@@ -382,7 +382,7 @@ CustoFlow/
 │     └─ Stress testing                                  │
 │                                                         │
 │  ✅ Evaluation Suite                                    │
-│     ├─ 12+ test cases                                  │
+│     ├─ 17+ test cases                                  │
 │     ├─ Automated scoring                               │
 │     └─ Performance benchmarks                           │
 │                                                         │
@@ -401,11 +401,14 @@ pytest tests/test_integration.py  # Integration tests
 
 # Evaluation suite
 python notebooks/evaluation.py
+
+# Project verification (check all components)
+python scripts/check_project.py
 ```
 
 ## 📊 Evaluation Results
 
-The system has been evaluated on **12+ comprehensive test cases** covering:
+The system has been evaluated on **17+ comprehensive test cases** covering:
 - FAQ queries (refunds, shipping, policies)
 - Order inquiries (status, tracking)
 - Sentiment analysis (frustration, urgency)
@@ -441,7 +444,7 @@ The system has been evaluated on **12+ comprehensive test cases** covering:
 ║                  Test Results Dashboard                    ║
 ╠═══════════════════════════════════════════════════════════╣
 ║                                                           ║
-║  ✅ 12+ Test Cases          ████████████████████  100%   ║
+║  ✅ 17+ Test Cases          ████████████████████  100%   ║
 ║  ✅ 5 Agent Types           ████████████████████  100%   ║
 ║  ✅ 3 Routing Scenarios     ████████████████████  100%   ║
 ║  ✅ Error Handling          ████████████████████  100%   ║
