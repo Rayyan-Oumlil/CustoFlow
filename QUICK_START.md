@@ -48,6 +48,12 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 
 **Ouvrez un deuxième terminal** (laissez le premier ouvert) et exécutez :
 
+**Sur Windows** :
+```bash
+python -m streamlit run streamlit_app.py
+```
+
+**Sur Linux/Mac** :
 ```bash
 streamlit run streamlit_app.py
 ```
@@ -251,7 +257,10 @@ pip install -r requirements.txt
 # Démarrer l'API
 python -m api.server
 
-# Démarrer le Dashboard
+# Démarrer le Dashboard (Windows)
+python -m streamlit run streamlit_app.py
+
+# Démarrer le Dashboard (Linux/Mac)
 streamlit run streamlit_app.py
 
 # Tester l'API
