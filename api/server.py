@@ -24,44 +24,6 @@ from memory.conversation_history import conversation_history
 setup_logging()
 logger = get_logger(__name__)
 
-
-def detect_agent_used(query: str, response: str) -> str:
-    """
-    Détecter quel agent a été utilisé basé sur la requête et la réponse.
-    
-    Args:
-        query: La requête de l'utilisateur
-        response: La réponse de l'agent
-        
-    Returns:
-        Nom de l'agent détecté
-    """
-    query_lower = query.lower()
-    response_lower = response.lower()
-    
-    # Détection basée sur la requête
-    if any(word in query_lower for word in ["order", "tracking", "track", "delivery", "shipped", "my order"]):
-        return "Order Agent"
-    elif any(word in query_lower for word in ["ticket", "escalate", "urgent", "complex", "human", "support team"]):
-        return "Escalation Agent"
-    elif any(word in query_lower for word in ["frustrated", "angry", "upset", "unhappy", "disappointed"]):
-        return "Sentiment Agent"
-    elif any(word in query_lower for word in ["refund", "return", "policy", "shipping", "payment", "faq"]):
-        return "FAQ Agent"
-    
-    # Détection basée sur la réponse
-    if any(word in response_lower for word in ["order", "tracking", "shipped", "delivery", "tracking number"]):
-        return "Order Agent"
-    elif any(word in response_lower for word in ["ticket", "escalate", "support team", "ticket number"]):
-        return "Escalation Agent"
-    elif any(word in response_lower for word in ["sentiment", "emotion", "frustrated", "feeling"]):
-        return "Sentiment Agent"
-    elif any(word in response_lower for word in ["refund", "return", "policy", "30-day", "shipping"]):
-        return "FAQ Agent"
-    
-    # Par défaut, orchestrator
-    return "Orchestrator"
-
 # Get ADK LoggingPlugin for enhanced observability
 logging_plugin = get_logging_plugin()
 
@@ -101,9 +63,6 @@ class ChatResponse(BaseModel):
     response: str
     session_id: str
     metrics: dict
-    agent_used: Optional[str] = None
-    response_time: Optional[float] = None
-    confidence: Optional[str] = "high"
 
 
 @app.get("/")
@@ -225,26 +184,15 @@ async def chat(request: ChatRequest, http_request: Request):
         # Calculate response time
         response_time = time.time() - response_start_time
         
-        # Detect which agent was used
-        agent_used = detect_agent_used(sanitized_message, response_text)
-        
-        # Determine confidence based on response time and content
-        if response_time < 2:
-            confidence = "high"
-        elif response_time < 5:
-            confidence = "medium"
-        else:
-            confidence = "low"
-        
         metrics.increment("messages_sent")
-        logger.info(f"Response sent to user: {request.user_id}, agent: {agent_used}")
+        logger.info(f"Response sent to user: {request.user_id}")
         
         # Log analytics
         analytics.log_interaction(
             user_id=request.user_id,
             query=sanitized_message,
             response=response_text,
-            agent_used=agent_used.lower().replace(" ", "_"),
+            agent_used="orchestrator",  # Could extract from response metadata
             response_time=response_time
         )
         
@@ -260,16 +208,13 @@ async def chat(request: ChatRequest, http_request: Request):
             session_id=session_id,
             role="assistant",
             content=response_text,
-            metadata={"response_time": response_time, "agent": agent_used}
+            metadata={"response_time": response_time, "agent": "orchestrator"}
         )
         
         return ChatResponse(
             response=response_text,
             session_id=session_id,
-            metrics=metrics.get_counts(),
-            agent_used=agent_used,
-            response_time=round(response_time, 2),
-            confidence=confidence
+            metrics=metrics.get_counts()
         )
     
     except HTTPException:
