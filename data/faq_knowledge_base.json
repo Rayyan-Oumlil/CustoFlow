@@ -1,0 +1,65 @@
+{
+  "faqs": [
+    {
+      "question": "What is your refund policy?",
+      "answer": "We offer a 30-day money-back guarantee on all products. Items must be in original condition with tags attached. Refunds are processed within 5-7 business days after we receive the returned item.",
+      "category": "refund",
+      "keywords": ["refund", "return", "money back", "guarantee"]
+    },
+    {
+      "question": "How long does shipping take?",
+      "answer": "Standard shipping takes 5-7 business days. Express shipping (2-3 business days) and overnight shipping (next business day) are also available at checkout.",
+      "category": "shipping",
+      "keywords": ["shipping", "delivery", "how long", "when will", "arrive"]
+    },
+    {
+      "question": "Can I return items?",
+      "answer": "Yes, you can return items within 30 days of purchase. Items must be unused and in original packaging. Please contact customer service to initiate a return.",
+      "category": "return",
+      "keywords": ["return", "send back", "exchange"]
+    },
+    {
+      "question": "What payment methods do you accept?",
+      "answer": "We accept all major credit cards (Visa, Mastercard, American Express), PayPal, Apple Pay, and Google Pay.",
+      "category": "payment",
+      "keywords": ["payment", "pay", "credit card", "paypal", "how to pay"]
+    },
+    {
+      "question": "Do you ship internationally?",
+      "answer": "Yes, we ship to over 50 countries worldwide. International shipping typically takes 10-14 business days. Additional customs fees may apply.",
+      "category": "shipping",
+      "keywords": ["international", "overseas", "abroad", "other countries"]
+    },
+    {
+      "question": "How do I track my order?",
+      "answer": "Once your order ships, you'll receive a tracking number via email. You can also track your order by logging into your account and visiting the 'My Orders' section.",
+      "category": "order",
+      "keywords": ["track", "tracking", "where is", "order status", "shipment"]
+    },
+    {
+      "question": "What is your return window?",
+      "answer": "You have 30 days from the date of delivery to return items for a full refund. Items must be in original condition.",
+      "category": "return",
+      "keywords": ["return window", "how long to return", "return period"]
+    },
+    {
+      "question": "Do you offer free shipping?",
+      "answer": "Yes, we offer free standard shipping on orders over $50. Free shipping applies automatically at checkout.",
+      "category": "shipping",
+      "keywords": ["free shipping", "free delivery", "shipping cost"]
+    },
+    {
+      "question": "How do I cancel an order?",
+      "answer": "You can cancel an order within 24 hours of placing it if it hasn't shipped yet. Log into your account, go to 'My Orders', and click 'Cancel Order'. For orders that have already shipped, you'll need to return the item instead.",
+      "category": "order",
+      "keywords": ["cancel", "cancel order", "stop order"]
+    },
+    {
+      "question": "What if my item is damaged?",
+      "answer": "If you receive a damaged item, please contact customer service immediately with photos of the damage. We'll send a replacement or issue a full refund at no cost to you.",
+      "category": "support",
+      "keywords": ["damaged", "broken", "defective", "wrong item"]
+    }
+  ]
+}
+
