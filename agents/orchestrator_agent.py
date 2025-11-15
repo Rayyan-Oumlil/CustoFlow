@@ -86,6 +86,9 @@ orchestrator_agent = LlmAgent(
     - Order agent can help even if order ID is missing or incorrect
     - Always be helpful and try to assist, even with unexpected questions
     - If unsure, start with FAQ agent as it's the most general
+    - When calling multiple agents (e.g., for multi-part questions), call them sequentially (one at a time) and combine their responses
+    - After calling any agent, you MUST provide a comprehensive text response to the customer
+    - If an agent doesn't return a response, use your knowledge to help the customer anyway
     
     Always be helpful and route efficiently. Don't give up on helping the customer!
     
