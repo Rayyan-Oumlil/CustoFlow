@@ -157,18 +157,62 @@ async def chat(request: ChatRequest, http_request: Request):
         async def get_response():
             """Inner async function for timeout handling."""
             nonlocal response_text
+            all_texts = []  # Collect all text responses
+            tool_results = []  # Collect tool results as fallback
+            
             async for event in runner.run_async(
                 user_id=request.user_id,
                 session_id=session_id,
                 new_message=message
             ):
-                if event.is_final_response() and event.content and event.content.parts:
+                # Collect text from any event with content
+                if event.content and event.content.parts:
                     for part in event.content.parts:
                         if hasattr(part, "text") and part.text:
-                            response_text = part.text
-                            break
-                    if response_text:
+                            text = part.text.strip()
+                            if text and len(text) > 5:  # Only meaningful text
+                                all_texts.append(text)
+                                # Prefer final response if available
+                                if event.is_final_response():
+                                    response_text = text
+                                    break
+                        
+                        # Also collect function_response results as fallback
+                        if hasattr(part, "function_response") and part.function_response:
+                            try:
+                                result = part.function_response.result
+                                if isinstance(result, str) and len(result) > 10:
+                                    tool_results.append(result)
+                                elif isinstance(result, dict):
+                                    # Extract answer from FAQ tool result
+                                    if "answer" in result:
+                                        tool_results.append(result["answer"])
+                                    elif "error_message" in result:
+                                        tool_results.append(result["error_message"])
+                            except:
+                                pass
+                    
+                    if response_text and event.is_final_response():
                         break
+            
+            # If no final response, use the longest text collected
+            if not response_text and all_texts:
+                # Filter meaningful texts (longer than 20 chars)
+                meaningful = [t for t in all_texts if len(t) > 20]
+                if meaningful:
+                    response_text = max(meaningful, key=len)
+                else:
+                    response_text = max(all_texts, key=len)
+            
+            # Last resort: use tool result if agent didn't generate text
+            if not response_text and tool_results:
+                # Use the longest tool result
+                meaningful_tools = [t for t in tool_results if len(t) > 20]
+                if meaningful_tools:
+                    response_text = max(meaningful_tools, key=len)
+                elif tool_results:
+                    response_text = max(tool_results, key=len)
+            
             return response_text
         
         # Execute with 30 second timeout
@@ -278,6 +322,60 @@ async def get_user_sessions(user_id: str):
     """Get all session IDs for a user."""
     sessions = conversation_history.get_user_sessions(user_id)
     return {"user_id": user_id, "sessions": sessions, "count": len(sessions)}
+
+
+@app.get("/orders")
+async def get_orders():
+    """Get all orders from the system."""
+    from tools.order_tool import _MOCK_ORDERS
+    orders_list = list(_MOCK_ORDERS.values())
+    return {
+        "orders": orders_list,
+        "count": len(orders_list),
+        "statuses": {
+            status: sum(1 for o in orders_list if o.get("status") == status)
+            for status in ["processing", "shipped", "delivered", "cancelled"]
+        }
+    }
+
+
+@app.get("/orders/{order_id}")
+async def get_order(order_id: str):
+    """Get a specific order by ID."""
+    from tools.order_tool import _MOCK_ORDERS
+    order = _MOCK_ORDERS.get(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+    return {"order": order}
+
+
+@app.get("/tickets")
+async def get_tickets():
+    """Get all tickets from the system."""
+    from tools.ticket_tool import _TICKETS
+    tickets_list = list(_TICKETS.values())
+    return {
+        "tickets": tickets_list,
+        "count": len(tickets_list),
+        "statuses": {
+            status: sum(1 for t in tickets_list if t.get("status") == status)
+            for status in ["open", "in_progress", "resolved", "closed"]
+        },
+        "priorities": {
+            priority: sum(1 for t in tickets_list if t.get("priority") == priority)
+            for priority in ["low", "normal", "high", "urgent"]
+        }
+    }
+
+
+@app.get("/tickets/{ticket_id}")
+async def get_ticket(ticket_id: str):
+    """Get a specific ticket by ID."""
+    from tools.ticket_tool import _TICKETS
+    ticket = _TICKETS.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+    return {"ticket": ticket}
 
 
 if __name__ == "__main__":

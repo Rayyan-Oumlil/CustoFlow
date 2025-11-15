@@ -74,6 +74,9 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 │  📊 Analytics & Feedback                                    │
 │     └─ Track interactions and collect user feedback        │
 │                                                             │
+│  🖥️ Web Dashboard                                           │
+│     └─ Streamlit interface with Orders & Tickets view     │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -179,6 +182,30 @@ python -m pytest tests/
 
 ## 💻 Usage
 
+### Streamlit Dashboard (Recommended)
+
+Start the interactive web dashboard:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+The dashboard will open automatically in your browser at `http://localhost:8501`
+
+**Features:**
+- 💬 **Chat Interface** - Interactive conversation with the multi-agent system
+- 📊 **Analytics Dashboard** - Real-time statistics and agent performance
+- 🔄 **Routing Visualization** - See how queries are routed to agents
+- 📈 **Metrics Dashboard** - System health and performance metrics
+- 📦 **Orders & Tickets Dashboard** - View all orders and support tickets
+- 📖 **User Guide** - Comprehensive documentation
+
+**Orders & Tickets Dashboard:**
+- View all orders with status, tracking, and items
+- View all support tickets with priority and status
+- Interactive charts showing distribution by status and priority
+- Detailed view for each order and ticket
+
 ### Interactive CLI
 
 Start an interactive chat session:
@@ -246,6 +273,8 @@ Then access:
 - Health: `http://localhost:8000/health`
 - Metrics: `http://localhost:8000/metrics`
 - Analytics: `http://localhost:8000/analytics`
+- Orders: `http://localhost:8000/orders`
+- Tickets: `http://localhost:8000/tickets`
 - API Docs: `http://localhost:8000/docs` (Swagger UI)
 
 ### Example API Request
@@ -275,6 +304,12 @@ response = requests.post(
 data = response.json()
 print(data["response"])
 ```
+
+**New API Endpoints:**
+- `GET /orders` - Get all orders with statistics
+- `GET /orders/{order_id}` - Get specific order details
+- `GET /tickets` - Get all tickets with statistics
+- `GET /tickets/{ticket_id}` - Get specific ticket details
 
 See [docs/API.md](docs/API.md) for complete API documentation.
 

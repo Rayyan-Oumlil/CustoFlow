@@ -26,6 +26,23 @@ API_BASE_URL = "http://localhost:8000"
 # Custom CSS styles
 st.markdown("""
 <style>
+    /* Fix chat input at bottom of page (main area only, not sidebar) */
+    .stChatInput {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 20% !important;
+        right: 0 !important;
+        z-index: 999 !important;
+        background-color: var(--background-color) !important;
+        padding: 1rem !important;
+        border-top: 1px solid var(--border-color) !important;
+    }
+    
+    /* Add padding to chat container to prevent overlap */
+    .stChatMessageContainer {
+        padding-bottom: 100px !important;
+    }
+    
     .main-header {
         font-size: 2.5rem;
         font-weight: bold;
@@ -118,6 +135,28 @@ def get_analytics() -> Dict:
         return {}
 
 
+def get_orders() -> Dict:
+    """Get all orders from the API."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/orders", timeout=2)
+        if response.status_code == 200:
+            return response.json()
+        return {}
+    except:
+        return {}
+
+
+def get_tickets() -> Dict:
+    """Get all tickets from the API."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/tickets", timeout=2)
+        if response.status_code == 200:
+            return response.json()
+        return {}
+    except:
+        return {}
+
+
 def detect_agent_from_response(response_text: str, agent_from_api: Optional[str] = None) -> str:
     """Detect which agent responded based on content or API."""
     # If API returns agent, use it
@@ -200,7 +239,7 @@ with st.sidebar:
             st.info("No conversation to export")
 
 # Main Content
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["💬 Chat", "📊 Analytics", "🔄 Routing", "📈 Metrics", "📖 User Guide"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["💬 Chat", "📊 Analytics", "🔄 Routing", "📈 Metrics", "📦 Orders & Tickets", "📖 User Guide"])
 
 # Tab 1: Chat Interface
 with tab1:
@@ -240,8 +279,11 @@ with tab1:
                         with col2:
                             if "confidence" in message:
                                 st.caption(f"📊 Confidence: {message['confidence']}")
+        
+        # Add spacing before input
+        st.markdown("<br>", unsafe_allow_html=True)
     
-    # Input for new message
+    # Input for new message - placed after chat messages
     if prompt := st.chat_input("Type your message..."):
         # Add user message
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -555,8 +597,216 @@ with tab4:
     else:
         st.info("No metrics available. Start using the chat to generate metrics.")
 
-# Tab 5: User Guide
+# Tab 5: Orders & Tickets Dashboard
 with tab5:
+    st.header("📦 Orders & Tickets Dashboard")
+    st.markdown("View all orders and support tickets in the system.")
+    
+    # Refresh button
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("🔄 Refresh Data"):
+            st.rerun()
+    
+    # Orders Section
+    st.subheader("📋 Orders")
+    orders_data = get_orders()
+    
+    if orders_data and orders_data.get("orders"):
+        orders = orders_data["orders"]
+        statuses = orders_data.get("statuses", {})
+        
+        # Order statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Orders", orders_data.get("count", 0))
+        with col2:
+            st.metric("Processing", statuses.get("processing", 0))
+        with col3:
+            st.metric("Shipped", statuses.get("shipped", 0))
+        with col4:
+            st.metric("Delivered", statuses.get("delivered", 0))
+        
+        # Orders table
+        orders_df = pd.DataFrame([
+            {
+                "Order ID": order.get("order_id", "N/A"),
+                "Customer ID": order.get("customer_id", "N/A"),
+                "Status": order.get("status", "N/A").title(),
+                "Total": f"${order.get('total', 0):.2f}",
+                "Order Date": order.get("order_date", "N/A"),
+                "Tracking": order.get("tracking_number", "N/A") if order.get("tracking_number") else "Not available",
+                "Items": len(order.get("items", []))
+            }
+            for order in orders
+        ])
+        
+        st.dataframe(orders_df, use_container_width=True, hide_index=True)
+        
+        # Order details expander
+        st.subheader("📝 Order Details")
+        selected_order_id = st.selectbox(
+            "Select an order to view details:",
+            options=[order.get("order_id") for order in orders],
+            key="order_selector"
+        )
+        
+        if selected_order_id:
+            selected_order = next((o for o in orders if o.get("order_id") == selected_order_id), None)
+            if selected_order:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown(f"**Order ID:** {selected_order.get('order_id')}")
+                    st.markdown(f"**Customer ID:** {selected_order.get('customer_id')}")
+                    st.markdown(f"**Status:** {selected_order.get('status', 'N/A').title()}")
+                    st.markdown(f"**Total:** ${selected_order.get('total', 0):.2f}")
+                    st.markdown(f"**Order Date:** {selected_order.get('order_date', 'N/A')}")
+                
+                with col2:
+                    if selected_order.get("shipped_date"):
+                        st.markdown(f"**Shipped Date:** {selected_order.get('shipped_date')}")
+                    if selected_order.get("tracking_number"):
+                        st.markdown(f"**Tracking Number:** {selected_order.get('tracking_number')}")
+                    if selected_order.get("estimated_delivery"):
+                        st.markdown(f"**Estimated Delivery:** {selected_order.get('estimated_delivery')}")
+                    if selected_order.get("delivered_date"):
+                        st.markdown(f"**Delivered Date:** {selected_order.get('delivered_date')}")
+                
+                # Items
+                st.markdown("**Items:**")
+                items = selected_order.get("items", [])
+                if items:
+                    items_df = pd.DataFrame(items)
+                    st.dataframe(items_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No items found")
+        
+        # Status distribution chart
+        if statuses:
+            st.subheader("📊 Order Status Distribution")
+            status_df = pd.DataFrame(list(statuses.items()), columns=["Status", "Count"])
+            fig = px.pie(
+                status_df,
+                values="Count",
+                names="Status",
+                title="Orders by Status"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No orders available in the system.")
+    
+    st.markdown("---")
+    
+    # Tickets Section
+    st.subheader("🎫 Support Tickets")
+    tickets_data = get_tickets()
+    
+    if tickets_data and tickets_data.get("tickets"):
+        tickets = tickets_data["tickets"]
+        ticket_statuses = tickets_data.get("statuses", {})
+        priorities = tickets_data.get("priorities", {})
+        
+        # Ticket statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Tickets", tickets_data.get("count", 0))
+        with col2:
+            st.metric("Open", ticket_statuses.get("open", 0))
+        with col3:
+            st.metric("In Progress", ticket_statuses.get("in_progress", 0))
+        with col4:
+            st.metric("Resolved", ticket_statuses.get("resolved", 0))
+        
+        # Priority metrics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Low Priority", priorities.get("low", 0))
+        with col2:
+            st.metric("Normal Priority", priorities.get("normal", 0))
+        with col3:
+            st.metric("High Priority", priorities.get("high", 0))
+        with col4:
+            st.metric("Urgent", priorities.get("urgent", 0))
+        
+        # Tickets table
+        tickets_df = pd.DataFrame([
+            {
+                "Ticket ID": ticket.get("ticket_id", "N/A"),
+                "Customer ID": ticket.get("customer_id", "N/A"),
+                "Status": ticket.get("status", "N/A").title(),
+                "Priority": ticket.get("priority", "N/A").title(),
+                "Created At": ticket.get("created_at", "N/A")[:10] if ticket.get("created_at") else "N/A",
+                "Assigned To": ticket.get("assigned_to", "Unassigned"),
+                "Issue": ticket.get("issue", "N/A")[:50] + "..." if len(ticket.get("issue", "")) > 50 else ticket.get("issue", "N/A")
+            }
+            for ticket in tickets
+        ])
+        
+        st.dataframe(tickets_df, use_container_width=True, hide_index=True)
+        
+        # Ticket details expander
+        st.subheader("📝 Ticket Details")
+        selected_ticket_id = st.selectbox(
+            "Select a ticket to view details:",
+            options=[ticket.get("ticket_id") for ticket in tickets],
+            key="ticket_selector"
+        )
+        
+        if selected_ticket_id:
+            selected_ticket = next((t for t in tickets if t.get("ticket_id") == selected_ticket_id), None)
+            if selected_ticket:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown(f"**Ticket ID:** {selected_ticket.get('ticket_id')}")
+                    st.markdown(f"**Customer ID:** {selected_ticket.get('customer_id')}")
+                    st.markdown(f"**Status:** {selected_ticket.get('status', 'N/A').title()}")
+                    st.markdown(f"**Priority:** {selected_ticket.get('priority', 'N/A').title()}")
+                
+                with col2:
+                    st.markdown(f"**Created At:** {selected_ticket.get('created_at', 'N/A')}")
+                    st.markdown(f"**Assigned To:** {selected_ticket.get('assigned_to', 'Unassigned')}")
+                
+                # Issue description
+                st.markdown("**Issue Description:**")
+                st.info(selected_ticket.get("issue", "No description available"))
+        
+        # Priority distribution chart
+        if priorities:
+            st.subheader("📊 Ticket Priority Distribution")
+            priority_df = pd.DataFrame(list(priorities.items()), columns=["Priority", "Count"])
+            fig = px.bar(
+                priority_df,
+                x="Priority",
+                y="Count",
+                title="Tickets by Priority",
+                color="Priority",
+                color_discrete_map={
+                    "low": "#4CAF50",
+                    "normal": "#2196F3",
+                    "high": "#FF9800",
+                    "urgent": "#F44336"
+                }
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Status distribution chart
+        if ticket_statuses:
+            st.subheader("📊 Ticket Status Distribution")
+            status_df = pd.DataFrame(list(ticket_statuses.items()), columns=["Status", "Count"])
+            fig = px.pie(
+                status_df,
+                values="Count",
+                names="Status",
+                title="Tickets by Status"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No tickets available in the system. Create tickets through the chat interface.")
+
+# Tab 6: User Guide
+with tab6:
     st.header("📖 User Guide")
     
     st.markdown("""
@@ -765,11 +1015,4 @@ with tab5:
     
     st.info("💡 **Pro Tip**: Start with simple questions to see how the routing works, then explore more complex scenarios!")
 
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: #757575;">
-    <p>🤖 CustoFlow - Multi-Agent Customer Support System</p>
-    <p>Built with Google's Agent Development Kit (ADK) and powered by Gemini</p>
-</div>
-""", unsafe_allow_html=True)
+# Footer removed as requested
