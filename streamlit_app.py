@@ -118,8 +118,13 @@ def get_analytics() -> Dict:
         return {}
 
 
-def detect_agent_from_response(response_text: str) -> str:
-    """Détecter quel agent a répondu basé sur le contenu."""
+def detect_agent_from_response(response_text: str, agent_from_api: Optional[str] = None) -> str:
+    """Détecter quel agent a répondu basé sur le contenu ou l'API."""
+    # Si l'API retourne l'agent, l'utiliser
+    if agent_from_api:
+        return agent_from_api
+    
+    # Sinon, détecter depuis le contenu
     response_lower = response_text.lower()
     if any(word in response_lower for word in ["order", "tracking", "shipped", "delivery"]):
         return "Order Agent"
@@ -174,6 +179,25 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.session_id = None
         st.rerun()
+    
+    st.markdown("---")
+    st.header("📥 Export")
+    if st.button("💾 Exporter Conversation"):
+        if st.session_state.messages:
+            export_data = {
+                "user_id": st.session_state.user_id,
+                "session_id": st.session_state.session_id,
+                "messages": st.session_state.messages,
+                "exported_at": datetime.now().isoformat()
+            }
+            st.download_button(
+                label="📥 Télécharger JSON",
+                data=json.dumps(export_data, indent=2, ensure_ascii=False),
+                file_name=f"conversation_{st.session_state.user_id}_{int(time.time())}.json",
+                mime="application/json"
+            )
+        else:
+            st.info("Aucune conversation à exporter")
 
 # Main Content
 tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat", "📊 Analytics", "🔄 Routing", "📈 Metrics"])
@@ -196,12 +220,26 @@ with tab1:
                     st.write(content)
             else:
                 with st.chat_message("assistant"):
-                    # Badge de l'agent
+                    # Badge de l'agent avec confidence
                     agent_color = get_agent_color(agent)
-                    st.markdown(f'<span style="background-color: {agent_color}; color: white; padding: 0.25rem 0.75rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600;">{agent}</span>', unsafe_allow_html=True)
+                    confidence = message.get("confidence", "high")
+                    confidence_emoji = "🟢" if confidence == "high" else "🟡" if confidence == "medium" else "🔴"
+                    
+                    st.markdown(
+                        f'<span style="background-color: {agent_color}; color: white; padding: 0.25rem 0.75rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; margin-right: 0.5rem;">{agent}</span>'
+                        f'<span style="font-size: 0.75rem; color: #757575;">{confidence_emoji} {confidence}</span>',
+                        unsafe_allow_html=True
+                    )
                     st.write(content)
+                    
+                    # Métadonnées
                     if "response_time" in message:
-                        st.caption(f"⏱️ Temps de réponse: {message['response_time']:.2f}s")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.caption(f"⏱️ Temps: {message['response_time']:.2f}s")
+                        with col2:
+                            if "confidence" in message:
+                                st.caption(f"📊 Confiance: {message['confidence']}")
     
     # Input pour nouveau message
     if prompt := st.chat_input("Tapez votre message..."):
@@ -223,22 +261,38 @@ with tab1:
                     st.error(f"Erreur: {response_data['error']}")
                 else:
                     response_text = response_data.get("response", "")
-                    agent = detect_agent_from_response(response_text)
+                    agent_from_api = response_data.get("agent_used")
+                    response_time_api = response_data.get("response_time", response_time)
+                    confidence = response_data.get("confidence", "high")
+                    
+                    agent = detect_agent_from_response(response_text, agent_from_api)
                     agent_color = get_agent_color(agent)
                     
-                    # Badge de l'agent
-                    st.markdown(f'<span style="background-color: {agent_color}; color: white; padding: 0.25rem 0.75rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600;">{agent}</span>', unsafe_allow_html=True)
+                    # Badge de l'agent avec confidence
+                    confidence_emoji = "🟢" if confidence == "high" else "🟡" if confidence == "medium" else "🔴"
+                    st.markdown(
+                        f'<span style="background-color: {agent_color}; color: white; padding: 0.25rem 0.75rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; margin-right: 0.5rem;">{agent}</span>'
+                        f'<span style="font-size: 0.75rem; color: #757575;">{confidence_emoji} {confidence}</span>',
+                        unsafe_allow_html=True
+                    )
                     
                     # Réponse
                     st.write(response_text)
-                    st.caption(f"⏱️ Temps de réponse: {response_time:.2f}s")
+                    
+                    # Métadonnées
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.caption(f"⏱️ Temps de réponse: {response_time_api:.2f}s")
+                    with col2:
+                        st.caption(f"📊 Confiance: {confidence}")
                     
                     # Ajouter à l'historique
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": response_text,
                         "agent": agent,
-                        "response_time": response_time
+                        "response_time": response_time_api,
+                        "confidence": confidence
                     })
 
 # Tab 2: Analytics Dashboard
@@ -447,32 +501,57 @@ with tab4:
             
             perf_data = []
             for agent, stats in agent_perf.items():
+                calls = stats.get("calls", 0)
+                errors = stats.get("errors", 0)
+                success_rate = ((calls - errors) / max(calls, 1)) * 100
                 perf_data.append({
                     "Agent": agent.replace("_", " ").title(),
-                    "Appels": stats.get("calls", 0),
-                    "Erreurs": stats.get("errors", 0),
-                    "Taux de Succès": ((stats.get("calls", 0) - stats.get("errors", 0)) / max(stats.get("calls", 1), 1)) * 100
+                    "Appels": calls,
+                    "Erreurs": errors,
+                    "Taux de Succès": round(success_rate, 2)
                 })
             
             perf_df = pd.DataFrame(perf_data)
-            st.dataframe(perf_df, use_container_width=True)
             
-            # Graphique en barres
-            fig = px.bar(
-                perf_df,
-                x="Agent",
-                y="Taux de Succès",
-                title="Taux de Succès par Agent (%)",
-                color="Agent",
-                color_discrete_map={
-                    "Faq Agent": "#2196F3",
-                    "Order Agent": "#FF9800",
-                    "Sentiment Agent": "#9C27B0",
-                    "Escalation Agent": "#F44336",
-                    "Orchestrator": "#4CAF50"
-                }
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            # Graphique en barres avec deux métriques
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig1 = px.bar(
+                    perf_df,
+                    x="Agent",
+                    y="Appels",
+                    title="Nombre d'Appels par Agent",
+                    color="Agent",
+                    color_discrete_map={
+                        "Faq Agent": "#2196F3",
+                        "Order Agent": "#FF9800",
+                        "Sentiment Agent": "#9C27B0",
+                        "Escalation Agent": "#F44336",
+                        "Orchestrator": "#4CAF50"
+                    }
+                )
+                st.plotly_chart(fig1, use_container_width=True)
+            
+            with col2:
+                fig2 = px.bar(
+                    perf_df,
+                    x="Agent",
+                    y="Taux de Succès",
+                    title="Taux de Succès par Agent (%)",
+                    color="Agent",
+                    color_discrete_map={
+                        "Faq Agent": "#2196F3",
+                        "Order Agent": "#FF9800",
+                        "Sentiment Agent": "#9C27B0",
+                        "Escalation Agent": "#F44336",
+                        "Orchestrator": "#4CAF50"
+                    }
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+            
+            # Tableau détaillé
+            st.dataframe(perf_df, use_container_width=True)
     else:
         st.info("Aucune métrique disponible. Commencez à utiliser le chat pour générer des métriques.")
 
