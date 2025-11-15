@@ -248,6 +248,28 @@ Then access:
 - Analytics: `http://localhost:8000/analytics`
 - API Docs: `http://localhost:8000/docs` (Swagger UI)
 
+### 🎨 Web Dashboard (Streamlit)
+
+Start the visual dashboard:
+
+```bash
+# First, start the API server (in one terminal)
+python -m api.server
+
+# Then, start the dashboard (in another terminal)
+streamlit run streamlit_app.py
+```
+
+The dashboard will open automatically at `http://localhost:8501`
+
+**Features**:
+- 💬 Interactive chat interface with agent detection
+- 📊 Analytics dashboard with charts
+- 🔄 Routing visualization
+- 📈 Real-time metrics
+
+See [DASHBOARD_README.md](DASHBOARD_README.md) for detailed dashboard documentation.
+
 ### Example API Request
 
 **Using curl:**
