@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import random
 import sys
+import json
 from pathlib import Path
 
 # Add utils to path for cache import
@@ -28,14 +29,18 @@ from utils.validation import validate_order_id
 
 
 # ============================================================================
-# Mock Order Database
+# Order Database with Persistence
 # ============================================================================
+# Orders are stored in data/orders.json for persistence
 # In production, this would be replaced with:
 # - Database queries (PostgreSQL, MySQL, etc.)
 # - API calls to order management system
 # - CRM integration (Salesforce, etc.)
 # ============================================================================
-_MOCK_ORDERS = {
+ORDERS_FILE = Path(__file__).parent.parent / "data" / "orders.json"
+
+# Default orders (used if file doesn't exist)
+_DEFAULT_ORDERS = {
     "12345": {
         "order_id": "12345",
         "customer_id": "cust_001",
@@ -90,6 +95,76 @@ _MOCK_ORDERS = {
         "reason": "Customer request"
     }
 }
+
+
+def _load_orders() -> Dict[str, Dict]:
+    """
+    Load orders from JSON file.
+    Returns default orders if file doesn't exist.
+    """
+    try:
+        if ORDERS_FILE.exists():
+            with open(ORDERS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Convert list to dict if needed (for backward compatibility)
+                if isinstance(data, list):
+                    return {order["order_id"]: order for order in data}
+                elif isinstance(data, dict) and "orders" in data:
+                    return {order["order_id"]: order for order in data["orders"]}
+                elif isinstance(data, dict):
+                    return data
+        # Return default orders if file doesn't exist
+        return _DEFAULT_ORDERS.copy()
+    except Exception as e:
+        print(f"Warning: Could not load orders from file: {e}. Using default orders.")
+        return _DEFAULT_ORDERS.copy()
+
+
+def _save_orders(orders: Dict[str, Dict]) -> bool:
+    """
+    Save orders to JSON file.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        # Ensure data directory exists
+        ORDERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Save as JSON
+        with open(ORDERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(orders, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Error saving orders to file: {e}")
+        return False
+
+
+# Load orders at module import
+_MOCK_ORDERS = _load_orders()
+
+
+def add_order(order_data: Dict) -> bool:
+    """
+    Add a new order to the database and save to file.
+    
+    Args:
+        order_data: Order dictionary with all required fields
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        order_id = order_data.get("order_id")
+        if not order_id:
+            return False
+        
+        # Add order to in-memory dict
+        _MOCK_ORDERS[order_id] = order_data
+        
+        # Save to file
+        return _save_orders(_MOCK_ORDERS)
+    except Exception as e:
+        print(f"Error adding order: {e}")
+        return False
 
 
 def lookup_order(order_id: str) -> Dict[str, any]:

@@ -8,19 +8,56 @@ from datetime import datetime
 from collections import defaultdict
 import threading
 import json
+from pathlib import Path
+
+
+# File path for persistent storage
+HISTORY_FILE = Path(__file__).parent.parent / "data" / "conversation_history.json"
+
+
+def _load_history() -> Dict[str, List[Dict]]:
+    """Load conversation history from file."""
+    if HISTORY_FILE.exists():
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Convert string keys back to defaultdict structure
+                history = defaultdict(list)
+                for user_id, messages in data.items():
+                    history[user_id] = messages
+                return history
+        except Exception:
+            return defaultdict(list)
+    return defaultdict(list)
+
+
+def _save_history(history: Dict[str, List[Dict]]) -> None:
+    """Save conversation history to file."""
+    try:
+        # Ensure data directory exists
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Convert defaultdict to regular dict for JSON serialization
+        data = dict(history)
+        
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass  # Silently fail if save fails
 
 
 class ConversationHistory:
     """
-    Thread-safe conversation history storage.
+    Thread-safe conversation history storage with file persistence.
     
     In production, this would use a database (PostgreSQL, MongoDB, etc.)
     """
     
     def __init__(self):
         """Initialize conversation history storage."""
-        self._history: Dict[str, List[Dict]] = defaultdict(list)
+        self._history: Dict[str, List[Dict]] = _load_history()
         self._lock = threading.Lock()
+        self._save_counter = 0  # Save every N messages for performance
     
     def add_message(
         self,
@@ -49,6 +86,12 @@ class ConversationHistory:
                 "metadata": metadata or {}
             }
             self._history[user_id].append(message)
+            self._save_counter += 1
+            
+            # Save to file every 5 messages for performance
+            if self._save_counter >= 5:
+                self._save_counter = 0
+                _save_history(self._history)
     
     def get_history(
         self,
@@ -109,6 +152,7 @@ class ConversationHistory:
                     del self._history[user_id]
             else:
                 self._history.clear()
+            _save_history(self._history)
 
 
 # Global conversation history instance

@@ -1,0 +1,34 @@
+{
+  "session_user_1763246548_b0f21f3f": {
+    "session_id": "session_user_1763246548_b0f21f3f",
+    "user_id": "user_1763246548",
+    "name": "ryzen 5",
+    "created_at": "2025-11-15T17:44:37.120676",
+    "updated_at": "2025-11-15T17:45:28.942697",
+    "message_count": 0
+  },
+  "session_user_1763274195_91cfcbaa": {
+    "session_id": "session_user_1763274195_91cfcbaa",
+    "user_id": "user_1763274195",
+    "name": "Order review",
+    "created_at": "2025-11-16T01:28:53.445864",
+    "updated_at": "2025-11-16T01:30:14.085262",
+    "message_count": 0
+  },
+  "session_user_1763274828_8d857ead": {
+    "session_id": "session_user_1763274828_8d857ead",
+    "user_id": "user_1763274828",
+    "name": "First order review",
+    "created_at": "2025-11-16T01:37:39.824413",
+    "updated_at": "2025-11-16T01:40:01.381583",
+    "message_count": 3
+  },
+  "session_user_1763274828_9fad7bd5": {
+    "session_id": "session_user_1763274828_9fad7bd5",
+    "user_id": "user_1763274828",
+    "name": "ryzen 5 9600x",
+    "created_at": "2025-11-16T01:40:45.105395",
+    "updated_at": "2025-11-16T01:48:30.270710",
+    "message_count": 5
+  }
+}

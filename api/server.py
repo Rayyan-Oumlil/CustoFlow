@@ -19,6 +19,7 @@ from utils.error_handler import handle_api_errors, with_timeout, get_user_friend
 from utils.analytics import analytics
 from utils.multilingual import detect_language, get_greeting, get_error_message
 from memory.conversation_history import conversation_history
+from memory.session_metadata import session_metadata
 
 # Setup logging
 setup_logging()
@@ -136,9 +137,14 @@ async def chat(request: ChatRequest, http_request: Request):
             )
             metrics.increment("sessions_started")
             logger.info(f"New session created: {session_id}")
+            # Create metadata if new session
+            session_metadata.create_session(session_id, request.user_id)
         except Exception:
             # Session may already exist, that's okay
             pass
+        
+        # Update message count in metadata
+        session_metadata.increment_message_count(session_id)
         
         # Increment metrics
         metrics.increment("messages_received")
@@ -159,41 +165,56 @@ async def chat(request: ChatRequest, http_request: Request):
             nonlocal response_text
             all_texts = []  # Collect all text responses
             tool_results = []  # Collect tool results as fallback
+            last_tool_result = None  # Keep track of last tool result for fallback
             
-            async for event in runner.run_async(
-                user_id=request.user_id,
-                session_id=session_id,
-                new_message=message
-            ):
-                # Collect text from any event with content
-                if event.content and event.content.parts:
-                    for part in event.content.parts:
-                        if hasattr(part, "text") and part.text:
-                            text = part.text.strip()
-                            if text and len(text) > 5:  # Only meaningful text
-                                all_texts.append(text)
-                                # Prefer final response if available
-                                if event.is_final_response():
-                                    response_text = text
-                                    break
+            try:
+                async for event in runner.run_async(
+                    user_id=request.user_id,
+                    session_id=session_id,
+                    new_message=message
+                ):
+                    # Collect text from any event with content
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if hasattr(part, "text") and part.text:
+                                text = part.text.strip()
+                                if text and len(text) > 5:  # Only meaningful text
+                                    all_texts.append(text)
+                                    # Prefer final response if available
+                                    if event.is_final_response():
+                                        response_text = text
+                                        break
+                            
+                            # Also collect function_response results as fallback
+                            if hasattr(part, "function_response") and part.function_response:
+                                try:
+                                    result = part.function_response.result
+                                    last_tool_result = result  # Store for fallback
+                                    if isinstance(result, str) and len(result) > 10:
+                                        tool_results.append(result)
+                                    elif isinstance(result, dict):
+                                        # Store the full dict for later processing
+                                        tool_results.append(result)
+                                        last_tool_result = result
+                                        # Also extract specific fields if available
+                                        if "answer" in result:
+                                            tool_results.append(result["answer"])
+                                        elif "error_message" in result:
+                                            tool_results.append(result["error_message"])
+                                except:
+                                    pass
                         
-                        # Also collect function_response results as fallback
-                        if hasattr(part, "function_response") and part.function_response:
-                            try:
-                                result = part.function_response.result
-                                if isinstance(result, str) and len(result) > 10:
-                                    tool_results.append(result)
-                                elif isinstance(result, dict):
-                                    # Extract answer from FAQ tool result
-                                    if "answer" in result:
-                                        tool_results.append(result["answer"])
-                                    elif "error_message" in result:
-                                        tool_results.append(result["error_message"])
-                            except:
-                                pass
-                    
-                    if response_text and event.is_final_response():
-                        break
+                        if response_text and event.is_final_response():
+                            break
+            except TypeError as e:
+                # Handle the specific error from agent_tool when Content is None
+                if "'NoneType' object is not iterable" in str(e) or "NoneType" in str(e):
+                    logger.warning(f"Agent returned None content, using tool result fallback: {last_tool_result}")
+                    # Use the last tool result if available
+                    if last_tool_result:
+                        tool_results.append(last_tool_result)
+                else:
+                    raise  # Re-raise if it's a different TypeError
             
             # If no final response, use the longest text collected
             if not response_text and all_texts:
@@ -201,8 +222,89 @@ async def chat(request: ChatRequest, http_request: Request):
                 meaningful = [t for t in all_texts if len(t) > 20]
                 if meaningful:
                     response_text = max(meaningful, key=len)
-                else:
-                    response_text = max(all_texts, key=len)
+            
+            # Fallback: Generate response from tool results if no text response
+            if not response_text and tool_results:
+                # Try to construct a response from tool results
+                for result in tool_results:
+                    if isinstance(result, str) and len(result) > 20:
+                        response_text = result
+                        break
+                    elif isinstance(result, dict):
+                        # Extract useful information from dict results
+                        if "orders" in result and result.get("status") == "success":
+                            orders = result.get("orders", [])
+                            if orders:
+                                order_info = []
+                                for order in orders[:3]:  # Limit to first 3 orders
+                                    order_id = order.get("order_id", "N/A")
+                                    status = order.get("status", "unknown").title()
+                                    total = order.get("total", 0)
+                                    items = order.get("items", [])
+                                    items_desc = ", ".join([
+                                        f"{item.get('quantity', 1)}x {item.get('name', 'item')}"
+                                        for item in items[:2]  # Limit items per order
+                                    ])
+                                    tracking = order.get("tracking_number", "")
+                                    estimated_delivery = order.get("estimated_delivery", "")
+                                    
+                                    # Build natural, conversational order description
+                                    status_text = {
+                                        "processing": "is currently being processed",
+                                        "shipped": "has been shipped and is on its way",
+                                        "delivered": "has been delivered",
+                                        "cancelled": "was cancelled"
+                                    }.get(status.lower(), f"is {status}")
+                                    
+                                    order_text = f"Order {order_id} {status_text}. It contains {items_desc} for ${total:.2f}."
+                                    if tracking:
+                                        order_text += f" You can track it using the tracking number {tracking}."
+                                    if estimated_delivery:
+                                        order_text += f" The estimated delivery date is {estimated_delivery}."
+                                    
+                                    order_info.append(order_text)
+                                
+                                if len(orders) == 1:
+                                    response_text = f"Great! I found 1 order for you. {order_info[0]} Is there anything else you'd like to know about this order?"
+                                else:
+                                    response_text = f"I found {len(orders)} orders in your account. "
+                                    for i, info in enumerate(order_info, 1):
+                                        if i == 1:
+                                            response_text += f"First, {info.lower()} "
+                                        elif i == len(order_info):
+                                            response_text += f"Finally, {info.lower()} "
+                                        else:
+                                            response_text += f"Second, {info.lower()} "
+                                    response_text += "Would you like more details about any of these orders?"
+                                break
+                        elif "order" in result and result.get("status") == "success":
+                            order = result.get("order", {})
+                            order_id = order.get("order_id", "N/A")
+                            status = order.get("status", "unknown").title()
+                            total = order.get("total", 0)
+                            items = order.get("items", [])
+                            items_desc = ", ".join([
+                                f"{item.get('quantity', 1)}x {item.get('name', 'item')}"
+                                for item in items[:3]
+                            ])
+                            tracking = order.get("tracking_number", "")
+                            estimated_delivery = order.get("estimated_delivery", "")
+                            
+                            # Build natural, conversational response
+                            status_text = {
+                                "processing": "is currently being processed",
+                                "shipped": "has been shipped and is on its way to you",
+                                "delivered": "has been delivered",
+                                "cancelled": "was cancelled"
+                            }.get(status.lower(), f"is {status}")
+                            
+                            response_text = f"Great news! Your order {order_id} {status_text}. It contains {items_desc} for ${total:.2f}."
+                            if tracking:
+                                response_text += f" You can track your package using the tracking number {tracking}."
+                            if estimated_delivery:
+                                response_text += f" The estimated delivery date is {estimated_delivery}."
+                            response_text += " Is there anything else you'd like to know about your order?"
+                            break
             
             # Last resort: use tool result if agent didn't generate text
             if not response_text and tool_results:
@@ -319,9 +421,82 @@ async def get_history(user_id: str, limit: Optional[int] = 50, session_id: Optio
 
 @app.get("/sessions/{user_id}")
 async def get_user_sessions(user_id: str):
-    """Get all session IDs for a user."""
-    sessions = conversation_history.get_user_sessions(user_id)
+    """Get all sessions for a user with metadata."""
+    sessions = session_metadata.get_user_sessions(user_id)
     return {"user_id": user_id, "sessions": sessions, "count": len(sessions)}
+
+
+class CreateSessionRequest(BaseModel):
+    user_id: str
+    name: Optional[str] = None
+
+
+@app.post("/sessions/create")
+async def create_session(request: CreateSessionRequest):
+    """
+    Create a new session with optional custom name.
+    
+    Args:
+        request: CreateSessionRequest with user_id and optional name
+    """
+    import os
+    session_id = f"session_{request.user_id}_{os.urandom(4).hex()}"
+    
+    # Create session in ADK
+    try:
+        await session_manager.get_service().create_session(
+            app_name=settings.app_name,
+            user_id=request.user_id,
+            session_id=session_id
+        )
+        metrics.increment("sessions_started")
+    except Exception:
+        pass  # Session may already exist
+    
+    # Create metadata
+    metadata = session_metadata.create_session(session_id, request.user_id, request.name)
+    
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "metadata": metadata
+    }
+
+
+class RenameSessionRequest(BaseModel):
+    new_name: str
+
+
+@app.put("/sessions/{session_id}/rename")
+async def rename_session(session_id: str, request: RenameSessionRequest):
+    """
+    Rename a session.
+    
+    Args:
+        session_id: Session identifier
+        request: RenameSessionRequest with new_name
+    """
+    if not request.new_name or not request.new_name.strip():
+        raise HTTPException(status_code=400, detail="Session name cannot be empty")
+    
+    success = session_metadata.rename_session(session_id, request.new_name.strip())
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "new_name": request.new_name.strip()
+    }
+
+
+@app.get("/sessions/{session_id}/metadata")
+async def get_session_metadata(session_id: str):
+    """Get metadata for a specific session."""
+    metadata = session_metadata.get_session(session_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    return metadata
 
 
 @app.get("/orders")
@@ -347,6 +522,76 @@ async def get_order(order_id: str):
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
     return {"order": order}
+
+
+@app.post("/orders")
+async def create_order(order_data: dict):
+    """
+    Create a new order (Admin function).
+    
+    This endpoint allows administrators to manually add orders to the system.
+    Tickets are created automatically by the bot, so this endpoint only handles orders.
+    
+    Expected order structure:
+    {
+        "order_id": str,
+        "customer_id": str,
+        "status": str,  # processing, shipped, delivered, cancelled
+        "items": [
+            {"name": str, "quantity": int, "price": float}
+        ],
+        "total": float,
+        "order_date": str,  # YYYY-MM-DD
+        "shipped_date": str | None,  # YYYY-MM-DD
+        "tracking_number": str | None,
+        "estimated_delivery": str | None  # YYYY-MM-DD
+    }
+    """
+    from tools.order_tool import _MOCK_ORDERS
+    
+    # Validate required fields
+    required_fields = ["order_id", "customer_id", "status", "items", "total", "order_date"]
+    for field in required_fields:
+        if field not in order_data:
+            raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+    
+    order_id = order_data["order_id"]
+    
+    # Check if order already exists
+    if order_id in _MOCK_ORDERS:
+        raise HTTPException(status_code=409, detail=f"Order {order_id} already exists")
+    
+    # Validate status
+    valid_statuses = ["processing", "shipped", "delivered", "cancelled"]
+    if order_data["status"] not in valid_statuses:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        )
+    
+    # Validate items
+    if not isinstance(order_data["items"], list) or len(order_data["items"]) == 0:
+        raise HTTPException(status_code=400, detail="Items must be a non-empty list")
+    
+    for item in order_data["items"]:
+        if not all(key in item for key in ["name", "quantity", "price"]):
+            raise HTTPException(status_code=400, detail="Each item must have 'name', 'quantity', and 'price'")
+    
+    # Add order to database (with persistence)
+    from tools.order_tool import add_order
+    success = add_order(order_data)
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save order to database")
+    
+    # Log metrics
+    metrics.increment("orders_created")
+    
+    return {
+        "status": "success",
+        "message": f"Order {order_id} created successfully",
+        "order": order_data
+    }
 
 
 @app.get("/tickets")
