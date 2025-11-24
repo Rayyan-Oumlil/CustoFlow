@@ -2,6 +2,7 @@
 Analytics Utilities
 
 Tracks user interactions, feedback, and performance metrics.
+Now uses Supabase for persistence instead of in-memory storage.
 """
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -35,10 +36,11 @@ class Analytics:
         query: str,
         response: str,
         agent_used: Optional[str] = None,
-        response_time: Optional[float] = None
+        response_time: Optional[float] = None,
+        session_id: Optional[str] = None
     ) -> None:
         """
-        Log a user interaction.
+        Log a user interaction to Supabase (or in-memory if Supabase disabled).
         
         Args:
             user_id: User identifier
@@ -46,16 +48,46 @@ class Analytics:
             response: Agent response
             agent_used: Which agent handled the query
             response_time: Response time in seconds
+            session_id: Optional session identifier
         """
+        interaction = {
+            "timestamp": datetime.now().isoformat(),
+            "user_id": user_id,
+            "query": query[:200],  # Truncate for storage
+            "response_length": len(response),
+            "agent_used": agent_used,
+            "response_time": response_time,
+            "session_id": session_id
+        }
+        
+        # Try to save to Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED, log_analytics_interaction
+            if SUPABASE_ENABLED:
+                log_analytics_interaction(
+                    user_id=user_id,
+                    session_id=session_id,
+                    query=query[:200],
+                    response_length=len(response),
+                    agent_used=agent_used,
+                    response_time=response_time
+                )
+                # Still keep in-memory for quick access
+                with self._lock:
+                    self._interactions.append(interaction)
+                    # Track query patterns (first few words)
+                    query_words = query.lower().split()[:3]
+                    pattern = " ".join(query_words)
+                    self._query_patterns[pattern] += 1
+                    # Track agent performance
+                    if agent_used:
+                        self._agent_performance[agent_used]["calls"] += 1
+                return
+        except Exception as e:
+            print(f"Warning: Failed to log interaction to Supabase: {e}")
+        
+        # Fallback to in-memory storage
         with self._lock:
-            interaction = {
-                "timestamp": datetime.now().isoformat(),
-                "user_id": user_id,
-                "query": query[:200],  # Truncate for storage
-                "response_length": len(response),
-                "agent_used": agent_used,
-                "response_time": response_time
-            }
             self._interactions.append(interaction)
             
             # Track query patterns (first few words)

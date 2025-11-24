@@ -1,0 +1,614 @@
+{
+  "faqs": [
+    {
+      "question": "What is your refund policy?",
+      "answer": "We offer a 30-day money-back guarantee on all products. Items must be in original condition with tags attached. Refunds are processed within 5-7 business days after we receive the returned item. The refund will be issued to your original payment method.",
+      "category": "refund",
+      "keywords": [
+        "refund",
+        "return",
+        "money back",
+        "guarantee",
+        "refund policy"
+      ]
+    },
+    {
+      "question": "How long does shipping take?",
+      "answer": "Standard shipping takes 5-7 business days. Express shipping (2-3 business days) and overnight shipping (next business day) are also available at checkout. Shipping times are calculated from the date your order ships, not when you place it.",
+      "category": "shipping",
+      "keywords": [
+        "shipping",
+        "delivery",
+        "how long",
+        "when will",
+        "arrive",
+        "shipping time"
+      ]
+    },
+    {
+      "question": "Can I return items?",
+      "answer": "Yes, you can return items within 30 days of purchase. Items must be unused and in original packaging with all tags attached. Please contact customer service to initiate a return and receive a return authorization number.",
+      "category": "return",
+      "keywords": [
+        "return",
+        "send back",
+        "exchange",
+        "return items"
+      ]
+    },
+    {
+      "question": "What payment methods do you accept?",
+      "answer": "We accept all major credit cards (Visa, Mastercard, American Express, Discover), PayPal, Apple Pay, Google Pay, and bank transfers. All payments are processed securely through encrypted channels.",
+      "category": "payment",
+      "keywords": [
+        "payment",
+        "pay",
+        "credit card",
+        "paypal",
+        "how to pay",
+        "payment methods"
+      ]
+    },
+    {
+      "question": "Do you ship internationally?",
+      "answer": "Yes, we ship to over 50 countries worldwide. International shipping typically takes 10-14 business days. Additional customs fees and import taxes may apply depending on your country. Please check your local customs regulations.",
+      "category": "shipping",
+      "keywords": [
+        "international",
+        "overseas",
+        "abroad",
+        "other countries",
+        "global shipping"
+      ]
+    },
+    {
+      "question": "How do I track my order?",
+      "answer": "Once your order ships, you'll receive a tracking number via email. You can also track your order by logging into your account and visiting the 'My Orders' section. Enter your tracking number on our website or the carrier's website for real-time updates.",
+      "category": "order",
+      "keywords": [
+        "track",
+        "tracking",
+        "where is",
+        "order status",
+        "shipment",
+        "tracking number"
+      ]
+    },
+    {
+      "question": "What is your return window?",
+      "answer": "You have 30 days from the date of delivery to return items for a full refund. Items must be in original condition with all packaging and tags. After 30 days, returns may be accepted for store credit only.",
+      "category": "return",
+      "keywords": [
+        "return window",
+        "how long to return",
+        "return period",
+        "return deadline"
+      ]
+    },
+    {
+      "question": "Do you offer free shipping?",
+      "answer": "Yes, we offer free standard shipping on orders over $50. Free shipping applies automatically at checkout. For orders under $50, standard shipping is $5.99. Express and overnight shipping options are available for an additional fee.",
+      "category": "shipping",
+      "keywords": [
+        "free shipping",
+        "free delivery",
+        "shipping cost",
+        "shipping fee"
+      ]
+    },
+    {
+      "question": "How do I cancel an order?",
+      "answer": "You can cancel an order within 24 hours of placing it if it hasn't shipped yet. Log into your account, go to 'My Orders', and click 'Cancel Order'. For orders that have already shipped, you'll need to return the item instead. Contact us if you need assistance.",
+      "category": "order",
+      "keywords": [
+        "cancel",
+        "cancel order",
+        "stop order",
+        "cancel purchase"
+      ]
+    },
+    {
+      "question": "What if my item is damaged?",
+      "answer": "If you receive a damaged item, please contact customer service immediately with photos of the damage. We'll send a replacement or issue a full refund at no cost to you. We'll also cover return shipping for damaged items.",
+      "category": "support",
+      "keywords": [
+        "damaged",
+        "broken",
+        "defective",
+        "wrong item",
+        "damaged product"
+      ]
+    },
+    {
+      "question": "How do I change my shipping address?",
+      "answer": "You can change your shipping address within 2 hours of placing your order if it hasn't shipped yet. Log into your account, go to 'My Orders', select the order, and click 'Change Address'. After 2 hours or if the order has shipped, contact customer service immediately.",
+      "category": "order",
+      "keywords": [
+        "change address",
+        "update address",
+        "wrong address",
+        "shipping address"
+      ]
+    },
+    {
+      "question": "What is your exchange policy?",
+      "answer": "We offer exchanges within 30 days of delivery. Items must be in original condition with tags attached. Exchanges are available for different sizes, colors, or styles of the same item. If the new item costs more, you'll pay the difference. If it costs less, you'll receive a refund for the difference.",
+      "category": "return",
+      "keywords": [
+        "exchange",
+        "swap",
+        "change size",
+        "change color",
+        "exchange policy"
+      ]
+    },
+    {
+      "question": "How do I create an account?",
+      "answer": "Click 'Sign Up' in the top right corner of our website. Enter your email address, create a password, and verify your email. You can also sign up using your Google or Facebook account for faster registration.",
+      "category": "account",
+      "keywords": [
+        "create account",
+        "sign up",
+        "register",
+        "new account",
+        "signup"
+      ]
+    },
+    {
+      "question": "I forgot my password. How do I reset it?",
+      "answer": "Click 'Forgot Password' on the login page and enter your email address. You'll receive a password reset link via email within a few minutes. Click the link and create a new password. If you don't receive the email, check your spam folder.",
+      "category": "account",
+      "keywords": [
+        "forgot password",
+        "reset password",
+        "password reset",
+        "lost password"
+      ]
+    },
+    {
+      "question": "How do I update my account information?",
+      "answer": "Log into your account and go to 'Account Settings'. You can update your name, email, phone number, shipping address, and payment methods. Changes to your email address require verification.",
+      "category": "account",
+      "keywords": [
+        "update account",
+        "change email",
+        "edit profile",
+        "account settings"
+      ]
+    },
+    {
+      "question": "Do you offer gift cards?",
+      "answer": "Yes, we offer digital and physical gift cards in amounts from $10 to $500. Gift cards never expire and can be used for any purchase on our website. You can purchase gift cards in our Gift Cards section or at checkout.",
+      "category": "products",
+      "keywords": [
+        "gift card",
+        "gift certificate",
+        "voucher",
+        "gift voucher"
+      ]
+    },
+    {
+      "question": "How do I apply a discount code?",
+      "answer": "During checkout, enter your discount code in the 'Promo Code' or 'Coupon Code' field and click 'Apply'. The discount will be applied to your order total. Codes are case-sensitive and may have expiration dates or minimum purchase requirements.",
+      "category": "payment",
+      "keywords": [
+        "discount code",
+        "coupon",
+        "promo code",
+        "voucher code",
+        "apply code"
+      ]
+    },
+    {
+      "question": "What is your price match policy?",
+      "answer": "We offer price matching within 7 days of purchase if you find the same item for less at an authorized retailer. The item must be identical, in stock, and sold by an authorized dealer. Contact customer service with the competitor's price and link.",
+      "category": "pricing",
+      "keywords": [
+        "price match",
+        "price guarantee",
+        "lower price",
+        "competitor price"
+      ]
+    },
+    {
+      "question": "Do you have a loyalty program?",
+      "answer": "Yes, we have a rewards program where you earn points for every purchase. Points can be redeemed for discounts on future orders. You'll automatically be enrolled when you create an account. Earn 1 point for every $1 spent, and 100 points = $5 off.",
+      "category": "account",
+      "keywords": [
+        "loyalty program",
+        "rewards",
+        "points",
+        "membership",
+        "rewards program"
+      ]
+    },
+    {
+      "question": "How do I check my order history?",
+      "answer": "Log into your account and go to 'My Orders' or 'Order History'. You'll see all your past and current orders with details including order date, items, status, and tracking information. You can also download invoices and receipts.",
+      "category": "order",
+      "keywords": [
+        "order history",
+        "past orders",
+        "previous orders",
+        "my orders"
+      ]
+    },
+    {
+      "question": "What is your warranty policy?",
+      "answer": "Most products come with a manufacturer's warranty ranging from 90 days to 2 years depending on the product. Warranty information is included in the product description. We also offer extended warranty options at checkout for eligible items.",
+      "category": "products",
+      "keywords": [
+        "warranty",
+        "guarantee",
+        "product warranty",
+        "manufacturer warranty"
+      ]
+    },
+    {
+      "question": "How do I contact customer service?",
+      "answer": "You can contact us via live chat (available 24/7), email at support@custoflow.com, or phone at 1-800-CUSTOFLOW (1-800-287-8635) Monday-Friday 9am-6pm EST. Average response time is under 2 minutes for live chat.",
+      "category": "support",
+      "keywords": [
+        "contact",
+        "customer service",
+        "support",
+        "help",
+        "contact us"
+      ]
+    },
+    {
+      "question": "What are your business hours?",
+      "answer": "Our customer service team is available 24/7 via live chat and email. Phone support is available Monday-Friday 9am-6pm EST and Saturday 10am-4pm EST. We respond to emails within 2 hours during business hours.",
+      "category": "support",
+      "keywords": [
+        "business hours",
+        "hours",
+        "open",
+        "when are you open",
+        "support hours"
+      ]
+    },
+    {
+      "question": "Do you offer student discounts?",
+      "answer": "Yes, we offer a 10% student discount for verified students. Sign up with your .edu email address or verify your student status through our student verification program. The discount applies to all full-price items.",
+      "category": "pricing",
+      "keywords": [
+        "student discount",
+        "student",
+        "education discount",
+        "student price"
+      ]
+    },
+    {
+      "question": "How do I unsubscribe from emails?",
+      "answer": "Click the 'Unsubscribe' link at the bottom of any marketing email, or log into your account and go to 'Email Preferences' to manage your subscription settings. You'll still receive order confirmations and important account updates.",
+      "category": "account",
+      "keywords": [
+        "unsubscribe",
+        "email preferences",
+        "stop emails",
+        "email settings"
+      ]
+    },
+    {
+      "question": "What is your privacy policy?",
+      "answer": "We take your privacy seriously. We never sell your personal information to third parties. We only use your data to process orders, improve our service, and send you relevant offers (if you opt in). Read our full privacy policy on our website.",
+      "category": "legal",
+      "keywords": [
+        "privacy",
+        "privacy policy",
+        "data protection",
+        "personal information"
+      ]
+    },
+    {
+      "question": "How secure is my payment information?",
+      "answer": "All payments are processed through PCI-DSS compliant payment processors. We use 256-bit SSL encryption to protect your data. We never store your full credit card number on our servers. Your payment information is secure and encrypted.",
+      "category": "payment",
+      "keywords": [
+        "security",
+        "secure payment",
+        "payment security",
+        "safe",
+        "encryption"
+      ]
+    },
+    {
+      "question": "Can I place an order over the phone?",
+      "answer": "Yes, you can place orders over the phone by calling 1-800-CUSTOFLOW (1-800-287-8635) Monday-Friday 9am-6pm EST. Our customer service representatives can help you find products and complete your purchase.",
+      "category": "order",
+      "keywords": [
+        "phone order",
+        "order by phone",
+        "call to order",
+        "telephone order"
+      ]
+    },
+    {
+      "question": "What if I receive the wrong item?",
+      "answer": "If you receive the wrong item, please contact customer service immediately with photos and your order number. We'll send you the correct item at no charge and provide a prepaid return label for the incorrect item. We apologize for any inconvenience.",
+      "category": "support",
+      "keywords": [
+        "wrong item",
+        "incorrect item",
+        "wrong product",
+        "mistake"
+      ]
+    },
+    {
+      "question": "How do I leave a product review?",
+      "answer": "Log into your account, go to 'My Orders', find the product you purchased, and click 'Write a Review'. You can rate the product from 1-5 stars and write a detailed review. Reviews help other customers make informed decisions.",
+      "category": "products",
+      "keywords": [
+        "review",
+        "product review",
+        "rating",
+        "write review",
+        "feedback"
+      ]
+    },
+    {
+      "question": "Do you offer bulk discounts?",
+      "answer": "Yes, we offer volume discounts for bulk orders. Discounts vary by product and quantity. Contact our sales team at bulk@custoflow.com or call 1-800-CUSTOFLOW for a custom quote on orders of 10+ units.",
+      "category": "pricing",
+      "keywords": [
+        "bulk",
+        "bulk discount",
+        "volume discount",
+        "wholesale",
+        "bulk order"
+      ]
+    },
+    {
+      "question": "What is your return shipping policy?",
+      "answer": "We provide free return shipping for defective or damaged items. For standard returns, return shipping costs $5.99, which is deducted from your refund. You can also use your own shipping method. Return shipping is free for orders over $100.",
+      "category": "return",
+      "keywords": [
+        "return shipping",
+        "shipping cost return",
+        "return label",
+        "return postage"
+      ]
+    },
+    {
+      "question": "How do I track multiple orders?",
+      "answer": "Log into your account and go to 'My Orders' to see all your active orders. Each order has its own tracking number. You can also use our order tracking page and enter multiple tracking numbers separated by commas.",
+      "category": "order",
+      "keywords": [
+        "multiple orders",
+        "track all orders",
+        "all tracking",
+        "several orders"
+      ]
+    },
+    {
+      "question": "What payment plans do you offer?",
+      "answer": "We offer 'Buy Now, Pay Later' options through Klarna and Afterpay for orders over $50. You can split your payment into 4 interest-free installments. Select this option at checkout. Subject to credit approval.",
+      "category": "payment",
+      "keywords": [
+        "payment plan",
+        "installments",
+        "pay later",
+        "klarna",
+        "afterpay"
+      ]
+    },
+    {
+      "question": "How do I save items for later?",
+      "answer": "Click the heart icon on any product to add it to your wishlist. You can access your wishlist from your account menu. Items in your wishlist will be saved until you remove them or purchase them.",
+      "category": "account",
+      "keywords": [
+        "wishlist",
+        "save for later",
+        "favorites",
+        "save items",
+        "wish list"
+      ]
+    },
+    {
+      "question": "Do you have a mobile app?",
+      "answer": "Yes, we have mobile apps for iOS and Android. Download the CustoFlow app from the App Store or Google Play Store. The app offers faster checkout, order tracking, exclusive mobile-only deals, and push notifications for order updates.",
+      "category": "products",
+      "keywords": [
+        "mobile app",
+        "app",
+        "iphone app",
+        "android app",
+        "mobile"
+      ]
+    },
+    {
+      "question": "What is your restocking fee?",
+      "answer": "We do not charge a restocking fee for returns. However, if an item is returned in a condition that prevents us from reselling it (damaged, used, missing parts), we may deduct up to 50% of the item's value from your refund.",
+      "category": "return",
+      "keywords": [
+        "restocking fee",
+        "restock fee",
+        "return fee",
+        "handling fee"
+      ]
+    },
+    {
+      "question": "How do I update my payment method?",
+      "answer": "Log into your account, go to 'Payment Methods' in your account settings, and click 'Add New Card' or 'Edit' next to an existing card. You can also update your payment method during checkout for new orders.",
+      "category": "account",
+      "keywords": [
+        "update payment",
+        "change card",
+        "edit payment",
+        "payment method"
+      ]
+    },
+    {
+      "question": "Do you offer same-day delivery?",
+      "answer": "Yes, we offer same-day delivery in select metropolitan areas for orders placed before 2pm local time. Same-day delivery costs $19.99. Check availability at checkout by entering your zip code. Available in 50+ major cities.",
+      "category": "shipping",
+      "keywords": [
+        "same day",
+        "same-day delivery",
+        "today delivery",
+        "rush delivery"
+      ]
+    },
+    {
+      "question": "What is your holiday return policy?",
+      "answer": "Items purchased between November 1st and December 31st can be returned until January 31st of the following year. This extended return window applies to all items, giving you extra time to decide if you're happy with your purchase.",
+      "category": "return",
+      "keywords": [
+        "holiday return",
+        "extended return",
+        "holiday policy",
+        "winter return"
+      ]
+    },
+    {
+      "question": "How do I get a receipt or invoice?",
+      "answer": "You'll receive an email receipt immediately after placing your order. You can also download receipts and invoices from your account by going to 'My Orders', selecting the order, and clicking 'Download Receipt' or 'Download Invoice'.",
+      "category": "order",
+      "keywords": [
+        "receipt",
+        "invoice",
+        "proof of purchase",
+        "order confirmation"
+      ]
+    },
+    {
+      "question": "Do you price match with your own website?",
+      "answer": "If you see a lower price on our website within 7 days of purchase, contact customer service and we'll refund the difference. This applies to identical items only. Prices may vary between our website and mobile app.",
+      "category": "pricing",
+      "keywords": [
+        "price match",
+        "lower price",
+        "price adjustment",
+        "price difference"
+      ]
+    },
+    {
+      "question": "What if my package is lost?",
+      "answer": "If your package hasn't arrived within 5 business days of the estimated delivery date, contact customer service with your order number. We'll investigate with the carrier and either reship your order or issue a full refund. We'll keep you updated throughout the process.",
+      "category": "shipping",
+      "keywords": [
+        "lost package",
+        "missing package",
+        "package not arrived",
+        "lost shipment"
+      ]
+    },
+    {
+      "question": "How do I change my email address?",
+      "answer": "Log into your account, go to 'Account Settings', and click 'Change Email'. Enter your new email address and verify it through the confirmation email we'll send. Your old email will remain active until verification is complete.",
+      "category": "account",
+      "keywords": [
+        "change email",
+        "update email",
+        "new email",
+        "email address"
+      ]
+    },
+    {
+      "question": "Do you offer gift wrapping?",
+      "answer": "Yes, we offer gift wrapping for $4.99 per item. Select 'Add Gift Wrapping' at checkout. You can include a personalized message that we'll print on a gift card. Gift wrapping is available for most items.",
+      "category": "products",
+      "keywords": [
+        "gift wrap",
+        "gift wrapping",
+        "gift box",
+        "gift service"
+      ]
+    },
+    {
+      "question": "What is your age verification policy?",
+      "answer": "For age-restricted products, we require age verification at delivery. The carrier will check ID upon delivery. If you're not available, the package will be held at the carrier's facility for pickup with valid ID. This applies to items like electronics, certain software, etc.",
+      "category": "legal",
+      "keywords": [
+        "age verification",
+        "id required",
+        "age restriction",
+        "verification"
+      ]
+    },
+    {
+      "question": "How do I report a problem with my order?",
+      "answer": "Contact customer service immediately via live chat, email, or phone with your order number and details of the problem. Include photos if applicable. We'll investigate and resolve the issue as quickly as possible, typically within 24-48 hours.",
+      "category": "support",
+      "keywords": [
+        "problem",
+        "issue",
+        "report",
+        "complaint",
+        "problem with order"
+      ]
+    },
+    {
+      "question": "Do you have a physical store?",
+      "answer": "We are primarily an online retailer, but we have 15 physical stores in major cities across the US. Visit our website to find store locations and hours. You can order online and pick up in-store for free, or shop directly at our locations.",
+      "category": "products",
+      "keywords": [
+        "store",
+        "physical store",
+        "retail location",
+        "brick and mortar"
+      ]
+    },
+    {
+      "question": "What is your cancellation policy for pre-orders?",
+      "answer": "Pre-orders can be cancelled at any time before the item ships. Once a pre-order ships, our standard return policy applies. You'll receive a full refund if you cancel before shipping. Pre-order deposits are fully refundable.",
+      "category": "order",
+      "keywords": [
+        "pre-order",
+        "preorder",
+        "cancel pre-order",
+        "preorder cancellation"
+      ]
+    },
+    {
+      "question": "How do I check if an item is in stock?",
+      "answer": "Product pages show real-time inventory status. 'In Stock' means available for immediate shipping. 'Low Stock' means limited quantity. 'Out of Stock' means currently unavailable, but you can sign up for back-in-stock notifications.",
+      "category": "products",
+      "keywords": [
+        "in stock",
+        "availability",
+        "stock status",
+        "out of stock"
+      ]
+    },
+    {
+      "question": "Do you offer installation services?",
+      "answer": "Yes, we offer professional installation services for select products like electronics, appliances, and furniture. Installation services are available at checkout for eligible items. Prices vary by product and location. Contact us for details.",
+      "category": "products",
+      "keywords": [
+        "installation",
+        "install",
+        "setup service",
+        "professional installation"
+      ]
+    },
+    {
+      "question": "What is your policy on price changes?",
+      "answer": "Prices may change at any time. If you've already placed an order, you'll pay the price shown at checkout. If an item's price decreases within 7 days of your purchase, contact us for a price adjustment refund.",
+      "category": "pricing",
+      "keywords": [
+        "price change",
+        "price increase",
+        "price decrease",
+        "price adjustment"
+      ]
+    }
+  ],
+  "version_id": "63b37fb6fb42",
+  "created_at": "2025-11-16T17:51:00.704448",
+  "version_name": "initial_version",
+  "description": "Initial FAQ knowledge base version",
+  "tags": [
+    "initial",
+    "production"
+  ],
+  "status": "draft",
+  "num_faqs": 52,
+  "languages": [
+    "de",
+    "en",
+    "es",
+    "fr"
+  ]
+}

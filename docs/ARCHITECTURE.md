@@ -31,7 +31,7 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Client Layer                              │
 ├─────────────────────────────────────────────────────────────────┤
-│  Streamlit Dashboard  │  REST API  │  CLI Interface            │
+│  React Frontend       │  REST API  │  CLI Interface            │
 └────────────┬───────────┴──────┬─────┴────────────┬──────────────┘
              │                  │                  │
              └──────────────────┼──────────────────┘
@@ -95,7 +95,7 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
 
 ### 1. Client Layer
 
-#### Streamlit Dashboard (`streamlit_app.py`)
+#### React Frontend (`frontend/`)
 - **Purpose**: Web-based user interface
 - **Features**:
   - Real-time chat interface
@@ -103,7 +103,7 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Analytics dashboard
   - Order and ticket management
   - Session management
-- **Technology**: Streamlit, Plotly, Pandas
+- **Technology**: React, Next.js, TypeScript, Tailwind CSS
 
 #### REST API (`api/server.py`)
 - **Purpose**: Programmatic access to the system
@@ -319,7 +319,7 @@ Save to Persistence Layer
 ### Web Framework
 - **FastAPI**: REST API server
 - **Uvicorn**: ASGI server
-- **Streamlit**: Web dashboard
+- **React/Next.js**: Web dashboard
 
 ### Data Storage
 - **JSON Files**: Persistent storage (orders, sessions, history)
@@ -378,8 +378,8 @@ Save to Persistence Layer
 # Start API server
 python -m api.server
 
-# Start Streamlit dashboard
-streamlit run streamlit_app.py
+# Start React frontend
+cd frontend && npm run dev
 ```
 
 ### Production (Recommended)
@@ -411,9 +411,9 @@ streamlit run streamlit_app.py
 - **Development**: Fast iteration
 - **Future**: Easy migration to database
 
-### Why FastAPI + Streamlit?
+### Why FastAPI + React?
 - **FastAPI**: High performance, async support, automatic docs
-- **Streamlit**: Rapid UI development, Python-native
+- **React/Next.js**: Modern, performant web framework with TypeScript
 - **Separation**: API and UI can scale independently
 
 ---

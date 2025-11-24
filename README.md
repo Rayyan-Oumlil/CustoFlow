@@ -75,7 +75,7 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 │     └─ Track interactions and collect user feedback        │
 │                                                             │
 │  🖥️ Web Dashboard                                           │
-│     └─ Streamlit interface with Orders & Tickets view     │
+│     └─ React/Next.js interface with Orders & Tickets view │
 │                                                             │
 │  📚 Comprehensive Knowledge Base                            │
 │     └─ 50+ FAQs covering all major topics                  │
@@ -200,23 +200,27 @@ python -m pytest tests/
 
 ## 💻 Usage
 
-### Streamlit Dashboard (Recommended)
+### React Frontend (Recommended)
 
 Start the interactive web dashboard:
 
 ```bash
-streamlit run streamlit_app.py
+# Start the backend API
+python -m api.server
+
+# In another terminal, start the frontend
+cd frontend
+npm install --legacy-peer-deps
+npm run dev
 ```
 
-The dashboard will open automatically in your browser at `http://localhost:8501`
+The frontend will open automatically in your browser at `http://localhost:3000`
 
 **Features:**
 - 💬 **Chat Interface** - Interactive conversation with the multi-agent system
 - 📊 **Analytics Dashboard** - Real-time statistics and agent performance
-- 🔄 **Routing Visualization** - See how queries are routed to agents
-- 📈 **Metrics Dashboard** - System health and performance metrics
 - 📦 **Orders & Tickets Dashboard** - View all orders and support tickets
-- 📖 **User Guide** - Comprehensive documentation
+- 🔄 **Session Management** - Manage multiple conversations
 
 **Orders & Tickets Dashboard:**
 - View all orders with status, tracking, and items

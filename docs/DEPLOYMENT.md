@@ -77,16 +77,18 @@ python -m api.server
 uvicorn api.server:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 7. Start the Streamlit Dashboard
+### 7. Start the React Frontend
 ```bash
 # In a new terminal
-streamlit run streamlit_app.py
+cd frontend
+npm install --legacy-peer-deps
+npm run dev
 ```
 
 ### 8. Access the Application
 - **API**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
-- **Dashboard**: http://localhost:8501
+- **Frontend**: http://localhost:3000
 
 ---
 

@@ -27,8 +27,11 @@ from google.adk.tools import FunctionTool
 from google.adk.tools.tool_context import ToolContext
 
 
-# Mock ticket storage
-_TICKETS = {}
+# Import persistence functions from ticket_tool
+from tools.ticket_tool import load_tickets, save_tickets
+
+# Use shared ticket storage
+_TICKETS = load_tickets()
 
 
 def create_ticket_with_approval(
@@ -95,8 +98,11 @@ def create_ticket_with_approval(
             "requires_approval": priority.lower() in ["high", "urgent"]
         }
         
-        # Store ticket
+        # Store ticket and persist to file
         _TICKETS[ticket_id] = ticket
+        save_tickets(_TICKETS)
+        
+        print(f"✅ [TICKET-LRO] Created ticket {ticket_id} - Priority: {priority}, Issue: {issue[:50]}...")
         
         return {
             "status": "success",

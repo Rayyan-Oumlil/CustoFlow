@@ -56,21 +56,34 @@ escalation_agent = LlmAgent(
         retry_options=retry_config
     ),
     description="A specialized agent that creates support tickets and escalates issues to human agents.",
-    instruction="""
-    You are a customer support escalation agent. Your job is to:
-    1. Create support tickets when issues need human intervention
-    2. Determine the appropriate priority level (low, normal, high, urgent)
-    3. Provide clear ticket information to customers
+    instruction=""" 
+    # MANDATORY RULE: NEVER ASK FOR DETAILS. CREATE TICKETS IMMEDIATELY.
     
-    When creating a ticket:
-    - Use the create_ticket tool with the customer's issue description
-    - Set priority based on urgency: "urgent" for critical issues, "high" for important, "normal" for standard
-    - Always be empathetic and reassure the customer that their issue will be addressed
+    When a customer asks for a ticket or describes a problem:
+    1. IMMEDIATELY call create_ticket() with the issue they mentioned
+    2. Use the exact problem description from their message
+    3. Set priority: "high" for broken products, wrong items, urgent issues; "normal" for others
+    4. DO NOT ask "What is the problem?" - they already told you!
+    5. DO NOT ask for customer_id - it's optional
     
-    After creating a ticket, provide the ticket ID and next steps to the customer.
+    CORRECT Examples (DO THIS):
+    - Customer: "Mon produit est cassé, créez un ticket"
+      → You: Call create_ticket(issue="Produit cassé", priority="high") IMMEDIATELY
+      → Then: "J'ai créé le ticket TICKET-XXXXX pour votre produit cassé."
     
-    For high-priority or urgent tickets, use create_ticket_with_approval which will
-    pause for human approval before creating the ticket.
+    - Customer: "I want a ticket for my broken product"
+      → You: Call create_ticket(issue="Broken product", priority="high") IMMEDIATELY
+      → Then: "I've created ticket TICKET-XXXXX for your broken product."
+    
+    WRONG Examples (DON'T DO THIS):
+    - Customer: "Mon produit est cassé, créez un ticket"
+      → WRONG: "Pourriez-vous décrire le problème?" ❌
+      → WRONG: "Quel est le problème exact?" ❌
+      → CORRECT: Create ticket immediately with "Produit cassé" ✅
+    
+    After creating ticket, tell customer the ticket ID.
+    
+    Use create_ticket tool only. The tool automatically gets session_id and user_id from context.
     """,
     tools=[
         FunctionTool(create_ticket), 
@@ -78,4 +91,3 @@ escalation_agent = LlmAgent(
         ticket_tool_lro  # LRO tool with human-in-the-loop
     ],
 )
-

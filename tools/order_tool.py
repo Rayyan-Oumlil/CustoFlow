@@ -223,6 +223,10 @@ def lookup_order(order_id: str) -> Dict[str, any]:
         if cached_result:
             return cached_result
         
+        # Reload orders from file to get latest data
+        global _MOCK_ORDERS
+        _MOCK_ORDERS = _load_orders()
+        
         # Look up order in mock database
         order = _MOCK_ORDERS.get(order_id)
         
@@ -271,6 +275,10 @@ def get_customer_orders(customer_id: str) -> Dict[str, any]:
                 "status": "error",
                 "error_message": "Customer ID cannot be empty"
             }
+        
+        # Reload orders from file to get latest data
+        global _MOCK_ORDERS
+        _MOCK_ORDERS = _load_orders()
         
         # Find all orders for this customer
         customer_orders = [

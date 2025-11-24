@@ -72,13 +72,19 @@ orchestrator_agent = LlmAgent(
     Routing rules:
     - FAQ questions (refunds, shipping, policies, general info, product questions) → faq_agent
     - Order inquiries (order status, tracking, "my order", delivery questions) → order_agent
-    - Sentiment analysis needed → sentiment_agent (use this first if customer seems upset)
+    - **EMOTIONS/SENTIMENT** (keywords: "upset", "frustrated", "angry", "sad", "disappointed", "feel", "feeling", "don't like", "hate") → **sentiment_agent FIRST** (analyze emotion, then route to appropriate agent)
+    - **TICKET CREATION REQUESTS** (keywords: "create ticket", "make a ticket", "open ticket", "escalate", "talk to human", "speak to agent", "need help", "create a ticket", "I want a ticket", "I need a ticket") → **escalation_agent** (ALWAYS use this for ticket requests - route IMMEDIATELY)
     - Complex issues, complaints, need human help → escalation_agent
+    - Problems with products, wrong items, defective products → escalation_agent (create ticket directly)
     
     Workflow:
-    1. First, check sentiment if customer seems frustrated/angry → use sentiment_agent
-    2. Then route to appropriate agent based on query type
-    3. If issue is complex or customer is very upset, escalate → escalation_agent
+    1. **If customer explicitly asks to create a ticket or talk to a human → IMMEDIATELY route to escalation_agent**
+    2. **If customer expresses emotions (upset, frustrated, angry, sad, disappointed) → FIRST use sentiment_agent to analyze, THEN route to appropriate agent**
+    3. Then route to appropriate agent based on query type
+    4. If issue is complex or customer is very upset, escalate → escalation_agent
+    
+    IMPORTANT: When a customer asks to "create a ticket", "make a ticket", "open a ticket", "talk to human", or "speak to agent", 
+    you MUST route to escalation_agent, NOT order_agent or faq_agent. The escalation_agent is the ONLY agent that can create tickets.
     
     Important guidelines:
     - Even if a question doesn't match perfectly, try to route it to the most relevant agent

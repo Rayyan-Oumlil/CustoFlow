@@ -68,4 +68,3 @@ If you prefer to create diagrams manually:
 ```markdown
 ![Diagram Name](docs/images/diagram.png)
 ```
-

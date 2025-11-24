@@ -77,6 +77,16 @@ class ConversationHistory:
             content: Message content
             metadata: Optional metadata (agent used, response time, etc.)
         """
+        # Essayer Supabase d'abord
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED, add_message as supabase_add_message
+            if SUPABASE_ENABLED:
+                supabase_add_message(user_id, session_id, role, content, metadata)
+                return  # Succès, on ne sauvegarde pas en JSON
+        except Exception:
+            pass  # Fallback vers JSON
+        
+        # Fallback vers JSON
         with self._lock:
             message = {
                 "timestamp": datetime.now().isoformat(),
@@ -110,6 +120,28 @@ class ConversationHistory:
         Returns:
             List of conversation messages
         """
+        # Essayer Supabase d'abord
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED, get_messages as supabase_get_messages
+            if SUPABASE_ENABLED:
+                result = supabase_get_messages(user_id, session_id, limit or 100)
+                if result:
+                    # Convertir le format Supabase vers le format attendu
+                    formatted = []
+                    for msg in result:
+                        formatted_msg = {
+                            "timestamp": msg.get("timestamp"),
+                            "session_id": msg.get("session_id"),
+                            "role": msg.get("role"),
+                            "content": msg.get("content"),
+                            "metadata": msg.get("metadata", {})
+                        }
+                        formatted.append(formatted_msg)
+                    return formatted
+        except Exception:
+            pass  # Fallback vers JSON
+        
+        # Fallback vers JSON
         with self._lock:
             history = self._history.get(user_id, [])
             

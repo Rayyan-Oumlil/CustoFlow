@@ -80,6 +80,17 @@ class SessionMetadata:
         Returns:
             Session metadata dictionary
         """
+        # Essayer Supabase d'abord
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED, create_session as supabase_create_session
+            if SUPABASE_ENABLED:
+                result = supabase_create_session(session_id, user_id, name)
+                if result:
+                    return result
+        except Exception:
+            pass  # Fallback vers JSON
+        
+        # Fallback vers JSON
         with self._lock:
             if session_id not in self._metadata:
                 self._metadata[session_id] = {
@@ -144,6 +155,17 @@ class SessionMetadata:
         Returns:
             List of session metadata dictionaries
         """
+        # Essayer Supabase d'abord
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED, get_user_sessions as supabase_get_user_sessions
+            if SUPABASE_ENABLED:
+                result = supabase_get_user_sessions(user_id)
+                if result:
+                    return result
+        except Exception:
+            pass  # Fallback vers JSON
+        
+        # Fallback vers JSON
         with self._lock:
             sessions = [
                 metadata.copy()
