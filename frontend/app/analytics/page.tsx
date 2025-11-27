@@ -119,15 +119,25 @@ export default function AnalyticsPage() {
   const safeData: Analytics = analytics ? {
     total_messages: analytics.total_messages ?? 0,
     active_sessions: analytics.active_sessions ?? 0,
+    closed_sessions: analytics.closed_sessions ?? 0,
     interactions: analytics.interactions ?? 0,
     avg_satisfaction: analytics.avg_satisfaction ?? 0,
     tickets_created: analytics.tickets_created ?? 0,
+    open_tickets: analytics.open_tickets ?? 0,
+    resolved_tickets: analytics.resolved_tickets ?? 0,
+    resolution_rate: analytics.resolution_rate ?? 0,
+    avg_response_time: analytics.avg_response_time ?? 0,
   } : {
     total_messages: 0,
     active_sessions: 0,
+    closed_sessions: 0,
     interactions: 0,
     avg_satisfaction: 0,
     tickets_created: 0,
+    open_tickets: 0,
+    resolved_tickets: 0,
+    resolution_rate: 0,
+    avg_response_time: 0,
   }
 
   return (
@@ -135,20 +145,35 @@ export default function AnalyticsPage() {
       <PageHeader title="Real-Time Analytics Dashboard" description="Monitor system performance and metrics" />
 
       <div className="flex-1 overflow-auto px-8 py-8">
-        <div className="grid grid-cols-5 gap-4 mb-8">
-          <Card className="p-6">
-            <p className="text-sm font-medium text-muted-foreground">Total Messages</p>
-            <p className="text-3xl font-bold mt-2">{loading ? "-" : safeData.total_messages}</p>
-          </Card>
-
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
           <Card className="p-6">
             <p className="text-sm font-medium text-muted-foreground">Active Sessions</p>
             <p className="text-3xl font-bold mt-2">{loading ? "-" : safeData.active_sessions}</p>
+            {safeData.closed_sessions !== undefined && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {safeData.closed_sessions} closed
+              </p>
+            )}
           </Card>
 
           <Card className="p-6">
-            <p className="text-sm font-medium text-muted-foreground">Interactions</p>
-            <p className="text-3xl font-bold mt-2">{loading ? "-" : safeData.interactions}</p>
+            <p className="text-sm font-medium text-muted-foreground">Open Tickets</p>
+            <p className="text-3xl font-bold mt-2">{loading ? "-" : safeData.open_tickets}</p>
+            {safeData.resolved_tickets !== undefined && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {safeData.resolved_tickets} resolved
+              </p>
+            )}
+          </Card>
+
+          <Card className="p-6">
+            <p className="text-sm font-medium text-muted-foreground">Resolution Rate</p>
+            <p className="text-3xl font-bold mt-2">
+              {loading ? "-" : `${safeData.resolution_rate?.toFixed(1) ?? 0}%`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {safeData.tickets_created} total
+            </p>
           </Card>
 
           <Card className="p-6">
@@ -156,11 +181,15 @@ export default function AnalyticsPage() {
             <p className="text-3xl font-bold mt-2">
               {loading ? "-" : safeData.avg_satisfaction.toFixed(1)}
             </p>
+            <p className="text-xs text-muted-foreground mt-1">out of 5.0</p>
           </Card>
 
           <Card className="p-6">
-            <p className="text-sm font-medium text-muted-foreground">Tickets Created</p>
-            <p className="text-3xl font-bold mt-2">{loading ? "-" : safeData.tickets_created}</p>
+            <p className="text-sm font-medium text-muted-foreground">Avg Response Time</p>
+            <p className="text-3xl font-bold mt-2">
+              {loading ? "-" : `${safeData.avg_response_time?.toFixed(1) ?? 0}s`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">per message</p>
           </Card>
         </div>
 

@@ -3,6 +3,7 @@ import asyncio
 import sys
 import os
 import json
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -10,6 +11,7 @@ from agents.sentiment_agent import sentiment_agent
 from google.adk.runners import InMemoryRunner
 
 
+@pytest.mark.asyncio
 async def test_sentiment_agent():
     """Test the Sentiment agent."""
     print("Testing Sentiment Agent...")

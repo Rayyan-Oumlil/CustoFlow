@@ -46,8 +46,10 @@ def get_session(session_id: str) -> Optional[Dict]:
             return result.data[0]
         return None
     except Exception as e:
-        print(f"Erreur Supabase get_session: {e}")
-        return None
+        print(f"Erreur Supabase get_session: {e}. Fallback vers JSON.")
+        # Fallback vers JSON si Supabase échoue
+        from memory.session_metadata import session_metadata
+        return session_metadata.get_session(session_id)
 
 
 def create_session(session_id: str, user_id: str, name: Optional[str] = None, customer_id: Optional[str] = None) -> Dict:
@@ -90,8 +92,10 @@ def create_session(session_id: str, user_id: str, name: Optional[str] = None, cu
         print(f"Session created successfully: customer_id={final_result.get('customer_id')}")
         return final_result
     except Exception as e:
-        print(f"Erreur Supabase create_session: {e}")
-        return {}
+        print(f"Erreur Supabase create_session: {e}. Fallback vers JSON.")
+        # Fallback vers JSON si Supabase échoue
+        from memory.session_metadata import session_metadata
+        return session_metadata.create_session(session_id, user_id, name, customer_id)
 
 
 def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[Dict]:
@@ -127,6 +131,36 @@ def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[D
     except Exception as e:
         print(f"Erreur Supabase get_user_sessions: {e}")
         return []
+
+
+def close_session(session_id: str) -> bool:
+    """Mark a session as inactive/closed."""
+    if not SUPABASE_ENABLED:
+        # Fallback: store in JSON
+        from memory.session_metadata import session_metadata
+        return session_metadata.close_session(session_id)
+    
+    try:
+        result = supabase.table("sessions").update({"is_active": False}).eq("session_id", session_id).execute()
+        return bool(result.data)
+    except Exception as e:
+        print(f"Erreur Supabase close_session: {e}")
+        return False
+
+
+def reopen_session(session_id: str) -> bool:
+    """Reopen a closed session (mark as active)."""
+    if not SUPABASE_ENABLED:
+        # Fallback: store in JSON
+        from memory.session_metadata import session_metadata
+        return session_metadata.reopen_session(session_id)
+    
+    try:
+        result = supabase.table("sessions").update({"is_active": True}).eq("session_id", session_id).execute()
+        return bool(result.data)
+    except Exception as e:
+        print(f"Erreur Supabase reopen_session: {e}")
+        return False
 
 
 def rename_session(session_id: str, new_name: str) -> bool:
@@ -210,7 +244,14 @@ def add_message(
         # Update message_count in sessions table
         increment_message_count(session_id)
     except Exception as e:
-        print(f"Erreur Supabase add_message: {e}")
+        print(f"Erreur Supabase add_message: {e}. Fallback vers JSON.")
+        # Fallback vers JSON si Supabase échoue
+        from memory.conversation_history import conversation_history
+        metadata = metadata or {}
+        if is_human_agent:
+            metadata["is_human_agent"] = True
+            metadata["agent_used"] = "human_agent"
+        conversation_history.add_message(user_id, session_id, role, content, metadata)
 
 
 def get_messages(user_id: str, session_id: Optional[str] = None, limit: int = 100) -> List[Dict]:
@@ -228,8 +269,10 @@ def get_messages(user_id: str, session_id: Optional[str] = None, limit: int = 10
         result = query.order("timestamp", desc=False).limit(limit).execute()
         return result.data or []
     except Exception as e:
-        print(f"Erreur Supabase get_messages: {e}")
-        return []
+        print(f"Erreur Supabase get_messages: {e}. Fallback vers JSON.")
+        # Fallback vers JSON si Supabase échoue
+        from memory.conversation_history import conversation_history
+        return conversation_history.get_history(user_id, limit=limit, session_id=session_id)
 
 
 # ============================================================================

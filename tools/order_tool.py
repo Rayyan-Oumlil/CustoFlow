@@ -240,6 +240,7 @@ def add_order(order_data: Dict) -> bool:
                         "status": order_data.get("status"),
                         "items": order_data.get("items", []),
                         "total": order_data.get("total", 0),
+                        "notes": order_data.get("notes", []),  # Include notes field
                         "tracking_number": order_data.get("tracking_number"),
                         "estimated_delivery": order_data.get("estimated_delivery"),
                         "created_at": created_at_value,

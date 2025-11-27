@@ -1,12 +1,46 @@
 {
-  "TICKET-3D60E3EB": {
-    "ticket_id": "TICKET-3D60E3EB",
-    "customer_id": "unknown",
-    "issue": "Order cancellation request",
-    "priority": "high",
+  "test_ticket": {
+    "ticket_id": "test_ticket",
+    "status": "open"
+  },
+  "TICKET-00A2A0AB": {
+    "ticket_id": "TICKET-00A2A0AB",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
     "status": "open",
-    "created_at": "2025-11-27T11:37:23.752837",
-    "session_id": "test_session_1764261441.537414",
-    "user_id": "test_user_1764261441.537423"
+    "created_at": "2025-11-27T18:41:59.808661",
+    "session_id": "test_session_1764286919.808627",
+    "user_id": "test_user_1764286919.80864"
+  },
+  "TICKET-946AD836": {
+    "ticket_id": "TICKET-946AD836",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-27T18:42:03.282954",
+    "session_id": "test_session_1764286923.282928",
+    "user_id": "test_user_1764286923.282935"
+  },
+  "TICKET-A8206841": {
+    "ticket_id": "TICKET-A8206841",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-27T18:42:04.206470",
+    "session_id": "test_session_1764286924.206447",
+    "user_id": "test_user_1764286924.206454"
+  },
+  "TICKET-A246F421": {
+    "ticket_id": "TICKET-A246F421",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-27T18:42:59.731233",
+    "session_id": "test_session_1764286979.731209",
+    "user_id": "test_user_1764286979.731216"
   }
 }

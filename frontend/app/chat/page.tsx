@@ -39,7 +39,8 @@ export default function ChatPage() {
   const [submittingFeedback, setSubmittingFeedback] = useState<string | null>(null)
   const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false)
   const [selectedMessageForFeedback, setSelectedMessageForFeedback] = useState<{ id: string; agentUsed?: string } | null>(null)
-  const [feedbackType, setFeedbackType] = useState<"thumbs_up" | "thumbs_down">("thumbs_down")
+  const [feedbackType, setFeedbackType] = useState<"thumbs_up" | "thumbs_down" | "rating">("thumbs_down")
+  const [feedbackRating, setFeedbackRating] = useState<number>(0)
   const [feedbackComment, setFeedbackComment] = useState("")
   const [feedbackReason, setFeedbackReason] = useState("")
   const [feedbackCategory, setFeedbackCategory] = useState("")
@@ -114,12 +115,78 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, customerId]) // Depend on both userId and customerId to refetch when customer changes
 
+  // Utility function to remove duplicate messages
+  // ROOT CAUSE FIX: Messages are duplicated because:
+  // 1. Local message created with temp ID (user_1234567890) BEFORE server save
+  // 2. Server saves with auto-incremented ID (1, 2, 3...) 
+  // 3. When polling, server message has different ID than local
+  // 4. Both coexist because IDs don't match
+  // SOLUTION: Match by content+role+timestamp (more lenient timestamp window)
+  const deduplicateMessages = (messages: Message[]): Message[] => {
+    const seen = new Map<string, Message>()
+    
+    for (const msg of messages) {
+      // Normalize content (remove extra spaces, lowercase)
+      const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+      
+      // Create signature with more lenient timestamp matching (5 second window)
+      // This handles cases where local and server timestamps differ slightly
+      const timestamp = new Date(msg.timestamp).getTime()
+      const roundedTime = Math.floor(timestamp / 5000) * 5000 // Round to nearest 5 seconds
+      const signature = `${msg.role}:${normalizedContent}:${roundedTime}`
+      
+      if (!seen.has(signature)) {
+        seen.set(signature, msg)
+      } else {
+        // We have a duplicate - prefer server message (has proper ID) over local (temp ID)
+        const existing = seen.get(signature)!
+        const existingIsLocal = existing.id && (
+          existing.id.startsWith('user_') || 
+          existing.id.startsWith('assistant_') || 
+          existing.id.startsWith('error_') ||
+          existing.id.startsWith('agent_')
+        )
+        const currentIsLocal = msg.id && (
+          msg.id.startsWith('user_') || 
+          msg.id.startsWith('assistant_') || 
+          msg.id.startsWith('error_') ||
+          msg.id.startsWith('agent_')
+        )
+        
+        // Prefer server message (non-local ID) over local message
+        if (existingIsLocal && !currentIsLocal) {
+          seen.set(signature, msg) // Replace local with server
+        } else if (!existingIsLocal && currentIsLocal) {
+          // Keep existing (server message)
+        } else {
+          // Both are same type - prefer numeric ID (server) or keep first
+          const existingIsNumeric = existing.id && /^\d+$/.test(String(existing.id))
+          const currentIsNumeric = msg.id && /^\d+$/.test(String(msg.id))
+          if (currentIsNumeric && !existingIsNumeric) {
+            seen.set(signature, msg) // Prefer numeric ID
+          }
+        }
+      }
+    }
+    
+    return Array.from(seen.values()).sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    )
+  }
+
   useEffect(() => {
     if (!userId || !sessionId) return
 
-    const fetchMessages = async () => {
+    // Track if component is mounted to prevent state updates after unmount
+    let isMounted = true
+
+    const fetchMessages = async (mergeWithLocal: boolean = false) => {
+      if (!isMounted) return
+      
       try {
         const data = await apiClient.get(`/history/${userId}?session_id=${sessionId}`)
+        if (!isMounted) return // Check again after async operation
+        
         console.log("Fetched messages from API:", data)
         
         // Handle both array and object response formats
@@ -130,27 +197,126 @@ export default function ChatPage() {
           messagesArray = Array.isArray((data as any).history) ? (data as any).history : []
         }
         
-        const msgs = messagesArray.map((m: any, index: number) => ({
-          id: m.id || `msg_${m.timestamp || Date.now()}_${index}`,
-              role: m.role,
-              content: m.content,
-          agent_used: m.metadata?.agent || m.agent_used,
-          response_time: m.metadata?.response_time || m.response_time,
-          timestamp: m.timestamp || m.created_at,
-            }))
-        console.log("Mapped messages:", msgs)
-        setMessages(msgs)
+        const serverMsgs = messagesArray.map((m: any, index: number) => {
+          // Check for human agent in multiple ways
+          const isHumanAgent = m.metadata?.is_human_agent === true || 
+                               m.metadata?.agent_used === "human_agent" ||
+                               m.agent_used === "human_agent"
+          
+          return {
+            id: m.id || `msg_${m.timestamp || Date.now()}_${index}`,
+            role: m.role,
+            content: m.content,
+            agent_used: isHumanAgent ? "human_agent" : (m.metadata?.agent || m.agent_used),
+            response_time: m.metadata?.response_time || m.response_time,
+            timestamp: m.timestamp || m.created_at,
+          }
+        })
+        
+        if (mergeWithLocal) {
+          // Merge with local messages: replace local messages with server versions
+          // Local user messages (temp IDs) will be replaced by server messages (proper IDs)
+          // This prevents duplicates while keeping optimistic updates
+          setMessages((prev) => {
+            // Create a map of server messages by content+role+timestamp for quick lookup
+            const serverMap = new Map<string, Message>()
+            for (const msg of serverMsgs) {
+              const timestamp = new Date(msg.timestamp).getTime()
+              const roundedTime = Math.floor(timestamp / 5000) * 5000
+              const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+              const signature = `${msg.role}:${normalizedContent}:${roundedTime}`
+              serverMap.set(signature, msg)
+            }
+            
+            // Replace local messages with server versions if they match
+            const updated = prev.map(localMsg => {
+              const timestamp = new Date(localMsg.timestamp).getTime()
+              const roundedTime = Math.floor(timestamp / 5000) * 5000
+              const normalizedContent = localMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+              const signature = `${localMsg.role}:${normalizedContent}:${roundedTime}`
+              
+              // If server has a matching message, use server version (has proper ID)
+              if (serverMap.has(signature)) {
+                return serverMap.get(signature)!
+              }
+              return localMsg // Keep local message if no server match (not saved yet)
+            })
+            
+            // Add any server messages that don't have local matches (new messages)
+            const localSignatures = new Set(
+              prev.map(m => {
+                const t = new Date(m.timestamp).getTime()
+                const rt = Math.floor(t / 5000) * 5000
+                const nc = m.content.trim().toLowerCase().replace(/\s+/g, ' ')
+                return `${m.role}:${nc}:${rt}`
+              })
+            )
+            
+            for (const serverMsg of serverMsgs) {
+              const t = new Date(serverMsg.timestamp).getTime()
+              const rt = Math.floor(t / 5000) * 5000
+              const nc = serverMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+              const sig = `${serverMsg.role}:${nc}:${rt}`
+              if (!localSignatures.has(sig)) {
+                updated.push(serverMsg)
+              }
+            }
+            
+            // Sort by timestamp and deduplicate
+            return deduplicateMessages(updated.sort((a, b) => 
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            ))
+          })
+        } else {
+          // Initial load: deduplicate server messages
+          if (isMounted) {
+            setMessages(deduplicateMessages(serverMsgs))
+          }
+        }
       } catch (error) {
+        if (!isMounted) return
         console.error("Failed to fetch messages:", error)
-        setMessages([]) // Set empty array on error to prevent stale data
+        // Don't clear messages on error if merging - keep what we have
+        if (!mergeWithLocal) {
+          setMessages([])
+        }
       }
     }
 
     fetchMessages()
+    
+    // Poll for new messages every 5 seconds (to catch human agent messages)
+    // Use merge mode to preserve local messages that haven't been saved yet
+    // Reduced from 2s to 5s to reduce server load (60% fewer requests)
+    const interval = setInterval(() => {
+      if (isMounted && userId && sessionId) {
+        fetchMessages(true) // Merge with local messages
+      }
+    }, 5000) // 5 seconds instead of 2
+    
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
   }, [userId, sessionId])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    // Auto-scroll to bottom only if user is already at bottom (don't force scroll when scrolling up)
+    const messagesContainer = document.querySelector('.flex-1.overflow-y-auto') as HTMLElement
+    if (messagesContainer) {
+      const isNearBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 100
+      // Only auto-scroll if user is already near the bottom
+      if (isNearBottom) {
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+        }, 100)
+      }
+    } else {
+      // Fallback: if container not found, scroll anyway (initial load)
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+      }, 100)
+    }
   }, [messages, sending])
 
   const createNewConversation = async () => {
@@ -511,17 +677,19 @@ export default function ChatPage() {
     const userMessage = input
     setInput("")
     
-    // Add user message immediately (before API call)
+    // Check if last message was from human agent BEFORE sending
+    const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant")
+    const isContinuingWithHuman = lastAssistantMsg?.agent_used === "human_agent"
+    
+    // Add user message IMMEDIATELY for better UX (optimistic update)
+    // It will be replaced by server message when fetched (same content, proper ID)
     const userMsg: Message = {
-        id: `user_${Date.now()}`,
+        id: `user_${Date.now()}`, // Temporary ID, will be replaced by server ID
         role: "user",
         content: userMessage,
         timestamp: new Date().toISOString(),
     }
-    setMessages([...messages, userMsg])
-    
-    // Show typing indicator
-    setSending(true)
+    setMessages((prev) => [...prev, userMsg])
     
     // Keep focus on input field after sending
     setTimeout(() => {
@@ -529,55 +697,71 @@ export default function ChatPage() {
     }, 0)
 
     try {
-      const response = await apiClient.post<{
+      let response: {
         response: string
         session_id: string
         agent_used?: string
         response_time?: number
-      }>("/chat", {
-        user_id: userId,
-        session_id: currentSessionId,
-        message: userMessage,
-        customer_id: customerId || undefined, // Include customer_id in request
-      })
+      }
+      
+      if (isContinuingWithHuman) {
+        // Human agent is handling - use regular /chat endpoint
+        // The backend will detect human agent takeover and not respond with AI
+        // The message will be saved correctly as "user" role
+        // Don't show typing indicator - human agent will respond via polling
+        response = await apiClient.post<{
+          response: string
+          session_id: string
+          agent_used?: string
+          response_time?: number
+        }>("/chat", {
+          user_id: userId,
+          session_id: currentSessionId,
+          message: userMessage,
+          customer_id: customerId || undefined,
+        })
+        // Backend will return early if human agent has taken over
+        // So response might be the "human agent handling" message
+        // We'll just return here, no need to display it
+        return
+      } else {
+        // Regular chat with AI agent - show typing indicator
+        setSending(true)
+        // Regular chat with AI agent
+        response = await apiClient.post<{
+          response: string
+          session_id: string
+          agent_used?: string
+          response_time?: number
+        }>("/chat", {
+          user_id: userId,
+          session_id: currentSessionId,
+          message: userMessage,
+          customer_id: customerId || undefined, // Include customer_id in request
+        })
+      }
 
-      // Hide typing indicator before adding response
+      // Hide typing indicator
       setSending(false)
       
-      // Add assistant response
-      const assistantMsg: Message = {
-          id: `assistant_${Date.now()}`,
-          role: "assistant",
-          content: response.response,
-          agent_used: response.agent_used,
-          response_time: response.response_time,
-          timestamp: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, assistantMsg])
+      // DON'T add assistant response locally - wait for server to save it
+      // Server saves the message, polling will retrieve it
+      // This prevents duplicates
       
-      // Play audio response if enabled
-      if (audioEnabled && response.response) {
-        playAudioResponse(response.response)
+      // Only process response if it exists (human agent case returns early)
+      if (response && response.agent_used !== "human_agent") {
+        // Play audio response if enabled (but don't add message locally)
+        if (audioEnabled && response.response) {
+          playAudioResponse(response.response)
+        }
       }
       
-      // Restore focus to input field after agent responds
-      setTimeout(() => {
-        inputRef.current?.focus()
-      }, 100)
-      
-      // Restore focus to input field after agent responds
-      setTimeout(() => {
-        inputRef.current?.focus()
-      }, 100)
-
-      // Reload messages from backend to ensure consistency
+      // Trigger immediate fetch to get the saved messages from server
+      // This ensures user message and assistant response appear quickly
       if (userId && currentSessionId) {
         setTimeout(async () => {
           try {
             const data = await apiClient.get(`/history/${userId}?session_id=${currentSessionId}`)
-            console.log("Reloaded messages from API:", data)
-            
-            // Handle both array and object response formats
             let messagesArray: any[] = []
             if (Array.isArray(data)) {
               messagesArray = data
@@ -585,21 +769,42 @@ export default function ChatPage() {
               messagesArray = Array.isArray((data as any).history) ? (data as any).history : []
             }
             
-            const msgs = messagesArray.map((m: any, index: number) => ({
-              id: m.id || `msg_${m.timestamp || Date.now()}_${index}`,
-              role: m.role,
-              content: m.content,
-              agent_used: m.metadata?.is_human_agent ? "human_agent" : (m.metadata?.agent || m.agent_used),
-              response_time: m.metadata?.response_time || m.response_time,
-              timestamp: m.timestamp || m.created_at,
-            }))
-            console.log("Reloaded mapped messages:", msgs)
-            setMessages(msgs) // Always set, even if empty
-    } catch (error) {
-            console.error("Failed to reload messages:", error)
+            const serverMsgs = messagesArray.map((m: any, index: number) => {
+              const isHumanAgent = m.metadata?.is_human_agent === true || 
+                                   m.metadata?.agent_used === "human_agent" ||
+                                   m.agent_used === "human_agent"
+              
+              return {
+                id: m.id || `msg_${m.timestamp || Date.now()}_${index}`,
+                role: m.role,
+                content: m.content,
+                agent_used: isHumanAgent ? "human_agent" : (m.metadata?.agent || m.agent_used),
+                response_time: m.metadata?.response_time || m.response_time,
+                timestamp: m.timestamp || m.created_at,
+              }
+            })
+            
+            // Set messages from server (single source of truth)
+            setMessages(serverMsgs)
+          } catch (error) {
+            console.error("Failed to fetch messages after send:", error)
           }
-        }, 1000) // Increased delay to ensure backend has saved
+        }, 500) // Small delay to ensure server has saved
       }
+      
+      // Restore focus to input field after agent responds
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
+      
+      // Restore focus to input field after agent responds
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
+
+      // Don't reload messages immediately - the polling (every 5 seconds) will handle it
+      // This prevents duplicate messages from being created
+      // The polling will merge server messages with local ones automatically
     } catch (error: any) {
       console.error("Failed to send message:", error)
       const errorMsg: Message = {
@@ -608,7 +813,8 @@ export default function ChatPage() {
         content: `Error: ${error.message || "Failed to send message. Please try again."}`,
           timestamp: new Date().toISOString(),
       }
-      setMessages([...messages, errorMsg])
+      // Add error message and deduplicate
+      setMessages((prev) => deduplicateMessages([...prev, errorMsg]))
       setSending(false)
       // Restore focus to input field on error
       setTimeout(() => {
@@ -689,33 +895,22 @@ export default function ChatPage() {
       return
     }
 
-    // For thumbs_up, submit immediately without dialog
+    // For thumbs_up, open dialog to optionally add rating
     if (feedbackType === "thumbs_up") {
-      try {
-        setSubmittingFeedback(messageId)
-        await apiClient.submitFeedback({
-          session_id: sessionId,
-          user_id: userId,
-          feedback_type: feedbackType,
-          agent_used: agentUsed,
-          reason: "helpful",
-          category: "helpfulness",
-        })
-        
-        // Mark feedback as given for this message
-        setFeedbackGiven(new Set([...feedbackGiven, messageId]))
-      } catch (error) {
-        console.error("Failed to submit feedback:", error)
-        alert("Failed to submit feedback. Please try again.")
-      } finally {
-        setSubmittingFeedback(null)
-      }
+      setSelectedMessageForFeedback({ id: messageId, agentUsed })
+      setFeedbackType(feedbackType)
+      setFeedbackRating(0)
+      setFeedbackComment("")
+      setFeedbackReason("helpful")
+      setFeedbackCategory("helpfulness")
+      setIsFeedbackDialogOpen(true)
       return
     }
 
     // For thumbs_down, open dialog to collect more details
     setSelectedMessageForFeedback({ id: messageId, agentUsed })
     setFeedbackType(feedbackType)
+    setFeedbackRating(0)
     setFeedbackComment("")
     setFeedbackReason("")
     setFeedbackCategory("")
@@ -734,6 +929,7 @@ export default function ChatPage() {
         session_id: sessionId,
         user_id: userId,
         feedback_type: feedbackType,
+        rating: feedbackType === "rating" ? feedbackRating : undefined,
         agent_used: selectedMessageForFeedback.agentUsed,
         comment: feedbackComment || undefined,
         reason: feedbackReason || undefined,
@@ -1041,23 +1237,31 @@ export default function ChatPage() {
                 {messages.map((msg) => (
                   <div key={msg.id} className={`group flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
                     <div
-                      className={`max-w-xs px-4 py-2 rounded-lg ${
-                        msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                      className={`max-w-xs px-4 py-3 rounded-lg ${
+                        msg.role === "user" 
+                          ? "bg-primary text-primary-foreground" 
+                          : msg.role === "assistant" && msg.agent_used === "human_agent"
+                          ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-foreground"
+                          : "bg-muted text-foreground"
                       }`}
                     >
+                      {/* Show Human Agent label at the top for human agent messages */}
+                      {msg.role === "assistant" && msg.agent_used === "human_agent" && (
+                        <div className="mb-2 pb-2 border-b border-green-200 dark:border-green-800">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-600 text-white dark:bg-green-700 dark:text-green-100 border-0">
+                            👤 Human Agent
+                          </span>
+                        </div>
+                      )}
                       <p className="text-sm">{msg.content}</p>
-                      {msg.role === "assistant" && msg.agent_used && (
+                      {msg.role === "assistant" && msg.agent_used && msg.agent_used !== "human_agent" && (
                         <div className="flex items-center gap-2 mt-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             msg.agent_used === "human_agent"
                               ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                               : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
                           }`}>
-                            {msg.agent_used === "human_agent" ? (
-                              <>👤 Human Agent</>
-                            ) : (
-                              <>🤖 {msg.agent_used}</>
-                            )}
+                            <>🤖 {msg.agent_used}</>
                           </span>
                           {msg.response_time && (
                             <span className="text-xs opacity-60">
@@ -1192,10 +1396,42 @@ export default function ChatPage() {
             <DialogHeader>
               <DialogTitle>Provide Feedback</DialogTitle>
               <DialogDescription>
-                Help us improve by sharing why this response wasn't helpful.
+                Help us improve by rating this response and sharing your thoughts.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {/* Rating Option */}
+              <div>
+                <Label>Rating (Optional)</Label>
+                <div className="flex items-center gap-2 mt-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => {
+                        setFeedbackType("rating")
+                        setFeedbackRating(star)
+                      }}
+                      className={`text-2xl transition-colors ${
+                        feedbackType === "rating" && feedbackRating >= star
+                          ? "text-yellow-400"
+                          : "text-gray-300 hover:text-yellow-300"
+                      }`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                  {feedbackType === "rating" && feedbackRating > 0 && (
+                    <span className="text-sm text-muted-foreground ml-2">
+                      {feedbackRating}/5
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Click stars to rate (1-5). You can also use thumbs up/down below.
+                </p>
+              </div>
+
               <div>
                 <Label htmlFor="feedback-comment">Comment (Optional)</Label>
                 <Textarea
@@ -1250,6 +1486,8 @@ export default function ChatPage() {
                   setFeedbackComment("")
                   setFeedbackReason("")
                   setFeedbackCategory("")
+                  setFeedbackRating(0)
+                  setFeedbackType("thumbs_down")
                 }}
                 disabled={submittingFeedback === selectedMessageForFeedback?.id}
               >

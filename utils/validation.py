@@ -19,7 +19,12 @@ def validate_message(message: str, max_length: int = 5000) -> tuple[bool, Option
     Returns:
         Tuple of (is_valid, error_message)
     """
-    if not message or not message.strip():
+    if not message:
+        return False, "Message cannot be empty"
+    
+    # Remove null bytes and control characters for validation
+    cleaned = message.replace('\x00', '').strip()
+    if not cleaned:
         return False, "Message cannot be empty"
     
     if len(message) > max_length:
@@ -46,6 +51,24 @@ def sanitize_message(message: str) -> str:
     
     # Remove control characters except newlines and tabs
     message = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', message)
+    
+    # Remove XSS patterns - script tags and javascript: protocol
+    message = re.sub(r'<script[^>]*>.*?</script>', '', message, flags=re.IGNORECASE | re.DOTALL)
+    message = re.sub(r'javascript:', '', message, flags=re.IGNORECASE)
+    message = re.sub(r'<iframe[^>]*>.*?</iframe>', '', message, flags=re.IGNORECASE | re.DOTALL)
+    message = re.sub(r'on\w+\s*=', '', message, flags=re.IGNORECASE)  # Remove event handlers like onerror=
+    
+    # Remove command injection patterns - remove all instances of dangerous characters
+    message = message.replace(';', '')
+    message = message.replace('|', '')
+    message = message.replace('&', '')
+    message = message.replace('`', '')
+    
+    # Remove path traversal patterns
+    message = re.sub(r'\.\./', '', message)  # Remove ../
+    message = re.sub(r'\.\.\\', '', message)  # Remove ..\
+    message = re.sub(r'/etc', '', message, flags=re.IGNORECASE)  # Remove /etc (with or without trailing slash)
+    message = re.sub(r'\\windows', '', message, flags=re.IGNORECASE)  # Remove \windows
     
     # Limit consecutive whitespace
     message = re.sub(r'\s+', ' ', message)
@@ -106,7 +129,7 @@ def validate_customer_id(customer_id: str, custom_pattern: Optional[str] = None)
     Args:
         customer_id: Customer ID to validate
         custom_pattern: Optional custom regex pattern. If None, uses default pattern.
-                       Default: r'^cust[_\-][0-9]+$' for "cust_001" or "CUST-123" format
+                       Default: r'^cust[_-][0-9]+$' for "cust_001" or "CUST-123" format
         
     Returns:
         Tuple of (is_valid, error_message)
@@ -126,7 +149,7 @@ def validate_customer_id(customer_id: str, custom_pattern: Optional[str] = None)
     
     # Default pattern: Must start with "cust" (case insensitive) followed by underscore/hyphen and numbers
     # Examples: cust_001, CUST-123, cust_12345, CUST_999
-    default_pattern = r'^cust[_\-][0-9]+$'
+    default_pattern = r'^cust[_-][0-9]+$'
     pattern = custom_pattern if custom_pattern is not None else default_pattern
     
     if not re.match(pattern, trimmed, re.IGNORECASE):

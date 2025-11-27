@@ -3,6 +3,7 @@ import asyncio
 import sys
 import os
 import uuid
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -13,6 +14,7 @@ from google.adk.runners import Runner
 from google.genai import types
 
 
+@pytest.mark.asyncio
 async def test_session():
     """Test that agent remembers context across multiple turns in same session."""
     print("Testing Session Support...")

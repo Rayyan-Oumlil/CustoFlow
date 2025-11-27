@@ -78,7 +78,8 @@ class ConversationSummarizer:
         session_id: str,
         summary_length: str = "medium",
         include_sentiment: bool = True,
-        ticket_id: Optional[str] = None
+        ticket_id: Optional[str] = None,
+        ticket_issue: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate a comprehensive conversation summary.
@@ -128,7 +129,8 @@ class ConversationSummarizer:
                 conversation_text,
                 summary_length,
                 sentiment_info,
-                ticket_id
+                ticket_id,
+                ticket_issue
             )
             
             # Generate summary using Gemini
@@ -281,7 +283,8 @@ class ConversationSummarizer:
         conversation_text: str,
         summary_length: str,
         sentiment_info: Optional[Dict],
-        ticket_id: Optional[str]
+        ticket_id: Optional[str],
+        ticket_issue: Optional[str] = None
     ) -> str:
         """Build the prompt for LLM summarization."""
         
@@ -301,12 +304,35 @@ Conversation History:
 """
         
         if ticket_id:
-            prompt += f"Ticket ID: {ticket_id}\n\n"
+            prompt += f"Ticket ID: {ticket_id}\n"
+            if ticket_issue:
+                prompt += f"**IMPORTANT - Ticket Issue:** {ticket_issue}\n"
+                prompt += "The summary MUST focus on this specific issue. This is the main problem that led to ticket creation.\n"
+            prompt += "\n"
         
         if sentiment_info:
             prompt += f"Sentiment Analysis: {json.dumps(sentiment_info, indent=2)}\n\n"
         
-        prompt += f"""Please create a comprehensive summary ({length_desc}) that includes:
+        if ticket_issue:
+            prompt += f"""**CRITICAL**: The ticket was created for this specific issue: "{ticket_issue}"
+
+Please create a comprehensive summary ({length_desc}) that MUST focus on this issue. The summary should include:
+
+1. **Customer Issue**: {ticket_issue} - Explain this problem in detail based on the conversation
+2. **Attempted Solutions**: What solutions or information were provided by the agent regarding this issue?
+3. **Current Status**: What is the current state of this specific issue? Is it resolved, pending, or escalated?
+4. **Key Details**: Important information related to this issue (order IDs, dates, amounts, etc.)
+5. **Sentiment Summary**: Brief summary of customer sentiment and emotion regarding this issue
+6. **Action Items**: What needs to be done next to resolve this issue? (list 2-4 items)
+7. **Next Steps**: Recommended next steps for the human agent to address this issue
+
+IMPORTANT: The summary MUST be about "{ticket_issue}". Do NOT summarize general greetings or unrelated conversation. Focus ONLY on the ticket issue.
+
+Format your response as a structured summary with clear sections. Be concise but comprehensive.
+
+Summary:"""
+        else:
+            prompt += f"""Please create a comprehensive summary ({length_desc}) that includes:
 
 1. **Customer Issue**: What is the main problem or question the customer has?
 2. **Attempted Solutions**: What solutions or information were provided by the agent?

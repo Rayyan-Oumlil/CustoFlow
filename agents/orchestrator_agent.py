@@ -24,6 +24,8 @@ from agents.faq_agent import faq_agent
 from agents.order_agent import order_agent
 from agents.escalation_agent import escalation_agent
 from agents.sentiment_agent import sentiment_agent
+from google.adk.tools import FunctionTool
+from tools.conversation_tool import summarize_conversation, get_conversation_history
 
 # Set API key in environment (required for Gemini model initialization)
 os.environ["GOOGLE_API_KEY"] = settings.google_api_key
@@ -71,11 +73,16 @@ orchestrator_agent = LlmAgent(
     
     Routing rules:
     - FAQ questions (refunds, shipping, policies, general info, product questions) → faq_agent
-    - Order inquiries (order status, tracking, "my order", delivery questions) → order_agent
+    - Order inquiries (order status, tracking, "my order", "I have a problem with my order", "problem with my order", "help with my order", delivery questions) → **order_agent IMMEDIATELY** (do NOT ask for order ID - route directly to order_agent)
     - **EMOTIONS/SENTIMENT** (keywords: "upset", "frustrated", "angry", "sad", "disappointed", "feel", "feeling", "don't like", "hate") → **sentiment_agent FIRST** (analyze emotion, then route to appropriate agent)
     - **TICKET CREATION REQUESTS** (keywords: "create ticket", "make a ticket", "open ticket", "escalate", "talk to human", "speak to agent", "need help", "create a ticket", "I want a ticket", "I need a ticket") → **escalation_agent** (ALWAYS use this for ticket requests - route IMMEDIATELY)
     - Complex issues, complaints, need human help → escalation_agent
     - Problems with products, wrong items, defective products → escalation_agent (create ticket directly)
+    
+    IMPORTANT: When a customer says "I have a problem with my order" or "problem with my order", you MUST:
+    1. Route IMMEDIATELY to order_agent (do NOT ask for order ID first)
+    2. Do NOT ask "Could you please provide me with your order number?"
+    3. The order_agent will automatically get their orders using their customer_id from the session
     
     Workflow:
     1. **If customer explicitly asks to create a ticket or talk to a human → IMMEDIATELY route to escalation_agent**
@@ -97,12 +104,20 @@ orchestrator_agent = LlmAgent(
     - If an agent doesn't return a response, use your knowledge to help the customer anyway
     
     Always be helpful and route efficiently. Don't give up on helping the customer!
+    
+    CONVERSATION TOOLS:
+    - If a customer asks to "summarize our conversation", "what did we talk about", "recap", or similar requests:
+      → Use summarize_conversation() tool to provide a summary of the conversation
+    - If you need to see recent messages in the conversation:
+      → Use get_conversation_history() tool to retrieve recent messages
     """,
     tools=[
         AgentTool(faq_agent),
         AgentTool(order_agent),
         AgentTool(sentiment_agent),
         AgentTool(escalation_agent),
+        FunctionTool(summarize_conversation),
+        FunctionTool(get_conversation_history),
     ],
 )
 

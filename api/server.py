@@ -1,5 +1,6 @@
 """FastAPI server for customer support agent."""
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Request, Query, UploadFile, File, Form
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -208,6 +209,56 @@ async def chat(request: ChatRequest, http_request: Request):
             # Session may already exist, that's okay
             pass
         
+        # Check if session is active (not closed) - MUST be done BEFORE processing message
+        from utils.supabase_client import SUPABASE_ENABLED, get_session
+        session_data = get_session(session_id)
+        if session_data and session_data.get("is_active") is False:
+            logger.info(f"Session {session_id} is closed, rejecting message from customer")
+            # Store user message but don't process
+            conversation_history.add_message(
+                user_id=request.user_id,
+                session_id=session_id,
+                role="user",
+                content=sanitized_message
+            )
+            return ChatResponse(
+                response="This conversation has been closed. Please start a new conversation or contact support if you need assistance.",
+                session_id=session_id,
+                agent_used="system",
+                response_time=0.1,
+                metrics=metrics.get_counts()
+            )
+        
+        # Check if a human agent has already taken over this session
+        # If so, don't process with AI agent - human agent is handling it
+        from utils.supabase_client import get_messages
+        existing_messages = get_messages(request.user_id, session_id=session_id, limit=50)
+        has_human_agent_message = any(
+            msg.get("role") == "assistant" and 
+            (msg.get("metadata", {}).get("is_human_agent") == True or 
+             msg.get("metadata", {}).get("agent_used") == "human_agent" or
+             msg.get("agent_used") == "human_agent")
+            for msg in existing_messages
+        )
+        
+        if has_human_agent_message:
+            logger.info(f"Human agent has taken over session {session_id}, skipping AI agent response")
+            # Store user message but don't process with AI
+            conversation_history.add_message(
+                user_id=request.user_id,
+                session_id=session_id,
+                role="user",
+                content=sanitized_message
+            )
+            # Return a message indicating human agent is handling
+            return ChatResponse(
+                response="Your message has been received. A human agent is handling your request and will respond shortly.",
+                session_id=session_id,
+                agent_used="human_agent",
+                response_time=0.1,
+                metrics=metrics.get_counts()
+            )
+        
         # Update message count in metadata
         session_metadata.increment_message_count(session_id)
         
@@ -228,6 +279,11 @@ async def chat(request: ChatRequest, http_request: Request):
         
         # Also store in a way that's accessible by session_id lookup
         set_ticket_context(session_id=session_id, user_id=request.user_id, request_id=None)
+        
+        # Set context for conversation tools (so they can access session_id and user_id)
+        from tools.conversation_tool import set_conversation_context, clear_conversation_context
+        set_conversation_context(session_id=session_id, user_id=request.user_id)
+        logger.info(f"Set conversation context: session_id={session_id}, user_id={request.user_id}")
         
         # Set customer_id context for order tools
         # Priority: 1) customer_id from request, 2) customer_id from message, 3) existing context, 4) user_id as default
@@ -569,10 +625,10 @@ async def chat(request: ChatRequest, http_request: Request):
                 # Return both response text and detected agent
                 return response_text, detected_agent
         
-            # Execute with 30 second timeout
+            # Execute with 15 second timeout (reduced from 30)
             result = await with_timeout(
                 get_response(),
-                timeout_seconds=30,
+                timeout_seconds=15,
                 default_response=("I apologize, but the request took too long to process. Please try again with a simpler question.", None)
             )
             
@@ -588,6 +644,8 @@ async def chat(request: ChatRequest, http_request: Request):
         finally:
             # Clear context after processing
             clear_ticket_context()
+            from tools.conversation_tool import clear_conversation_context
+            clear_conversation_context()
         
         # Calculate response time
         response_time = time.time() - response_start_time
@@ -896,12 +954,29 @@ async def get_analytics():
         tickets_list = all_tickets if isinstance(all_tickets, list) else []
     
     # Get active sessions count (sessions with messages) from database
-    from memory.session_metadata import session_metadata
+    active_sessions = 0
     try:
-        # Try to get active sessions from Supabase or JSON
-        all_sessions = session_metadata.get_all_sessions()
-        active_sessions = sum(1 for s in all_sessions.values() if s.get("message_count", 0) > 0) if isinstance(all_sessions, dict) else 0
-    except:
+        from utils.supabase_client import SUPABASE_ENABLED, get_user_sessions
+        if SUPABASE_ENABLED:
+            # Get all sessions from Supabase and count those with messages
+            from supabase import create_client
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                # Get all sessions with message_count > 0
+                result = supabase.table("sessions").select("session_id, message_count").gt("message_count", 0).execute()
+                active_sessions = len(result.data) if result.data else 0
+        else:
+            # Fallback to session_metadata
+            from memory.session_metadata import session_metadata
+            all_sessions = session_metadata.get_all_sessions()
+            active_sessions = sum(1 for s in all_sessions.values() if s.get("message_count", 0) > 0) if isinstance(all_sessions, dict) else 0
+    except Exception as e:
+        logger.warning(f"Error getting active sessions: {e}")
         active_sessions = 0
     
     # Get total messages from database (count directly from Supabase)
@@ -938,18 +1013,77 @@ async def get_analytics():
         from utils.supabase_client import SUPABASE_ENABLED, get_feedback_stats
         if SUPABASE_ENABLED:
             feedback_stats = get_feedback_stats()
-            if feedback_stats and feedback_stats.get("avg_rating"):
-                avg_satisfaction = float(feedback_stats.get("avg_rating", 0.0))
+            # Check both avg_rating and average_rating (function returns average_rating)
+            if feedback_stats:
+                avg_satisfaction = float(feedback_stats.get("average_rating") or feedback_stats.get("avg_rating") or 0.0)
+        else:
+            # Fallback: try to get from feedback manager
+            from utils.feedback_manager import FeedbackManager
+            feedback_mgr = FeedbackManager()
+            insights = feedback_mgr.get_insights()
+            if insights and insights.get("average_rating"):
+                avg_satisfaction = float(insights.get("average_rating", 0.0))
     except Exception as e:
         logger.warning(f"Error getting feedback stats: {e}")
+    
+    # Get additional metrics for better dashboard
+    closed_sessions = 0
+    open_tickets = 0
+    resolved_tickets = 0
+    avg_response_time = 0.0
+    
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED
+        if SUPABASE_ENABLED:
+            from supabase import create_client
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                # Count closed sessions
+                closed_result = supabase.table("sessions").select("session_id").eq("is_active", False).execute()
+                closed_sessions = len(closed_result.data) if closed_result.data else 0
+                
+                # Count open and resolved tickets
+                open_result = supabase.table("tickets").select("ticket_id").in_("status", ["open", "in_progress"]).execute()
+                open_tickets = len(open_result.data) if open_result.data else 0
+                
+                resolved_result = supabase.table("tickets").select("ticket_id").eq("status", "resolved").execute()
+                resolved_tickets = len(resolved_result.data) if resolved_result.data else 0
+                
+                # Calculate average response time from messages metadata
+                messages_result = supabase.table("messages").select("metadata").eq("role", "assistant").limit(100).execute()
+                response_times = []
+                if messages_result.data:
+                    for msg in messages_result.data:
+                        metadata = msg.get("metadata", {})
+                        if metadata and metadata.get("response_time"):
+                            response_times.append(float(metadata["response_time"]))
+                if response_times:
+                    avg_response_time = sum(response_times) / len(response_times)
+    except Exception as e:
+        logger.warning(f"Error getting additional analytics: {e}")
+    
+    # Calculate resolution rate
+    resolution_rate = 0.0
+    if len(tickets_list) > 0:
+        resolution_rate = (resolved_tickets / len(tickets_list)) * 100
     
     # Return data in the format expected by frontend - all from database, not in-memory
     result = {
         "total_messages": total_messages,
         "active_sessions": active_sessions,
+        "closed_sessions": closed_sessions,
         "interactions": interactions,
         "avg_satisfaction": avg_satisfaction,
         "tickets_created": len(tickets_list),
+        "open_tickets": open_tickets,
+        "resolved_tickets": resolved_tickets,
+        "resolution_rate": round(resolution_rate, 1),
+        "avg_response_time": round(avg_response_time, 2),
     }
     return result
 
@@ -1292,6 +1426,55 @@ class CreateSessionRequest(BaseModel):
     customer_id: Optional[str] = None
 
 
+@app.put("/sessions/{session_id}/close")
+async def close_session(session_id: str):
+    """
+    Mark a session as inactive/closed.
+    This prevents the AI agent from responding to new messages in this session.
+    """
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED, supabase
+        if SUPABASE_ENABLED:
+            result = supabase.table("sessions").update({"is_active": False}).eq("session_id", session_id).execute()
+            if result.data:
+                logger.info(f"Session {session_id} marked as inactive")
+                return {"status": "success", "message": "Session closed successfully"}
+            else:
+                return {"status": "error", "message": "Session not found"}
+        else:
+            # Fallback to JSON storage
+            from memory.session_metadata import session_metadata
+            session_metadata.close_session(session_id)
+            return {"status": "success", "message": "Session closed successfully"}
+    except Exception as e:
+        logger.error(f"Error closing session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to close session: {str(e)}")
+
+
+@app.put("/sessions/{session_id}/reopen")
+async def reopen_session(session_id: str):
+    """
+    Reopen a closed session (mark as active again).
+    """
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED, supabase
+        if SUPABASE_ENABLED:
+            result = supabase.table("sessions").update({"is_active": True}).eq("session_id", session_id).execute()
+            if result.data:
+                logger.info(f"Session {session_id} reopened")
+                return {"status": "success", "message": "Session reopened successfully"}
+            else:
+                return {"status": "error", "message": "Session not found"}
+        else:
+            # Fallback to JSON storage
+            from memory.session_metadata import session_metadata
+            session_metadata.reopen_session(session_id)
+            return {"status": "success", "message": "Session reopened successfully"}
+    except Exception as e:
+        logger.error(f"Error reopening session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reopen session: {str(e)}")
+
+
 @app.post("/sessions/create")
 async def create_session(request: CreateSessionRequest):
     """
@@ -1604,6 +1787,32 @@ async def get_tickets():
         tickets_list = list(all_tickets.values())
     else:
         tickets_list = all_tickets if isinstance(all_tickets, list) else []
+    
+    # Add summary to each ticket
+    for ticket in tickets_list:
+        ticket_id = ticket.get("ticket_id")
+        session_id = ticket.get("session_id")
+        user_id = ticket.get("user_id")
+        
+        if ticket_id and session_id and user_id:
+            try:
+                from utils.supabase_client import SUPABASE_ENABLED, get_session_summaries
+                if SUPABASE_ENABLED:
+                    summaries = get_session_summaries(session_id)
+                    ticket_summary = next((s for s in summaries if s.get("ticket_id") == ticket_id), None)
+                    if ticket_summary:
+                        ticket["summary"] = ticket_summary.get("summary")
+                else:
+                    # Fallback to JSON
+                    from utils.conversation_summarizer import _load_summaries
+                    summaries = _load_summaries()
+                    for key, summary_data in summaries.items():
+                        if summary_data.get("ticket_id") == ticket_id:
+                            ticket["summary"] = summary_data.get("summary")
+                            break
+            except Exception as e:
+                logger.warning(f"Error fetching summary for ticket {ticket_id}: {e}")
+    
     return {
         "tickets": tickets_list,
         "count": len(tickets_list),
@@ -1631,6 +1840,69 @@ async def get_ticket(ticket_id: str):
     if not ticket:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
     return {"ticket": ticket}
+
+
+@app.get("/tickets/by-session/{session_id}")
+async def get_ticket_by_session(session_id: str):
+    """
+    Get the most recent ticket for a session.
+    Returns the ticket_id if found, or null if no ticket exists.
+    """
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED, get_tickets
+        if SUPABASE_ENABLED:
+            tickets = get_tickets(session_id=session_id)
+            if tickets and len(tickets) > 0:
+                # Return the most recent ticket
+                return {"ticket_id": tickets[0].get("ticket_id")}
+            return {"ticket_id": None}
+        
+        # Fallback: try JSON
+        from tools.ticket_tool import get_all_tickets
+        all_tickets = get_all_tickets()
+        if isinstance(all_tickets, dict):
+            tickets = [t for t in all_tickets.values() if t.get("session_id") == session_id]
+        else:
+            tickets = [t for t in all_tickets if t.get("session_id") == session_id]
+        
+        if tickets and len(tickets) > 0:
+            # Sort by created_at descending and return most recent
+            tickets.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            return {"ticket_id": tickets[0].get("ticket_id")}
+        
+        return {"ticket_id": None}
+    except Exception as e:
+        logger.error(f"Error fetching ticket by session: {e}")
+        return {"ticket_id": None}
+
+
+@app.put("/tickets/{ticket_id}/status")
+async def update_ticket_status_endpoint(ticket_id: str, request: dict):
+    """
+    Update ticket status.
+    
+    Body:
+    {
+        "status": "open" | "in_progress" | "resolved" | "closed"
+    }
+    """
+    try:
+        new_status = request.get("status")
+        if not new_status:
+            raise HTTPException(status_code=400, detail="Status is required")
+        
+        from tools.ticket_modification_tool import update_ticket_status
+        result = update_ticket_status(ticket_id, new_status)
+        
+        if result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=result.get("error_message", "Failed to update ticket status"))
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating ticket status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update ticket status: {str(e)}")
 
 
 @app.post("/tickets/{ticket_id}/message")
@@ -2049,6 +2321,105 @@ async def update_refund_status(refund_id: str, request: dict):
     except Exception as e:
         logger.error(f"Error updating refund status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to update refund status: {str(e)}")
+
+
+@app.post("/speech/transcribe")
+async def transcribe_speech(
+    audio: UploadFile = File(..., description="Audio file to transcribe"),
+    language_code: str = Form("en-US", description="Language code (e.g., en-US, fr-FR)")
+):
+    """
+    Transcribe audio to text using Google Cloud Speech-to-Text.
+    
+    Args:
+        audio: Audio file (WebM, WAV, FLAC, or LINEAR16 format)
+        language_code: Language code (default: en-US)
+    
+    Returns:
+        {
+            "status": "success",
+            "transcript": "transcribed text"
+        }
+    """
+    try:
+        from utils.google_speech import transcribe_audio
+        
+        # Read audio file
+        audio_data = await audio.read()
+        
+        if not audio_data or len(audio_data) == 0:
+            raise HTTPException(status_code=400, detail="Empty audio file")
+        
+        # Transcribe audio
+        transcript = transcribe_audio(audio_data, language_code)
+        
+        if not transcript:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to transcribe audio. The audio might be too short, silent, or in an unsupported format. Please try recording again."
+            )
+        
+        return {
+            "status": "success",
+            "transcript": transcript
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error transcribing audio: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to transcribe audio: {str(e)}"
+        )
+
+
+@app.post("/speech/synthesize")
+async def synthesize_speech(request: dict):
+    """
+    Convert text to speech using Google Cloud Text-to-Speech.
+    
+    Body:
+    {
+        "text": "Text to convert to speech",
+        "language_code": "en-US" (optional, default: en-US),
+        "voice_name": "en-US-Standard-B" (optional)
+    }
+    
+    Returns:
+        Audio file (MP3 format) as binary response
+    """
+    try:
+        from utils.google_speech import text_to_speech
+        
+        text = request.get("text")
+        if not text:
+            raise HTTPException(status_code=400, detail="Missing 'text' field in request body")
+        
+        language_code = request.get("language_code", "en-US")
+        voice_name = request.get("voice_name")
+        
+        # Synthesize speech
+        audio_data = text_to_speech(text, language_code, voice_name)
+        
+        if not audio_data:
+            raise HTTPException(status_code=500, detail="Failed to synthesize speech")
+        
+        # Return audio as MP3
+        return Response(
+            content=audio_data,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "attachment; filename=speech.mp3"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error synthesizing speech: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to synthesize speech: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

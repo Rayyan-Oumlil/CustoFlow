@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Ticket, MessageSquare, Search, Filter, MessageCircle } from "lucide-react"
+import { Ticket, MessageSquare, Search, Filter, MessageCircle, PowerOff } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Sheet,
@@ -46,6 +46,7 @@ interface TicketWithSummary {
   created_at: string
   updated_at: string
   summary?: string
+  session_is_active?: boolean
 }
 
 function formatDateOnly(dateString: string): string {
@@ -71,7 +72,9 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true)
   const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
+  const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false)
   const [selectedTicket, setSelectedTicket] = useState<TicketWithSummary | null>(null)
+  const [selectedSummaryTicket, setSelectedSummaryTicket] = useState<TicketWithSummary | null>(null)
   const [ticketMessage, setTicketMessage] = useState("")
   const [sendingMessage, setSendingMessage] = useState(false)
   const [filters, setFilters] = useState({
@@ -161,12 +164,23 @@ export default function TicketsPage() {
     }
   }
 
+  const handleCloseTicket = async (ticketId: string) => {
+    try {
+      await apiClient.put<{ status: string; message: string }>(`/tickets/${ticketId}/status`, { status: "closed" })
+      alert("Ticket closed successfully. The session has been closed automatically.")
+      fetchData() // Refresh tickets
+    } catch (error: any) {
+      console.error("Failed to close ticket:", error)
+      alert(`Failed to close ticket: ${error.message || "Unknown error"}`)
+    }
+  }
+
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <PageHeader
         title="Support Tickets"
         description="Manage and respond to customer support tickets"
-        icon={<Ticket className="h-6 w-6" />}
       />
 
       {/* Filters */}
@@ -272,14 +286,40 @@ export default function TicketsPage() {
                     <p className="text-sm text-muted-foreground line-clamp-2">{ticket.issue}</p>
                   </div>
                   {ticket.summary && (
-                    <div>
-                      <p className="text-sm font-medium mb-1">Summary</p>
-                      <div className="text-sm text-muted-foreground space-y-1">
-                        {formatSummary(ticket.summary).slice(0, 3).map((line, idx) => (
-                          <p key={idx} className="line-clamp-1">
-                            {line}
+                    <div className="bg-muted/50 rounded-lg p-3 border border-border">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-semibold flex items-center gap-2">
+                          <span className="text-primary">📋</span>
+                          Conversation Summary
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => {
+                            setSelectedSummaryTicket(ticket)
+                            setIsSummaryDialogOpen(true)
+                          }}
+                        >
+                          View Full →
+                        </Button>
+                      </div>
+                      <div className="text-sm text-muted-foreground space-y-1.5 max-h-32 overflow-y-auto">
+                        {formatSummary(ticket.summary).slice(0, 5).map((line, idx) => {
+                          // Remove markdown formatting for preview
+                          const cleanLine = line.replace(/\*\*/g, '').replace(/^#+\s*/, '')
+                          if (cleanLine.trim().length === 0) return null
+                          return (
+                            <p key={idx} className="line-clamp-2 text-xs leading-relaxed">
+                              {cleanLine}
+                            </p>
+                          )
+                        })}
+                        {formatSummary(ticket.summary).length > 5 && (
+                          <p className="text-xs text-muted-foreground italic pt-1">
+                            +{formatSummary(ticket.summary).length - 5} more lines...
                           </p>
-                        ))}
+                        )}
                       </div>
                     </div>
                   )}
@@ -289,31 +329,49 @@ export default function TicketsPage() {
                     <p>Updated: {formatDateOnly(ticket.updated_at)}</p>
                   </div>
                   {ticket.user_id && ticket.session_id && ticket.customer_id && (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        onClick={() => {
-                          setSelectedTicket(ticket)
-                          setIsChatOpen(true)
-                        }}
-                        className="flex-1"
-                      >
-                        <MessageCircle className="w-4 h-4 mr-2" />
-                        Open Chat
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedTicket(ticket)
-                          setIsMessageDialogOpen(true)
-                        }}
-                        className="flex-1"
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Quick Reply
-                      </Button>
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => {
+                            setSelectedTicket(ticket)
+                            setIsChatOpen(true)
+                          }}
+                          className="flex-1"
+                        >
+                          <MessageCircle className="w-4 h-4 mr-2" />
+                          Open Chat
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedTicket(ticket)
+                            setIsMessageDialogOpen(true)
+                          }}
+                          className="flex-1"
+                        >
+                          <MessageSquare className="w-4 h-4 mr-2" />
+                          Quick Reply
+                        </Button>
+                      </div>
+                      {ticket.status !== "closed" && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleCloseTicket(ticket.ticket_id)}
+                          className="w-full"
+                        >
+                          <PowerOff className="w-4 h-4 mr-2" />
+                          Close Ticket
+                        </Button>
+                      )}
+                      {ticket.status === "closed" && (
+                        <div className="text-xs text-muted-foreground text-center py-2">
+                          Ticket closed - Session is inactive
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -371,9 +429,94 @@ export default function TicketsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Summary Dialog */}
+      <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <DialogHeader className="pb-4 border-b">
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <span className="text-primary">📋</span>
+              Conversation Summary - {selectedSummaryTicket?.ticket_id}
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              Complete overview of the customer conversation for this support ticket
+            </DialogDescription>
+          </DialogHeader>
+          {selectedSummaryTicket?.summary && (
+            <div className="flex-1 overflow-y-auto py-4">
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                {formatSummary(selectedSummaryTicket.summary).map((line, idx) => {
+                  // Check if line is a heading (starts with ** and ends with **)
+                  if (line.startsWith("**") && line.endsWith("**") && line.length > 4) {
+                    return (
+                      <h3 key={idx} className="font-bold text-lg mt-6 mb-3 text-foreground border-b pb-2">
+                        {line.replace(/\*\*/g, "")}
+                      </h3>
+                    )
+                  }
+                  // Check if line is a markdown heading (# ## ###)
+                  const headingMatch = line.match(/^(#{1,3})\s+(.+)$/)
+                  if (headingMatch) {
+                    const level = headingMatch[1].length
+                    const text = headingMatch[2]
+                    const className = level === 1 ? "text-xl font-bold mt-6 mb-3" : 
+                                     level === 2 ? "text-lg font-semibold mt-5 mb-2" : 
+                                     "text-base font-semibold mt-4 mb-2"
+                    return (
+                      <h3 key={idx} className={`${className} text-foreground border-b pb-1`}>
+                        {text}
+                      </h3>
+                    )
+                  }
+                  // Check if line is a bold label (format: **Label:** text)
+                  const boldMatch = line.match(/^\*\*([^*]+):\*\*\s*(.+)$/)
+                  if (boldMatch) {
+                    return (
+                      <div key={idx} className="mb-3 p-2 bg-muted/50 rounded-md">
+                        <p className="mb-1">
+                          <strong className="text-foreground">{boldMatch[1]}:</strong>
+                        </p>
+                        <p className="text-muted-foreground ml-4">{boldMatch[2]}</p>
+                      </div>
+                    )
+                  }
+                  // Check if line starts with ** (bold text)
+                  if (line.startsWith("**") && line.includes("**")) {
+                    const parts = line.split(/(\*\*[^*]+\*\*)/g)
+                    return (
+                      <p key={idx} className="mb-3 text-foreground">
+                        {parts.map((part, partIdx) => {
+                          if (part.startsWith("**") && part.endsWith("**")) {
+                            return <strong key={partIdx} className="text-foreground">{part.replace(/\*\*/g, "")}</strong>
+                          }
+                          return <span key={partIdx}>{part}</span>
+                        })}
+                      </p>
+                    )
+                  }
+                  // Regular paragraph
+                  if (line.trim().length > 0) {
+                    return (
+                      <p key={idx} className="mb-3 text-muted-foreground leading-relaxed">
+                        {line}
+                      </p>
+                    )
+                  }
+                  return null
+                })}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="border-t pt-4">
+            <Button onClick={() => setIsSummaryDialogOpen(false)} variant="default">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Chat Panel */}
       <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl p-0">
+        <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
           <SheetHeader className="sr-only">
             <SheetTitle>Chat with Customer</SheetTitle>
             <SheetDescription>
@@ -381,12 +524,14 @@ export default function TicketsPage() {
             </SheetDescription>
           </SheetHeader>
           {selectedTicket && selectedTicket.customer_id && selectedTicket.session_id && userId && (
-            <ChatPanel
-              customerId={selectedTicket.customer_id}
-              sessionId={selectedTicket.session_id}
-              userId={userId}
-              ticketId={selectedTicket.ticket_id}
-            />
+            <div className="flex-1 min-h-0">
+              <ChatPanel
+                customerId={selectedTicket.customer_id}
+                sessionId={selectedTicket.session_id}
+                userId={userId}
+                ticketId={selectedTicket.ticket_id}
+              />
+            </div>
           )}
         </SheetContent>
       </Sheet>

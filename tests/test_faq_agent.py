@@ -2,6 +2,7 @@
 import asyncio
 import sys
 import os
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10,6 +11,7 @@ from agents.faq_agent import faq_agent
 from google.adk.runners import InMemoryRunner
 
 
+@pytest.mark.asyncio
 async def test_faq_agent():
     """Test the FAQ agent with sample queries."""
     print("Testing FAQ Agent...")

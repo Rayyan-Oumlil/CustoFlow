@@ -274,7 +274,7 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
         
         # Try Supabase first
         try:
-            from utils.supabase_client import SUPABASE_ENABLED, create_ticket as supabase_create_ticket
+            from utils.supabase_client import SUPABASE_ENABLED, create_ticket as supabase_create_ticket, close_session
             if SUPABASE_ENABLED:
                 # Use the customer_id we found (not "unknown")
                 ticket_customer_id = ticket.get("customer_id") or customer_id
@@ -284,6 +284,7 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
                 if result.get("status") == "success":
                     ticket_id = result.get("ticket_id", ticket_id)
                     print(f"[TICKET] Created ticket {ticket_id} in Supabase - Priority: {priority}, Issue: {issue[:50]}...")
+                    # Session will be closed only when ticket is closed, not when created
                     
                     # Generate conversation summary automatically if we have session_id and user_id
                     if session_id and user_id:
@@ -294,7 +295,8 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
                                 user_id=user_id,
                                 session_id=session_id,
                                 ticket_id=ticket_id,
-                                summary_length="medium"
+                                summary_length="medium",
+                                ticket_issue=issue  # Pass the ticket issue to focus the summary
                             )
                             if summary_result.get("status") == "success":
                                 print(f"[SUMMARY] Generated summary for ticket {ticket_id}")
@@ -322,7 +324,8 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
                     user_id=user_id,
                     session_id=session_id,
                     ticket_id=ticket_id,
-                    summary_length="medium"
+                    summary_length="medium",
+                    ticket_issue=issue  # Pass the ticket issue to focus the summary
                 )
                 if summary_result.get("status") == "success":
                     print(f"[SUMMARY] Generated summary for ticket {ticket_id}")

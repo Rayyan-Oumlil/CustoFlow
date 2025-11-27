@@ -161,11 +161,11 @@ class TestConversationSummarizer:
         # Setup mocks
         mock_get_history.return_value = sample_conversation
         
-        # Mock the Client class
+        # Mock the Client class and models.generate_content
         mock_client = Mock()
-        mock_model = Mock()
-        mock_model.generate_content.return_value = mock_gemini_response
-        mock_client.models.get_model.return_value = mock_model
+        mock_models = Mock()
+        mock_models.generate_content.return_value = mock_gemini_response
+        mock_client.models = mock_models
         mock_client_class.return_value = mock_client
         
         summarizer = ConversationSummarizer()
@@ -225,10 +225,11 @@ class TestConversationSummarizer:
     def test_extract_list_items(self):
         """Test list items extraction."""
         summarizer = ConversationSummarizer()
-        text = "Action Items: 1. Contact customer 2. Check order status 3. Provide update"
+        text = "Action Items:\n1. Contact customer\n2. Check order status\n3. Provide update"
         
         items = summarizer._extract_list_items(text, ["action items"])
         assert len(items) > 0
+        assert any("contact" in item.lower() or "customer" in item.lower() for item in items)
     
     def test_get_summary(self):
         """Test retrieving a stored summary."""

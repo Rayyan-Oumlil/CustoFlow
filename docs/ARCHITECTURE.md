@@ -227,6 +227,17 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Sentiment analysis integration
   - Key points extraction
 
+#### Shipping Tool (`tools/shipping_tool.py`)
+- **Function**: Real-time shipping tracking via OpenAPI (mock)
+- **Implementation**: Mock OpenAPI tool simulating carrier APIs (UPS, FedEx, DHL)
+- **Features**:
+  - Real-time shipment tracking
+  - Current location and status updates
+  - Estimated delivery times
+  - Tracking event history
+  - Demonstrates OpenAPI Tools concept for capstone
+- **Note**: This is a mock implementation. In production, would use `OpenAPITool.from_openapi_spec()` with real carrier APIs
+
 ---
 
 ### 4. Memory Layer

@@ -2,6 +2,7 @@
 import asyncio
 import sys
 import os
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -9,6 +10,7 @@ from agents.escalation_agent import escalation_agent
 from google.adk.runners import InMemoryRunner
 
 
+@pytest.mark.asyncio
 async def test_escalation_agent():
     """Test the Escalation agent."""
     print("Testing Escalation Agent...")

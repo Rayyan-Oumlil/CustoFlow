@@ -48,13 +48,36 @@ def update_ticket_status(ticket_id: str, new_status: str, note: Optional[str] = 
             }
         
         existing_ticket = existing_ticket_result.get("ticket", {})
+        session_id = existing_ticket.get("session_id")
+        user_id = existing_ticket.get("user_id")
         
         # Update ticket status via Supabase or JSON
         try:
-            from utils.supabase_client import SUPABASE_ENABLED, update_ticket_status as supabase_update
+            from utils.supabase_client import SUPABASE_ENABLED, update_ticket_status as supabase_update, close_session, add_message
             if SUPABASE_ENABLED:
                 success = supabase_update(ticket_id, new_status.lower())
                 if success:
+                    # If ticket is being closed, send thank you message and close session
+                    if new_status.lower() == "closed" and session_id and user_id:
+                        try:
+                            # Send automatic thank you message to customer BEFORE closing session
+                            thank_you_message = "Thank you for contacting us! Your ticket has been resolved and closed. If you need any further assistance, please don't hesitate to reach out. Have a great day!"
+                            add_message(
+                                user_id=user_id,
+                                session_id=session_id,
+                                role="assistant",
+                                content=thank_you_message,
+                                metadata={"agent_used": "system", "is_system_message": True, "ticket_closed": True},
+                                is_human_agent=False
+                            )
+                            print(f"[TICKET] Sent thank you message to customer for ticket {ticket_id}")
+                            
+                            # Close session AFTER sending message
+                            close_session(session_id)
+                            print(f"[TICKET] Session {session_id} closed automatically after ticket closure")
+                        except Exception as e:
+                            print(f"[WARNING] Failed to send message or close session {session_id}: {e}")
+                    
                     return {
                         "status": "success",
                         "message": f"Ticket {ticket_id} status updated to {new_status}.",
@@ -80,6 +103,31 @@ def update_ticket_status(ticket_id: str, new_status: str, note: Optional[str] = 
                     "type": "status_change"
                 })
             save_tickets(tickets)
+            
+            # Close session if ticket is being closed
+            if new_status.lower() == "closed" and session_id:
+                try:
+                    from utils.supabase_client import close_session, add_message
+                    user_id = existing_ticket.get("user_id")
+                    
+                    # Send automatic thank you message to customer BEFORE closing session
+                    if user_id:
+                        thank_you_message = "Thank you for contacting us! Your ticket has been resolved and closed. If you need any further assistance, please don't hesitate to reach out. Have a great day!"
+                        add_message(
+                            user_id=user_id,
+                            session_id=session_id,
+                            role="assistant",
+                            content=thank_you_message,
+                            metadata={"agent_used": "system", "is_system_message": True, "ticket_closed": True},
+                            is_human_agent=False
+                        )
+                        print(f"[TICKET] Sent thank you message to customer for ticket {ticket_id}")
+                    
+                    # Close session AFTER sending message
+                    close_session(session_id)
+                    print(f"[TICKET] Session {session_id} closed automatically after ticket closure")
+                except Exception as e:
+                    print(f"[WARNING] Failed to send message or close session {session_id}: {e}")
             
             return {
                 "status": "success",
@@ -215,6 +263,7 @@ def cancel_ticket(ticket_id: Optional[str] = None, reason: Optional[str] = None)
         
         if result.get("status") == "success":
             result["message"] = f"Ticket {ticket_id} has been cancelled successfully."
+            # Session will be closed only when ticket is closed (status = "closed"), not when cancelled
         
         return result
     

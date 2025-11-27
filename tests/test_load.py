@@ -9,6 +9,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict
 import statistics
+import pytest
 
 
 # API endpoint
@@ -154,6 +155,42 @@ def print_load_test_results(stats: Dict):
             print(f"  - {error}")
     
     print("=" * 60)
+
+
+@pytest.mark.skip(reason="Requires API server to be running")
+def test_load_test():
+    """Test load testing functionality."""
+    # This test is skipped by default as it requires the API server
+    # It can be run manually when the server is available
+    print("CustoFlow Load Test")
+    print("=" * 60)
+    print("Make sure the API server is running on http://localhost:8000")
+    print("=" * 60)
+    
+    # Run load test
+    stats = run_load_test(
+        num_requests=50,
+        concurrent_users=10
+    )
+    
+    print_load_test_results(stats)
+    
+    # Performance thresholds
+    print("\nPerformance Thresholds:")
+    if stats['success_rate'] >= 95:
+        print("✅ Success rate: PASS (>= 95%)")
+    else:
+        print(f"❌ Success rate: FAIL ({stats['success_rate']:.1f}% < 95%)")
+    
+    if stats['response_times']['p95'] <= 5.0:
+        print(f"✅ P95 response time: PASS (<= 5s)")
+    else:
+        print(f"❌ P95 response time: FAIL ({stats['response_times']['p95']:.2f}s > 5s)")
+    
+    if stats['requests_per_second'] >= 5:
+        print(f"✅ Throughput: PASS (>= 5 req/s)")
+    else:
+        print(f"❌ Throughput: FAIL ({stats['requests_per_second']:.2f} req/s < 5 req/s)")
 
 
 if __name__ == "__main__":

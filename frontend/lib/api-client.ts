@@ -104,6 +104,14 @@ export const apiClient = {
       throw error
     }
   },
+
+  async closeSession(sessionId: string) {
+    return this.put<{ status: string; message: string }>(`/sessions/${sessionId}/close`, {})
+  },
+
+  async reopenSession(sessionId: string) {
+    return this.put<{ status: string; message: string }>(`/sessions/${sessionId}/reopen`, {})
+  },
 }
 
 export interface Session {
@@ -147,9 +155,14 @@ export interface Ticket {
 export interface Analytics {
   total_messages: number
   active_sessions: number
+  closed_sessions?: number
   interactions: number
   avg_satisfaction: number
   tickets_created: number
+  open_tickets?: number
+  resolved_tickets?: number
+  resolution_rate?: number
+  avg_response_time?: number
 }
 
 export interface FeedbackRequest {
