@@ -5,4 +5,8 @@ uvicorn>=0.24.0
 python-dotenv>=1.0.0
 pydantic>=2.0.0
 graphviz>=0.20.0
+apscheduler>=3.10.0
+google-cloud-speech>=2.20.0
+google-cloud-texttospeech>=2.14.0
+pydub>=0.25.1
 

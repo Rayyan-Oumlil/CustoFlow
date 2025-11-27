@@ -105,6 +105,9 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
         # Generate unique ticket ID
         ticket_id = f"TICKET-{uuid.uuid4().hex[:8].upper()}"
         
+        # Note: customer_id will be retrieved AFTER we get session_id from context
+        # This is done later in the code after session_id is determined
+        
         # Create ticket record
         ticket = {
             "ticket_id": ticket_id,
@@ -112,8 +115,7 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
             "issue": issue.strip(),
             "priority": priority.lower(),
             "status": "open",
-            "created_at": datetime.now().isoformat(),
-            "assigned_to": None
+            "created_at": datetime.now().isoformat()
         }
         
         # Add session_id and user_id if provided (from parameters or context)
@@ -223,20 +225,65 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
                 except Exception:
                     pass  # Both methods failed, continue without session_id/user_id
         
+        # NOW try to get customer_id from session if we have session_id but not customer_id
+        if not customer_id and session_id:
+            # Method 1: Try to get from session in Supabase
+            try:
+                from utils.supabase_client import SUPABASE_ENABLED
+                if SUPABASE_ENABLED:
+                    from supabase import create_client
+                    import os
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                    supabase_url = os.getenv("SUPABASE_URL")
+                    supabase_key = os.getenv("SUPABASE_KEY")
+                    if supabase_url and supabase_key:
+                        supabase = create_client(supabase_url, supabase_key)
+                        # Get session to retrieve customer_id
+                        session_result = supabase.table("sessions").select("customer_id").eq("session_id", session_id).limit(1).execute()
+                        if session_result.data and len(session_result.data) > 0:
+                            customer_id = session_result.data[0].get("customer_id")
+                            if customer_id:
+                                print(f"[TICKET] Retrieved customer_id from session (after getting session_id): {customer_id}")
+            except Exception as e:
+                print(f"[TICKET] Could not get customer_id from session: {e}")
+            
+            # Method 2: Try to get from order context
+            if not customer_id:
+                try:
+                    from tools.order_tool import get_order_context
+                    ctx = get_order_context(session_id)
+                    customer_id = ctx.get("customer_id")
+                    if customer_id:
+                        print(f"[TICKET] Retrieved customer_id from order context: {customer_id}")
+                except Exception as e:
+                    print(f"[TICKET] Could not get customer_id from order context: {e}")
+        
         # Set session_id and user_id in ticket (use whatever we found)
         if session_id:
             ticket["session_id"] = session_id
         if user_id:
             ticket["user_id"] = user_id
         
+        # Update customer_id in ticket if we found it (should already be set, but ensure it)
+        if customer_id and customer_id != "unknown":
+            ticket["customer_id"] = customer_id
+            print(f"[TICKET] Using customer_id from context/session: {customer_id}")
+        else:
+            print(f"[TICKET] Warning: customer_id not found, will be 'unknown'")
+        
         # Try Supabase first
         try:
             from utils.supabase_client import SUPABASE_ENABLED, create_ticket as supabase_create_ticket
             if SUPABASE_ENABLED:
-                result = supabase_create_ticket(issue, customer_id, priority, session_id, user_id)
+                # Use the customer_id we found (not "unknown")
+                ticket_customer_id = ticket.get("customer_id") or customer_id
+                if not ticket_customer_id or ticket_customer_id == "unknown":
+                    print(f"[TICKET] Warning: customer_id is None or 'unknown', supabase_create_ticket will try to get it from session")
+                result = supabase_create_ticket(issue, ticket_customer_id, priority, session_id, user_id)
                 if result.get("status") == "success":
                     ticket_id = result.get("ticket_id", ticket_id)
-                    print(f"✅ [TICKET] Created ticket {ticket_id} in Supabase - Priority: {priority}, Issue: {issue[:50]}...")
+                    print(f"[TICKET] Created ticket {ticket_id} in Supabase - Priority: {priority}, Issue: {issue[:50]}...")
                     
                     # Generate conversation summary automatically if we have session_id and user_id
                     if session_id and user_id:
@@ -250,9 +297,9 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
                                 summary_length="medium"
                             )
                             if summary_result.get("status") == "success":
-                                print(f"✅ [SUMMARY] Generated summary for ticket {ticket_id}")
+                                print(f"[SUMMARY] Generated summary for ticket {ticket_id}")
                             else:
-                                print(f"⚠️  [SUMMARY] Failed to generate summary: {summary_result.get('error_message', 'Unknown error')}")
+                                print(f"[WARNING] [SUMMARY] Failed to generate summary: {summary_result.get('error_message', 'Unknown error')}")
                         except Exception as e:
                             print(f"⚠️  [SUMMARY] Error generating summary: {e}")
                     
@@ -264,7 +311,7 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
         _TICKETS[ticket_id] = ticket
         save_tickets(_TICKETS)
         
-        print(f"✅ [TICKET] Created ticket {ticket_id} in JSON - Priority: {priority}, Issue: {issue[:50]}...")
+        print(f"[TICKET] Created ticket {ticket_id} in JSON - Priority: {priority}, Issue: {issue[:50]}...")
         
         # Generate conversation summary automatically if we have session_id and user_id
         if session_id and user_id:
@@ -278,9 +325,9 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
                     summary_length="medium"
                 )
                 if summary_result.get("status") == "success":
-                    print(f"✅ [SUMMARY] Generated summary for ticket {ticket_id}")
+                    print(f"[SUMMARY] Generated summary for ticket {ticket_id}")
                 else:
-                    print(f"⚠️  [SUMMARY] Failed to generate summary: {summary_result.get('error_message', 'Unknown error')}")
+                    print(f"[WARNING] [SUMMARY] Failed to generate summary: {summary_result.get('error_message', 'Unknown error')}")
             except Exception as e:
                 print(f"⚠️  [SUMMARY] Error generating summary: {e}")
         
@@ -311,7 +358,22 @@ def get_ticket_status(ticket_id: str) -> Dict[str, any]:
     try:
         ticket_id = str(ticket_id).strip()
         
-        # Reload tickets from file to get latest data
+        # Try Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED, get_tickets
+            if SUPABASE_ENABLED:
+                # Get all tickets and find the one we need
+                tickets = get_tickets()
+                for ticket in tickets:
+                    if ticket.get("ticket_id") == ticket_id:
+                        return {
+                            "status": "success",
+                            "ticket": ticket
+                        }
+        except Exception as e:
+            print(f"Warning: Could not check Supabase for ticket: {e}")
+        
+        # Fallback to JSON file
         global _TICKETS
         _TICKETS = load_tickets()
         

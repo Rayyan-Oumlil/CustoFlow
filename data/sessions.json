@@ -1,1 +1,29 @@
-{}
+{
+  "session_user_1763966061880_4644d68e": {
+    "session_id": "session_user_1763966061880_4644d68e",
+    "user_id": "user_1763966061880",
+    "customer_id": "cust_004",
+    "name": "Session 4644d68e",
+    "created_at": "2025-11-25T02:58:53.109482",
+    "updated_at": "2025-11-25T02:58:53.109486",
+    "message_count": 0
+  },
+  "session_user_1763966061880_64b5bb1e": {
+    "session_id": "session_user_1763966061880_64b5bb1e",
+    "user_id": "user_1763966061880",
+    "customer_id": "cust_004",
+    "name": "Session 64b5bb1e",
+    "created_at": "2025-11-25T02:58:53.490468",
+    "updated_at": "2025-11-25T02:58:53.490475",
+    "message_count": 0
+  },
+  "session_user_1763966061880_dcfc4e15": {
+    "session_id": "session_user_1763966061880_dcfc4e15",
+    "user_id": "user_1763966061880",
+    "customer_id": "cust_001",
+    "name": "Session dcfc4e15",
+    "created_at": "2025-11-26T19:46:52.286526",
+    "updated_at": "2025-11-26T19:46:52.286530",
+    "message_count": 0
+  }
+}

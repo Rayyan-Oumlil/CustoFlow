@@ -7,7 +7,6 @@ customer queries to specialized agents based on query type, sentiment, and urgen
 Architecture:
 - Uses AgentTool pattern to treat specialized agents as tools
 - Implements intelligent routing logic based on query analysis
-- Supports both local agents (AgentTool) and remote agents (A2A Protocol)
 
 Design Decisions:
 - Orchestrator pattern chosen for centralized control and easy extensibility
@@ -25,8 +24,6 @@ from agents.faq_agent import faq_agent
 from agents.order_agent import order_agent
 from agents.escalation_agent import escalation_agent
 from agents.sentiment_agent import sentiment_agent
-# Note: RemoteA2aAgent would be imported here for A2A Protocol
-# from google.adk.agents import RemoteA2aAgent
 
 # Set API key in environment (required for Gemini model initialization)
 os.environ["GOOGLE_API_KEY"] = settings.google_api_key
@@ -63,6 +60,9 @@ orchestrator_agent = LlmAgent(
     instruction="""
     You are the main customer support orchestrator. Your job is to route customer queries to the right specialized agent.
     
+    NOTE: The customer has already provided their Customer ID when accessing the chat, so you don't need to ask for it.
+    You can directly help them with their orders and other inquiries.
+    
     Available agents:
     1. faq_agent - For general questions, refunds, shipping, policies, FAQs, product information
     2. order_agent - For order status, tracking, order history, order-related questions
@@ -97,19 +97,12 @@ orchestrator_agent = LlmAgent(
     - If an agent doesn't return a response, use your knowledge to help the customer anyway
     
     Always be helpful and route efficiently. Don't give up on helping the customer!
-    
-    Note: You can use agents both locally (as AgentTool) and remotely via A2A Protocol.
     """,
     tools=[
         AgentTool(faq_agent),
         AgentTool(order_agent),
         AgentTool(sentiment_agent),
         AgentTool(escalation_agent),
-        # Example: Remote agent via A2A (commented out - requires A2A server)
-        # RemoteA2aAgent(
-        #     name="remote_escalation_agent",
-        #     url="http://escalation-service:8000/a2a"
-        # ),
     ],
 )
 

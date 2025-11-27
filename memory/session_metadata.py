@@ -67,7 +67,8 @@ class SessionMetadata:
         self,
         session_id: str,
         user_id: str,
-        name: Optional[str] = None
+        name: Optional[str] = None,
+        customer_id: Optional[str] = None
     ) -> Dict:
         """
         Create or update session metadata.
@@ -84,7 +85,7 @@ class SessionMetadata:
         try:
             from utils.supabase_client import SUPABASE_ENABLED, create_session as supabase_create_session
             if SUPABASE_ENABLED:
-                result = supabase_create_session(session_id, user_id, name)
+                result = supabase_create_session(session_id, user_id, name, customer_id)
                 if result:
                     return result
         except Exception:
@@ -96,6 +97,7 @@ class SessionMetadata:
                 self._metadata[session_id] = {
                     "session_id": session_id,
                     "user_id": user_id,
+                    "customer_id": customer_id,
                     "name": name or f"Session {session_id[-8:]}",
                     "created_at": datetime.now().isoformat(),
                     "updated_at": datetime.now().isoformat(),
@@ -106,6 +108,8 @@ class SessionMetadata:
                 self._metadata[session_id]["updated_at"] = datetime.now().isoformat()
                 if name:
                     self._metadata[session_id]["name"] = name
+                if customer_id:
+                    self._metadata[session_id]["customer_id"] = customer_id
             
             # Save to file after modification
             self._save_sessions()
@@ -123,6 +127,17 @@ class SessionMetadata:
         Returns:
             True if renamed, False if session not found
         """
+        # Try Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED, rename_session as supabase_rename_session
+            if SUPABASE_ENABLED:
+                success = supabase_rename_session(session_id, new_name)
+                if success:
+                    return True
+        except Exception:
+            pass  # Fallback to JSON
+        
+        # Fallback to JSON
         with self._lock:
             if session_id in self._metadata:
                 self._metadata[session_id]["name"] = new_name
@@ -145,12 +160,13 @@ class SessionMetadata:
         with self._lock:
             return self._metadata.get(session_id, {}).copy() if session_id in self._metadata else None
     
-    def get_user_sessions(self, user_id: str) -> list[Dict]:
+    def get_user_sessions(self, user_id: str, customer_id: Optional[str] = None) -> list[Dict]:
         """
-        Get all sessions for a user.
+        Get all sessions for a user, optionally filtered by customer_id.
         
         Args:
             user_id: User identifier
+            customer_id: Optional customer identifier to filter sessions
             
         Returns:
             List of session metadata dictionaries
@@ -159,7 +175,7 @@ class SessionMetadata:
         try:
             from utils.supabase_client import SUPABASE_ENABLED, get_user_sessions as supabase_get_user_sessions
             if SUPABASE_ENABLED:
-                result = supabase_get_user_sessions(user_id)
+                result = supabase_get_user_sessions(user_id, customer_id)
                 if result:
                     return result
         except Exception:
@@ -171,6 +187,7 @@ class SessionMetadata:
                 metadata.copy()
                 for metadata in self._metadata.values()
                 if metadata.get("user_id") == user_id
+                and (customer_id is None or metadata.get("customer_id") == customer_id)
             ]
             # Sort by updated_at (most recent first)
             sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
@@ -178,6 +195,16 @@ class SessionMetadata:
     
     def increment_message_count(self, session_id: str) -> None:
         """Increment message count for a session."""
+        # Try Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED, increment_message_count as supabase_increment_message_count
+            if SUPABASE_ENABLED:
+                supabase_increment_message_count(session_id)
+                return
+        except Exception:
+            pass  # Fallback to JSON
+        
+        # Fallback to JSON
         with self._lock:
             if session_id in self._metadata:
                 self._metadata[session_id]["message_count"] = self._metadata[session_id].get("message_count", 0) + 1
@@ -197,6 +224,45 @@ class SessionMetadata:
         Returns:
             True if deleted, False if not found
         """
+        # Try Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED
+            if SUPABASE_ENABLED:
+                from supabase import create_client
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_KEY")
+                if supabase_url and supabase_key:
+                    supabase = create_client(supabase_url, supabase_key)
+                    # Delete in correct order to respect foreign key constraints:
+                    # 1. Delete analytics_interactions first
+                    try:
+                        supabase.table("analytics_interactions").delete().eq("session_id", session_id).execute()
+                    except Exception as e:
+                        print(f"Warning: Could not delete analytics_interactions: {e}")
+                    
+                    # 2. Delete messages
+                    try:
+                        supabase.table("messages").delete().eq("session_id", session_id).execute()
+                    except Exception as e:
+                        print(f"Warning: Could not delete messages: {e}")
+                    
+                    # 3. Delete conversation_summaries if they reference session_id
+                    try:
+                        supabase.table("conversation_summaries").delete().eq("session_id", session_id).execute()
+                    except Exception as e:
+                        print(f"Warning: Could not delete conversation_summaries: {e}")
+                    
+                    # 4. Finally delete session
+                    result = supabase.table("sessions").delete().eq("session_id", session_id).execute()
+                    if result.data or result.count > 0:
+                        return True
+        except Exception as e:
+            print(f"Error deleting session from Supabase: {e}")
+        
+        # Fallback to JSON
         with self._lock:
             if session_id in self._metadata:
                 del self._metadata[session_id]

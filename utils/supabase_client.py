@@ -50,41 +50,122 @@ def get_session(session_id: str) -> Optional[Dict]:
         return None
 
 
-def create_session(session_id: str, user_id: str, name: Optional[str] = None) -> Dict:
+def create_session(session_id: str, user_id: str, name: Optional[str] = None, customer_id: Optional[str] = None) -> Dict:
     """Créer une nouvelle session."""
     if not SUPABASE_ENABLED:
         from memory.session_metadata import session_metadata
-        return session_metadata.create_session(session_id, user_id, name)
+        return session_metadata.create_session(session_id, user_id, name, customer_id)
     
     try:
         session_data = {
             "session_id": session_id,
             "user_id": user_id,
+            "customer_id": customer_id,
             "name": name or f"Session {session_id[-8:]}",
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "message_count": 0
         }
         
+        print(f"Creating session in Supabase: session_id={session_id}, user_id={user_id}, customer_id={customer_id}")
+        
+        # First, try to insert the session
         result = supabase.table("sessions").upsert(session_data).execute()
-        return result.data[0] if result.data else session_data
+        
+        # If customer_id was provided, ensure it's set (in case upsert didn't work correctly)
+        if customer_id:
+            if result.data:
+                # Double-check and update customer_id if needed
+                existing = result.data[0] if result.data else {}
+                if existing.get("customer_id") != customer_id:
+                    print(f"Updating customer_id for session {session_id} from {existing.get('customer_id')} to {customer_id}")
+                    supabase.table("sessions").update({"customer_id": customer_id}).eq("session_id", session_id).execute()
+                    existing["customer_id"] = customer_id
+            else:
+                # If no data returned, try to update directly
+                print(f"Updating customer_id for session {session_id} to {customer_id} (no data in result)")
+                supabase.table("sessions").update({"customer_id": customer_id}).eq("session_id", session_id).execute()
+        
+        final_result = result.data[0] if result.data else session_data
+        print(f"Session created successfully: customer_id={final_result.get('customer_id')}")
+        return final_result
     except Exception as e:
         print(f"Erreur Supabase create_session: {e}")
         return {}
 
 
-def get_user_sessions(user_id: str) -> List[Dict]:
-    """Récupérer toutes les sessions d'un utilisateur."""
+def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[Dict]:
+    """Récupérer toutes les sessions d'un utilisateur avec message_count calculé dynamiquement."""
     if not SUPABASE_ENABLED:
         from memory.session_metadata import session_metadata
-        return session_metadata.get_user_sessions(user_id)
+        return session_metadata.get_user_sessions(user_id, customer_id)
     
     try:
-        result = supabase.table("sessions").select("*").eq("user_id", user_id).order("updated_at", desc=True).execute()
-        return result.data or []
+        query = supabase.table("sessions").select("*").eq("user_id", user_id)
+        
+        # Filter by customer_id if provided - use strict equality to exclude nulls
+        if customer_id:
+            query = query.eq("customer_id", customer_id)
+        else:
+            # If no customer_id provided, only return sessions with null customer_id
+            query = query.is_("customer_id", "null")
+        
+        result = query.order("updated_at", desc=True).execute()
+        sessions = result.data or []
+        
+        # Calculate message_count dynamically from messages table
+        for session in sessions:
+            try:
+                # Use count="exact" without limit to get accurate count
+                msg_result = supabase.table("messages").select("id", count="exact").eq("session_id", session["session_id"]).execute()
+                session["message_count"] = msg_result.count if hasattr(msg_result, 'count') and msg_result.count is not None else 0
+            except Exception as e:
+                print(f"Error calculating message_count for session {session['session_id']}: {e}")
+                session["message_count"] = 0
+        
+        return sessions
     except Exception as e:
         print(f"Erreur Supabase get_user_sessions: {e}")
         return []
+
+
+def rename_session(session_id: str, new_name: str) -> bool:
+    """Rename a session in Supabase."""
+    if not SUPABASE_ENABLED:
+        from memory.session_metadata import session_metadata
+        return session_metadata.rename_session(session_id, new_name)
+    
+    try:
+        result = supabase.table("sessions").update({
+            "name": new_name,
+            "updated_at": datetime.now().isoformat()
+        }).eq("session_id", session_id).execute()
+        return len(result.data) > 0 if result.data else False
+    except Exception as e:
+        print(f"Erreur Supabase rename_session: {e}")
+        return False
+
+
+def increment_message_count(session_id: str) -> None:
+    """Increment message count for a session in Supabase."""
+    if not SUPABASE_ENABLED:
+        from memory.session_metadata import session_metadata
+        session_metadata.increment_message_count(session_id)
+        return
+    
+    try:
+        # Calculate actual count from messages table
+        # Use count="exact" without limit to get accurate count
+        msg_result = supabase.table("messages").select("id", count="exact").eq("session_id", session_id).execute()
+        actual_count = msg_result.count if hasattr(msg_result, 'count') and msg_result.count is not None else 0
+        
+        # Update session with actual count
+        supabase.table("sessions").update({
+            "message_count": actual_count,
+            "updated_at": datetime.now().isoformat()
+        }).eq("session_id", session_id).execute()
+    except Exception as e:
+        print(f"Erreur Supabase increment_message_count: {e}")
 
 
 # ============================================================================
@@ -96,11 +177,16 @@ def add_message(
     session_id: str,
     role: str,
     content: str,
-    metadata: Optional[Dict] = None
+    metadata: Optional[Dict] = None,
+    is_human_agent: bool = False
 ) -> None:
-    """Ajouter un message à l'historique."""
+    """Ajouter un message à l'historique et mettre à jour le message_count."""
     if not SUPABASE_ENABLED:
         from memory.conversation_history import conversation_history
+        metadata = metadata or {}
+        if is_human_agent:
+            metadata["is_human_agent"] = True
+            metadata["agent_used"] = "human_agent"
         conversation_history.add_message(user_id, session_id, role, content, metadata)
         return
     
@@ -114,7 +200,15 @@ def add_message(
             "timestamp": datetime.now().isoformat()
         }
         
+        # Add human agent flag to metadata
+        if is_human_agent:
+            message_data["metadata"]["is_human_agent"] = True
+            message_data["metadata"]["agent_used"] = "human_agent"
+        
         supabase.table("messages").insert(message_data).execute()
+        
+        # Update message_count in sessions table
+        increment_message_count(session_id)
     except Exception as e:
         print(f"Erreur Supabase add_message: {e}")
 
@@ -158,6 +252,17 @@ def create_ticket(
         import uuid
         ticket_id = f"TICKET-{uuid.uuid4().hex[:8].upper()}"
         
+        # Try to get customer_id from session if not provided
+        if not customer_id and session_id:
+            try:
+                session_result = supabase.table("sessions").select("customer_id").eq("session_id", session_id).limit(1).execute()
+                if session_result.data and len(session_result.data) > 0:
+                    customer_id = session_result.data[0].get("customer_id")
+                    if customer_id:
+                        print(f"[TICKET] Retrieved customer_id from session in supabase_client: {customer_id}")
+            except Exception as e:
+                print(f"[TICKET] Could not get customer_id from session: {e}")
+        
         ticket_data = {
             "ticket_id": ticket_id,
             "customer_id": customer_id or "unknown",
@@ -179,6 +284,30 @@ def create_ticket(
     except Exception as e:
         print(f"Erreur Supabase create_ticket: {e}")
         return {"status": "error", "error_message": str(e)}
+
+
+def update_ticket_status(ticket_id: str, status: str) -> bool:
+    """Update ticket status."""
+    if not SUPABASE_ENABLED:
+        # Fallback to JSON
+        from tools.ticket_tool import get_all_tickets, save_tickets
+        tickets = get_all_tickets()
+        if isinstance(tickets, dict) and ticket_id in tickets:
+            tickets[ticket_id]["status"] = status
+            tickets[ticket_id]["updated_at"] = datetime.now().isoformat()
+            save_tickets(tickets)
+            return True
+        return False
+    
+    try:
+        supabase.table("tickets").update({
+            "status": status,
+            "updated_at": datetime.now().isoformat()
+        }).eq("ticket_id", ticket_id).execute()
+        return True
+    except Exception as e:
+        print(f"Erreur Supabase update_ticket_status: {e}")
+        return False
 
 
 def get_tickets(session_id: Optional[str] = None) -> List[Dict]:
@@ -208,25 +337,73 @@ def get_tickets(session_id: Optional[str] = None) -> List[Dict]:
 # ============================================================================
 
 def get_orders(customer_id: Optional[str] = None) -> List[Dict]:
-    """Récupérer les commandes."""
+    """Récupérer les commandes avec mise à jour automatique du statut si estimated_delivery est passée."""
+    from datetime import datetime, date
+    
     if not SUPABASE_ENABLED:
         from tools.order_tool import get_all_orders
         orders = get_all_orders()
         if customer_id:
-            return [o for o in orders if o.get("customer_id") == customer_id]
-        return orders
+            orders = [o for o in orders if o.get("customer_id") == customer_id]
+    else:
+        try:
+            query = supabase.table("orders").select("*")
+            
+            if customer_id:
+                query = query.eq("customer_id", customer_id)
+            
+            result = query.order("created_at", desc=True).execute()
+            orders = result.data or []
+        except Exception as e:
+            print(f"Erreur Supabase get_orders: {e}")
+            orders = []
     
-    try:
-        query = supabase.table("orders").select("*")
+    # Check each order and update status based on estimated_delivery date
+    today = date.today()
+    updated_orders = []
+    
+    for order in orders:
+        estimated_delivery = order.get("estimated_delivery")
+        current_status = order.get("status", "").lower()
         
-        if customer_id:
-            query = query.eq("customer_id", customer_id)
+        # Only update if status is not "delivered" or "cancelled"
+        if estimated_delivery and current_status not in ["delivered", "cancelled"]:
+            try:
+                # Parse the date (handle both date strings and datetime strings)
+                if isinstance(estimated_delivery, str):
+                    # Try parsing as date first
+                    try:
+                        delivery_date = datetime.strptime(estimated_delivery.split("T")[0], "%Y-%m-%d").date()
+                    except:
+                        delivery_date = datetime.strptime(estimated_delivery, "%Y-%m-%d").date()
+                else:
+                    delivery_date = estimated_delivery
+                
+                new_status = None
+                
+                # Only auto-update if status is not "delivered" or "cancelled"
+                if current_status not in ["delivered", "cancelled"]:
+                    # If date has passed (current date is after estimated_delivery) → "delivery_soon"
+                    if delivery_date < today:
+                        new_status = "delivery_soon"
+                        order["status"] = "delivery_soon"
+                    # If date is in the future → "delivering"
+                    elif delivery_date >= today:
+                        new_status = "delivering"
+                        order["status"] = "delivering"
+                
+                # Update in database if status changed
+                if new_status and SUPABASE_ENABLED:
+                    try:
+                        supabase.table("orders").update({"status": new_status}).eq("order_id", order.get("order_id")).execute()
+                    except Exception as e:
+                        print(f"Warning: Could not update order status in Supabase: {e}")
+            except Exception as e:
+                print(f"Warning: Could not parse estimated_delivery for order {order.get('order_id')}: {e}")
         
-        result = query.order("created_at", desc=True).execute()
-        return result.data or []
-    except Exception as e:
-        print(f"Erreur Supabase get_orders: {e}")
-        return []
+        updated_orders.append(order)
+    
+    return updated_orders
 
 
 # ============================================================================
@@ -330,8 +507,7 @@ def create_feedback(
     reason: Optional[str] = None,
     category: Optional[str] = None,
     agent_used: Optional[str] = None,
-    ticket_id: Optional[str] = None,
-    sentiment_score: Optional[float] = None
+    ticket_id: Optional[str] = None
 ) -> Dict:
     """Créer un feedback."""
     if not SUPABASE_ENABLED:
@@ -364,7 +540,6 @@ def create_feedback(
             "reason": reason,
             "category": category,
             "agent_used": agent_used,
-            "sentiment_score": sentiment_score,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
         }
@@ -447,6 +622,223 @@ def get_feedback_stats() -> Dict:
     except Exception as e:
         print(f"Erreur Supabase get_feedback_stats: {e}")
         return {}
+
+
+# ============================================================================
+# Agent Refinements
+# ============================================================================
+
+def save_agent_refinement(
+    refinement_key: str,
+    agent_name: str,
+    refinement_type: str,
+    changes: Dict,
+    feedback_sources: Optional[List[str]] = None,
+    status: str = "pending"
+) -> bool:
+    """Save an agent refinement to Supabase."""
+    if not SUPABASE_ENABLED:
+        return False
+    
+    try:
+        refinement_data = {
+            "refinement_key": refinement_key,
+            "agent_name": agent_name,
+            "refinement_type": refinement_type,
+            "changes": changes,
+            "feedback_sources": feedback_sources or [],
+            "status": status,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        result = supabase.table("agent_refinements").upsert(refinement_data).execute()
+        return True
+    except Exception as e:
+        print(f"Erreur Supabase save_agent_refinement: {e}")
+        return False
+
+
+def get_agent_refinements(agent_name: Optional[str] = None, status: Optional[str] = None) -> List[Dict]:
+    """Get agent refinements from Supabase."""
+    if not SUPABASE_ENABLED:
+        return []
+    
+    try:
+        query = supabase.table("agent_refinements").select("*")
+        
+        if agent_name:
+            query = query.eq("agent_name", agent_name)
+        
+        if status:
+            query = query.eq("status", status)
+        
+        result = query.order("created_at", desc=True).execute()
+        return result.data or []
+    except Exception as e:
+        print(f"Erreur Supabase get_agent_refinements: {e}")
+        return []
+
+
+def update_agent_refinement_status(refinement_key: str, status: str) -> bool:
+    """Update the status of an agent refinement."""
+    if not SUPABASE_ENABLED:
+        return False
+    
+    try:
+        supabase.table("agent_refinements").update({
+            "status": status,
+            "updated_at": datetime.now().isoformat()
+        }).eq("refinement_key", refinement_key).execute()
+        return True
+    except Exception as e:
+        print(f"Erreur Supabase update_agent_refinement_status: {e}")
+        return False
+
+
+# ============================================================================
+# Feedback Insights
+# ============================================================================
+
+def save_feedback_insight(
+    insight_key: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    insight_type: str = "general",
+    description: Optional[str] = None,
+    sentiment: Optional[Dict] = None,
+    feedback_sources: Optional[List[str]] = None,
+    insight_data: Optional[Dict] = None,
+    summary: Optional[str] = None
+) -> bool:
+    """Save a feedback insight to Supabase."""
+    if not SUPABASE_ENABLED:
+        return False
+    
+    try:
+        import uuid
+        if not insight_key:
+            insight_key = f"INSIGHT-{uuid.uuid4().hex[:8].upper()}"
+        
+        # Store all data in the JSONB 'data' column (table schema only has insight_key, insight_type, data)
+        data_dict = {
+            "agent_name": agent_name or "unknown",
+            "description": description or summary or "Feedback insight",
+            "sentiment": sentiment or {},
+            "feedback_sources": feedback_sources or [],
+            **(insight_data or {})
+        }
+        
+        insight_data_dict = {
+            "insight_key": insight_key,
+            "insight_type": insight_type,
+            "data": data_dict,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        result = supabase.table("feedback_insights").upsert(insight_data_dict).execute()
+        return True
+    except Exception as e:
+        print(f"Erreur Supabase save_feedback_insight: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def get_feedback_insights(agent_name: Optional[str] = None, insight_type: Optional[str] = None) -> List[Dict]:
+    """Get feedback insights from Supabase."""
+    if not SUPABASE_ENABLED:
+        return []
+    
+    try:
+        query = supabase.table("feedback_insights").select("*")
+        
+        if insight_type:
+            query = query.eq("insight_type", insight_type)
+        
+        result = query.order("created_at", desc=True).execute()
+        insights = result.data or []
+        
+        # Filter by agent_name if provided (agent_name is stored in data JSONB)
+        if agent_name:
+            filtered_insights = []
+            for insight in insights:
+                data = insight.get("data", {})
+                if isinstance(data, dict) and data.get("agent_name") == agent_name:
+                    filtered_insights.append(insight)
+            return filtered_insights
+        
+        return insights
+    except Exception as e:
+        print(f"Erreur Supabase get_feedback_insights: {e}")
+        return []
+
+
+# ============================================================================
+# KB Updates from Feedback
+# ============================================================================
+
+def save_kb_update(
+    update_id: str,
+    feedback_id: Optional[str],
+    update_type: str,
+    content: Dict,
+    status: str = "pending"
+) -> bool:
+    """Save a KB update suggestion to Supabase."""
+    if not SUPABASE_ENABLED:
+        return False
+    
+    try:
+        kb_update_data = {
+            "update_id": update_id,
+            "feedback_id": feedback_id,
+            "update_type": update_type,
+            "content": content,
+            "status": status,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        result = supabase.table("kb_updates_from_feedback").upsert(kb_update_data).execute()
+        return True
+    except Exception as e:
+        print(f"Erreur Supabase save_kb_update: {e}")
+        return False
+
+
+def get_kb_updates(status: Optional[str] = None) -> List[Dict]:
+    """Get KB update suggestions from Supabase."""
+    if not SUPABASE_ENABLED:
+        return []
+    
+    try:
+        query = supabase.table("kb_updates_from_feedback").select("*")
+        
+        if status:
+            query = query.eq("status", status)
+        
+        result = query.order("created_at", desc=True).execute()
+        return result.data or []
+    except Exception as e:
+        print(f"Erreur Supabase get_kb_updates: {e}")
+        return []
+
+
+def update_kb_update_status(update_id: str, status: str) -> bool:
+    """Update the status of a KB update."""
+    if not SUPABASE_ENABLED:
+        return False
+    
+    try:
+        supabase.table("kb_updates_from_feedback").update({
+            "status": status,
+            "updated_at": datetime.now().isoformat()
+        }).eq("update_id", update_id).execute()
+        return True
+    except Exception as e:
+        print(f"Erreur Supabase update_kb_update_status: {e}")
+        return False
 
 
 # ============================================================================

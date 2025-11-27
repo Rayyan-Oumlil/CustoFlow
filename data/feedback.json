@@ -1,1 +1,205 @@
-[]
+[
+  {
+    "id": "feedback_1_1764262972",
+    "timestamp": "2025-11-27T12:02:52.424542",
+    "session_id": "test_feedback_session_1764262971",
+    "user_id": "test_feedback_user_1764262971",
+    "feedback_type": "thumbs_down",
+    "rating": 2,
+    "comment": "The agent gave incorrect information about my order",
+    "reason": "incorrect",
+    "category": "accuracy",
+    "conversation_context": {},
+    "agent_used": "order_agent",
+    "analyzed": true,
+    "sentiment": {
+      "label": "negative",
+      "score": 0.1,
+      "confidence": 0.8,
+      "positive_words": 0,
+      "negative_words": 1
+    },
+    "patterns": {
+      "common_issues": [
+        "accuracy"
+      ],
+      "topics": [
+        "order"
+      ],
+      "agent_specific": "order_agent",
+      "category_patterns": [
+        "accuracy"
+      ]
+    }
+  },
+  {
+    "id": "feedback_2_1764262974",
+    "timestamp": "2025-11-27T12:02:54.692832",
+    "session_id": "test_feedback_session_1764262971",
+    "user_id": "test_feedback_user_1764262971",
+    "feedback_type": "thumbs_down",
+    "rating": 2,
+    "comment": "The agent was slow and gave wrong information",
+    "reason": "incorrect",
+    "category": "accuracy",
+    "conversation_context": {},
+    "agent_used": "order_agent",
+    "analyzed": true,
+    "sentiment": {
+      "label": "negative",
+      "score": 0.1,
+      "confidence": 0.8,
+      "positive_words": 0,
+      "negative_words": 2
+    },
+    "patterns": {
+      "common_issues": [
+        "accuracy",
+        "speed"
+      ],
+      "topics": [],
+      "agent_specific": "order_agent",
+      "category_patterns": [
+        "accuracy"
+      ]
+    }
+  },
+  {
+    "id": "feedback_3_1764262978",
+    "timestamp": "2025-11-27T12:02:58.377147",
+    "session_id": "test_feedback_session_1764262971",
+    "user_id": "test_feedback_user_1764262971",
+    "feedback_type": "thumbs_up",
+    "rating": 5,
+    "comment": "Great help! The agent was very helpful and accurate",
+    "reason": "helpful",
+    "category": "helpfulness",
+    "conversation_context": {},
+    "agent_used": "faq_agent",
+    "analyzed": true,
+    "sentiment": {
+      "label": "positive",
+      "score": 0.9,
+      "confidence": 0.8,
+      "positive_words": 3,
+      "negative_words": 0
+    },
+    "patterns": {
+      "common_issues": [
+        "helpfulness"
+      ],
+      "topics": [],
+      "agent_specific": "faq_agent",
+      "category_patterns": [
+        "helpfulness"
+      ]
+    }
+  },
+  {
+    "id": "feedback_4_1764262981",
+    "timestamp": "2025-11-27T12:03:01.567519",
+    "session_id": "test_feedback_session_1764262971",
+    "user_id": "test_feedback_user_1764262971",
+    "feedback_type": "thumbs_down",
+    "rating": null,
+    "comment": "The response was incorrect and missing important details",
+    "reason": null,
+    "category": null,
+    "conversation_context": {},
+    "agent_used": "order_agent",
+    "analyzed": false
+  },
+  {
+    "id": "feedback_5_1764262983",
+    "timestamp": "2025-11-27T12:03:03.745156",
+    "session_id": "test_feedback_session_1764262971_multi_0",
+    "user_id": "test_feedback_user_1764262971",
+    "feedback_type": "thumbs_down",
+    "rating": 2,
+    "comment": "Test feedback 0: incorrect information",
+    "reason": "incorrect",
+    "category": "accuracy",
+    "conversation_context": {},
+    "agent_used": "order_agent",
+    "analyzed": true,
+    "sentiment": {
+      "label": "negative",
+      "score": 0.1,
+      "confidence": 0.8,
+      "positive_words": 0,
+      "negative_words": 1
+    },
+    "patterns": {
+      "common_issues": [
+        "accuracy"
+      ],
+      "topics": [],
+      "agent_specific": "order_agent",
+      "category_patterns": [
+        "accuracy"
+      ]
+    }
+  },
+  {
+    "id": "feedback_6_1764262984",
+    "timestamp": "2025-11-27T12:03:04.330131",
+    "session_id": "test_feedback_session_1764262971_multi_1",
+    "user_id": "test_feedback_user_1764262971",
+    "feedback_type": "thumbs_up",
+    "rating": 5,
+    "comment": "Test feedback 1: very helpful",
+    "reason": "helpful",
+    "category": "helpfulness",
+    "conversation_context": {},
+    "agent_used": "order_agent",
+    "analyzed": true,
+    "sentiment": {
+      "label": "positive",
+      "score": 0.9,
+      "confidence": 0.8,
+      "positive_words": 1,
+      "negative_words": 0
+    },
+    "patterns": {
+      "common_issues": [
+        "helpfulness"
+      ],
+      "topics": [],
+      "agent_specific": "order_agent",
+      "category_patterns": [
+        "helpfulness"
+      ]
+    }
+  },
+  {
+    "id": "feedback_7_1764262984",
+    "timestamp": "2025-11-27T12:03:04.989873",
+    "session_id": "test_feedback_session_1764262971_multi_2",
+    "user_id": "test_feedback_user_1764262971",
+    "feedback_type": "thumbs_down",
+    "rating": 2,
+    "comment": "Test feedback 2: incorrect information",
+    "reason": "incorrect",
+    "category": "accuracy",
+    "conversation_context": {},
+    "agent_used": "order_agent",
+    "analyzed": true,
+    "sentiment": {
+      "label": "negative",
+      "score": 0.1,
+      "confidence": 0.8,
+      "positive_words": 0,
+      "negative_words": 1
+    },
+    "patterns": {
+      "common_issues": [
+        "accuracy"
+      ],
+      "topics": [],
+      "agent_specific": "order_agent",
+      "category_patterns": [
+        "accuracy"
+      ]
+    }
+  }
+]

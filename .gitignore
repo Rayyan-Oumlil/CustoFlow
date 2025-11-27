@@ -44,6 +44,23 @@ Thumbs.db
 *.pyc
 .cache/
 
+# Google Cloud credentials (NEVER commit these!)
+*.json
+credentials.json
+*-credentials.json
+gen-lang-client-*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tailwind.config.js
+!next.config.js
+
+# Data files (should be in Supabase, not in repo)
+data/*.json
+data/faq_index/
+data/kb_versions/
+!data/faq_knowledge_base.json  # Keep FAQ source file
+
 # Node.js / Frontend
 node_modules/
 frontend/node_modules/

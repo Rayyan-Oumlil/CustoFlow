@@ -1,1 +1,12 @@
-{}
+{
+  "TICKET-3D60E3EB": {
+    "ticket_id": "TICKET-3D60E3EB",
+    "customer_id": "unknown",
+    "issue": "Order cancellation request",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2025-11-27T11:37:23.752837",
+    "session_id": "test_session_1764261441.537414",
+    "user_id": "test_user_1764261441.537423"
+  }
+}

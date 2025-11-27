@@ -44,7 +44,7 @@ export default function AnalyticsPage() {
         if (analyticsData && typeof analyticsData === 'object') {
           // Check if analyticsData has the expected structure
           if ('total_messages' in analyticsData || 'active_sessions' in analyticsData) {
-            setAnalytics(analyticsData)
+          setAnalytics(analyticsData)
           } else {
             // Analytics might return different structure, use metrics as fallback
             if (metricsData) {
@@ -68,14 +68,25 @@ export default function AnalyticsPage() {
           })
         }
 
-        // Chart data - use mock data for now as backend doesn't provide daily breakdown
-        setChartData([
-          { day: "Mon", interactions: 120, satisfaction: 8.5 },
-          { day: "Tue", interactions: 150, satisfaction: 8.2 },
-          { day: "Wed", interactions: 110, satisfaction: 8.8 },
-          { day: "Thu", interactions: 140, satisfaction: 8.6 },
-          { day: "Fri", interactions: 180, satisfaction: 9.1 },
-        ])
+        // Fetch daily analytics data
+        try {
+          const dailyData = await apiClient.get<any>("/analytics/daily")
+          if (dailyData && Array.isArray(dailyData)) {
+            setChartData(dailyData)
+          } else {
+            // Fallback to empty data
+            setChartData([
+              { day: "Mon", interactions: 0, satisfaction: 0 },
+              { day: "Tue", interactions: 0, satisfaction: 0 },
+              { day: "Wed", interactions: 0, satisfaction: 0 },
+              { day: "Thu", interactions: 0, satisfaction: 0 },
+              { day: "Fri", interactions: 0, satisfaction: 0 },
+            ])
+          }
+        } catch (error) {
+          console.error("Failed to fetch daily analytics:", error)
+          setChartData([])
+        }
       } catch (error) {
         console.error("Failed to fetch analytics:", error)
       } finally {
@@ -88,30 +99,36 @@ export default function AnalyticsPage() {
     return () => clearInterval(interval)
   }, [])
 
-  const defaultAnalytics: Analytics = {
-    total_messages: 1250,
-    active_sessions: 24,
-    interactions: 856,
-    avg_satisfaction: 8.7,
-    tickets_created: 42,
-  }
+  const [statusData, setStatusData] = useState<any[]>([])
 
-  const data: Analytics = analytics || defaultAnalytics
-  
+  // Fetch ticket status data
+  useEffect(() => {
+    const fetchTicketStatus = async () => {
+      try {
+        const data = await apiClient.get<any>("/analytics/ticket-status")
+        setStatusData(data || [])
+      } catch (error) {
+        console.error("Failed to fetch ticket status:", error)
+        setStatusData([])
+      }
+    }
+    fetchTicketStatus()
+  }, [])
+
   // Ensure all fields have default values
-  const safeData: Analytics = {
-    total_messages: data.total_messages ?? 0,
-    active_sessions: data.active_sessions ?? 0,
-    interactions: data.interactions ?? 0,
-    avg_satisfaction: data.avg_satisfaction ?? 0,
-    tickets_created: data.tickets_created ?? 0,
+  const safeData: Analytics = analytics ? {
+    total_messages: analytics.total_messages ?? 0,
+    active_sessions: analytics.active_sessions ?? 0,
+    interactions: analytics.interactions ?? 0,
+    avg_satisfaction: analytics.avg_satisfaction ?? 0,
+    tickets_created: analytics.tickets_created ?? 0,
+  } : {
+    total_messages: 0,
+    active_sessions: 0,
+    interactions: 0,
+    avg_satisfaction: 0,
+    tickets_created: 0,
   }
-
-  const statusData = [
-    { name: "Open", value: 12, fill: "hsl(var(--chart-1))" },
-    { name: "In Progress", value: 18, fill: "hsl(var(--chart-2))" },
-    { name: "Resolved", value: 32, fill: "hsl(var(--chart-3))" },
-  ]
 
   return (
     <div className="flex flex-col h-screen">

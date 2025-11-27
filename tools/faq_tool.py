@@ -85,19 +85,24 @@ def _generate_general_answer(query: str, faqs: List[Dict]) -> str:
         return f"I'm here to help! Our support covers various topics including: {category_list}. Could you provide more details about what you need help with? You can also contact our support team directly for personalized assistance with any questions or concerns."
 
 
-def search_faq(query: str) -> Dict[str, any]:
+def search_faq(query: str, use_semantic: bool = True) -> Dict[str, any]:
     """
     Search FAQ knowledge base for relevant answers.
     
     This tool implements a flexible FAQ search algorithm that:
     1. Checks cache first for performance
-    2. Scores FAQs based on keyword matches
-    3. Returns best match if score is high enough (>= 3)
-    4. Returns partial match for lower scores
-    5. Generates general answer if no matches found
-    6. Caches result for future queries
+    2. Tries semantic search first (if available and enabled)
+    3. Falls back to keyword-based scoring if semantic search fails
+    4. Returns best match if score is high enough (>= 3)
+    5. Returns partial match for lower scores
+    6. Generates general answer if no matches found
+    7. Caches result for future queries
     
-    Scoring Algorithm:
+    Search Methods:
+    - Semantic Search (if available): Uses vector embeddings to find similar questions by meaning
+    - Keyword Search (fallback): Scores FAQs based on keyword matches
+    
+    Scoring Algorithm (Keyword Search):
     - Keyword match: +2 points per matching keyword
     - Question word match: +1 point per matching word
     - Answer word match: +0.5 points per matching word
@@ -105,11 +110,12 @@ def search_faq(query: str) -> Dict[str, any]:
     
     Args:
         query: Customer's question or search query
+        use_semantic: Whether to try semantic search first (default: True)
         
     Returns:
         Dictionary with status and FAQ information:
-        - Success (score >= 3): {"status": "success", "question": "...", "answer": "...", "category": "...", "match_score": N}
-        - Partial (score < 3 or no exact match): {"status": "partial", "answer": "...", "note": "..."}
+        - Success: {"status": "success", "question": "...", "answer": "...", "category": "...", "match_type": "semantic"|"keyword", "similarity"|"match_score": N}
+        - Partial: {"status": "partial", "answer": "...", "note": "..."}
         - Error: {"status": "error", "error_message": "..."}
     """
     try:
@@ -127,6 +133,7 @@ def search_faq(query: str) -> Dict[str, any]:
         cached_result = faq_cache.get(cache_key)
         if cached_result:
             return cached_result
+        
         faqs = _load_faq_data()
         
         if not faqs:
@@ -135,7 +142,56 @@ def search_faq(query: str) -> Dict[str, any]:
                 "error_message": "FAQ database is empty or not found"
             }
         
-        # Score FAQs based on keyword matches
+        # Try semantic search first if enabled and available
+        if use_semantic:
+            try:
+                from tools.semantic_search import get_semantic_engine, SEMANTIC_SEARCH_AVAILABLE
+                
+                if SEMANTIC_SEARCH_AVAILABLE:
+                    engine = get_semantic_engine()
+                    if engine:
+                        # Try to load index if not already loaded
+                        if not engine.is_index_loaded():
+                            engine.load_index()
+                        
+                        # If index is loaded, use semantic search
+                        if engine.is_index_loaded():
+                            results = engine.search(query, top_k=3)
+                            
+                            if results:
+                                best_match, similarity = results[0]
+                                
+                                # Use similarity threshold to determine if it's a good match
+                                # Higher similarity = better match
+                                if similarity >= 0.6:  # Good match threshold
+                                    result = {
+                                        "status": "success",
+                                        "question": best_match.get("question", ""),
+                                        "answer": best_match.get("answer", ""),
+                                        "category": best_match.get("category", "general"),
+                                        "match_type": "semantic",
+                                        "similarity": round(similarity, 3)
+                                    }
+                                else:  # Lower similarity, still useful but mark as partial
+                                    result = {
+                                        "status": "partial",
+                                        "question": best_match.get("question", ""),
+                                        "answer": best_match.get("answer", ""),
+                                        "category": best_match.get("category", "general"),
+                                        "match_type": "semantic",
+                                        "similarity": round(similarity, 3),
+                                        "note": "This is a related answer found using semantic search. If this doesn't fully address your question, please provide more details."
+                                    }
+                                
+                                # Cache and return semantic result
+                                faq_cache.set(cache_key, result)
+                                return result
+            except Exception as e:
+                # Semantic search failed, fall back to keyword search
+                # Don't print error in production, just silently fall back
+                pass
+        
+        # Fallback to keyword-based search (original algorithm)
         scored_faqs = []
         for faq in faqs:
             score = 0
@@ -170,20 +226,23 @@ def search_faq(query: str) -> Dict[str, any]:
             
             # If score is high enough, return as success
             if best_score >= 3:
-                return {
+                result = {
                     "status": "success",
                     "question": best_match.get("question", ""),
                     "answer": best_match.get("answer", ""),
                     "category": best_match.get("category", "general"),
+                    "match_type": "keyword",
                     "match_score": best_score
                 }
             else:
                 # Low score - return as partial match
-                return {
+                result = {
                     "status": "partial",
                     "question": best_match.get("question", ""),
                     "answer": best_match.get("answer", ""),
                     "category": best_match.get("category", "general"),
+                    "match_type": "keyword",
+                    "match_score": best_score,
                     "note": "This is a related answer. If this doesn't fully address your question, please provide more details."
                 }
         else:
@@ -192,6 +251,7 @@ def search_faq(query: str) -> Dict[str, any]:
             result = {
                 "status": "partial",
                 "answer": general_answer,
+                "match_type": "keyword",
                 "note": "I couldn't find an exact match, but here's general information. Please contact support for specific details."
             }
         

@@ -21,6 +21,21 @@ import re
 
 from config.settings import settings
 
+# Try to import Supabase functions
+try:
+    from utils.supabase_client import (
+        SUPABASE_ENABLED,
+        save_agent_refinement,
+        get_agent_refinements as supabase_get_agent_refinements,
+        save_feedback_insight,
+        get_feedback_insights as supabase_get_feedback_insights,
+        save_kb_update,
+        get_kb_updates as supabase_get_kb_updates,
+        update_kb_update_status
+    )
+except ImportError:
+    SUPABASE_ENABLED = False
+
 
 class FeedbackManager:
     """
@@ -248,9 +263,13 @@ class FeedbackManager:
             ):
                 self._suggest_kb_update(feedback)
             
-            # Check for agent refinements
+            # Check for agent refinements (negative feedback)
             if feedback.get("rating", 5) < 3:
                 self._suggest_agent_refinement(feedback)
+            
+            # Also analyze positive feedback for insights (what works well)
+            if feedback.get("feedback_type") == "thumbs_up" or feedback.get("rating", 5) >= 4:
+                self._record_positive_feedback_insight(feedback)
                 
         except Exception:
             pass  # Silently fail analysis
@@ -439,7 +458,21 @@ class FeedbackManager:
                 "trends": self._calculate_trends(analyzed_feedback)
             }
             
-            self._save_data()
+            # Try Supabase first
+            if SUPABASE_ENABLED:
+                try:
+                    insight_key = f"insight_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    save_feedback_insight(
+                        insight_key=insight_key,
+                        insight_type="aggregated",
+                        insight_data=self._insights
+                    )
+                except Exception as e:
+                    print(f"Error saving feedback insight to Supabase: {e}")
+                    # Fallback to JSON
+                    self._save_data()
+            else:
+                self._save_data()
     
     def _calculate_trends(self, feedback: List[Dict]) -> Dict:
         """Calculate trends over time."""
@@ -508,8 +541,30 @@ class FeedbackManager:
             }
             
             with self._lock:
-                self._kb_updates.append(kb_suggestion)
-                self._save_data()
+                # Try Supabase first
+                if SUPABASE_ENABLED:
+                    try:
+                        save_kb_update(
+                            update_id=kb_suggestion["id"],
+                            feedback_id=kb_suggestion.get("source_feedback_id"),
+                            update_type=kb_suggestion["suggestion_type"],
+                            content={
+                                "reason": kb_suggestion.get("reason"),
+                                "customer_comment": kb_suggestion.get("customer_comment"),
+                                "conversation_context": kb_suggestion.get("conversation_context", {}),
+                                "priority": kb_suggestion.get("priority", "medium")
+                            },
+                            status=kb_suggestion["status"]
+                        )
+                    except Exception as e:
+                        print(f"Error saving KB update to Supabase: {e}")
+                        # Fallback to JSON
+                        self._kb_updates.append(kb_suggestion)
+                        self._save_data()
+                else:
+                    # Fallback to JSON
+                    self._kb_updates.append(kb_suggestion)
+                    self._save_data()
     
     def _suggest_agent_refinement(self, feedback: Dict) -> None:
         """
@@ -544,9 +599,88 @@ class FeedbackManager:
         }
         
         with self._lock:
-            self._agent_refinements[agent_used]["refinements"].append(refinement)
-            self._agent_refinements[agent_used]["last_updated"] = datetime.now().isoformat()
-            self._save_data()
+            # Try Supabase first
+            if SUPABASE_ENABLED:
+                try:
+                    refinement_key = f"{agent_used}_{refinement['id']}"
+                    save_agent_refinement(
+                        refinement_key=refinement_key,
+                        agent_name=agent_used,
+                        refinement_type=refinement["issue"],
+                        changes={
+                            "suggested_improvement": refinement["suggested_improvement"],
+                            "customer_feedback": refinement["customer_feedback"],
+                            "rating": refinement["rating"]
+                        },
+                        feedback_sources=[refinement["source_feedback_id"]],
+                        status=refinement["status"]
+                    )
+                except Exception as e:
+                    print(f"Error saving agent refinement to Supabase: {e}")
+                    # Fallback to JSON
+                    if agent_used not in self._agent_refinements:
+                        self._agent_refinements[agent_used] = {
+                            "refinements": [],
+                            "last_updated": None
+                        }
+                    self._agent_refinements[agent_used]["refinements"].append(refinement)
+                    self._agent_refinements[agent_used]["last_updated"] = datetime.now().isoformat()
+                    self._save_data()
+            else:
+                # Fallback to JSON
+                if agent_used not in self._agent_refinements:
+                    self._agent_refinements[agent_used] = {
+                        "refinements": [],
+                        "last_updated": None
+                    }
+                self._agent_refinements[agent_used]["refinements"].append(refinement)
+                self._agent_refinements[agent_used]["last_updated"] = datetime.now().isoformat()
+                self._save_data()
+    
+    def _record_positive_feedback_insight(self, feedback: Dict) -> None:
+        """
+        Record positive feedback as an insight (what works well).
+        
+        Args:
+            feedback: Feedback entry with thumbs_up or high rating
+        """
+        agent_used = feedback.get("agent_used", "unknown")
+        comment = feedback.get("comment", "")
+        
+        if agent_used == "unknown":
+            return
+        
+        # Save positive feedback insight to Supabase
+        if SUPABASE_ENABLED:
+            try:
+                from utils.supabase_client import save_feedback_insight
+                import uuid
+                insight_key = f"POSITIVE-{uuid.uuid4().hex[:8].upper()}"
+                
+                # Analyze sentiment for positive feedback
+                sentiment = self._analyze_sentiment(feedback)
+                
+                save_feedback_insight(
+                    insight_key=insight_key,
+                    agent_name=agent_used,
+                    insight_type="positive_feedback",
+                    description=f"Positive feedback for {agent_used}: {comment[:100] if comment else 'No comment'}",
+                    sentiment=sentiment,
+                    feedback_sources=[feedback.get("id")] if feedback.get("id") else [],
+                    insight_data={
+                        "feedback_id": feedback.get("id"),
+                        "comment": comment,
+                        "rating": feedback.get("rating", 5),
+                        "feedback_type": feedback.get("feedback_type", "thumbs_up")
+                    },
+                    summary=f"Positive feedback for {agent_used}: {comment[:100] if comment else 'No comment'}"
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Error saving positive feedback insight: {e}")
+                import traceback
+                traceback.print_exc()
     
     def _generate_improvement_suggestion(self, agent: str, reason: str, comment: str) -> str:
         """Generate improvement suggestion based on feedback."""
@@ -653,6 +787,41 @@ class FeedbackManager:
         Returns:
             Dict with agent refinements
         """
+        # Try Supabase first
+        if SUPABASE_ENABLED:
+            try:
+                supabase_refinements = supabase_get_agent_refinements(agent_name=agent, status="pending")
+                # Convert Supabase format to expected format
+                result = {}
+                for r in supabase_refinements:
+                    agent_name = r.get("agent_name")
+                    if agent_name not in result:
+                        result[agent_name] = {
+                            "refinements": [],
+                            "last_updated": r.get("updated_at")
+                        }
+                    
+                    changes = r.get("changes", {})
+                    result[agent_name]["refinements"].append({
+                        "id": r.get("refinement_key"),
+                        "timestamp": r.get("created_at", ""),
+                        "source_feedback_id": r.get("feedback_sources", [""])[0] if r.get("feedback_sources") else "",
+                        "issue": r.get("refinement_type"),
+                        "customer_feedback": changes.get("customer_feedback", ""),
+                        "rating": changes.get("rating", 5),
+                        "suggested_improvement": changes.get("suggested_improvement", ""),
+                        "status": r.get("status")
+                    })
+                
+                if agent:
+                    return result.get(agent, {"refinements": [], "last_updated": None})
+                return result
+            except Exception as e:
+                print(f"Error getting agent refinements from Supabase: {e}")
+                # Fallback to JSON
+                pass
+        
+        # Fallback to JSON
         with self._lock:
             if agent:
                 return self._agent_refinements.get(agent, {"refinements": [], "last_updated": None})

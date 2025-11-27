@@ -1,5 +1,5 @@
 """FastAPI server for customer support agent."""
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -13,17 +13,25 @@ from memory.session_store import session_manager
 from google.adk.runners import Runner
 from observability.logging_config import setup_logging, get_logger, get_logging_plugin
 from observability.metrics import metrics
-from utils.validation import validate_message, sanitize_message, validate_user_id
+from utils.validation import validate_message, sanitize_message, validate_user_id, validate_customer_id
 from utils.rate_limiter import rate_limiter
 from utils.error_handler import handle_api_errors, with_timeout, get_user_friendly_error
 from utils.analytics import analytics
 from utils.multilingual import detect_language, get_greeting, get_error_message
 from memory.conversation_history import conversation_history
 from memory.session_metadata import session_metadata
+from utils.auto_improver import start_auto_improvements, run_improvements_now
 
 # Setup logging
 setup_logging()
 logger = get_logger(__name__)
+
+# Start auto-improvement scheduler (runs daily at 2 AM)
+try:
+    start_auto_improvements(hour=2, minute=0)
+    logger.info("Auto-improvement scheduler started (daily at 2:00 AM)")
+except Exception as e:
+    logger.warning(f"Could not start auto-improvement scheduler: {e}")
 
 # Get ADK LoggingPlugin for enhanced observability
 logging_plugin = get_logging_plugin()
@@ -58,6 +66,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000, description="User message")
     user_id: Optional[str] = Field(default="guest", max_length=50, description="User identifier")
     session_id: Optional[str] = Field(default=None, max_length=100, description="Session identifier")
+    customer_id: Optional[str] = Field(default=None, max_length=50, description="Customer identifier")
 
 
 class ChatResponse(BaseModel):
@@ -66,6 +75,21 @@ class ChatResponse(BaseModel):
     agent_used: Optional[str] = "orchestrator"
     response_time: Optional[float] = None
     metrics: dict
+    quality_score: Optional[float] = None  # 0.0 to 1.0
+    quality_status: Optional[str] = None  # pass, warning, fail
+    compliance_flags: Optional[list] = None
+    ab_test_variant: Optional[str] = None  # "variant_a" or "variant_b"
+
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    feedback_type: str
+    rating: Optional[int] = None
+    comment: Optional[str] = None
+    user_id: Optional[str] = None
+    reason: Optional[str] = None
+    category: Optional[str] = None
+    agent_used: Optional[str] = None
 
 
 @app.get("/")
@@ -109,6 +133,12 @@ async def chat(request: ChatRequest, http_request: Request):
         if not is_valid:
             request.user_id = "guest"  # Fallback to guest
         
+        # Validate customer_id if provided
+        if request.customer_id:
+            is_valid, error_msg = validate_customer_id(request.customer_id)
+            if not is_valid:
+                raise HTTPException(status_code=400, detail=f"Invalid customer_id: {error_msg}")
+        
         # Rate limiting
         # Use user_id for rate limiting, fallback to IP
         rate_limit_id = request.user_id
@@ -130,6 +160,37 @@ async def chat(request: ChatRequest, http_request: Request):
         else:
             session_id = request.session_id
         
+        # Check if message contains a customer_id and extract it
+        # Look for patterns like "customer_id: cust_001", "mon customer id est cust_001", "cust_001", etc.
+        import re
+        customer_id_from_message = None
+        customer_id_patterns = [
+            r'customer[_\s-]?id[:\s]+([A-Za-z0-9_-]+)',
+            r'customer[_\s-]?id[:\s]+([A-Za-z0-9_-]+)',
+            r'cust[_\s-]?id[:\s]+([A-Za-z0-9_-]+)',
+            r'^([A-Za-z0-9_-]{1,50})$',  # Standalone customer ID
+            r'\b(cust_[0-9]+)\b',  # cust_001 format
+            r'\b(CUST-[0-9]+)\b',  # CUST-123 format
+        ]
+        for pattern in customer_id_patterns:
+            match = re.search(pattern, sanitized_message, re.IGNORECASE)
+            if match:
+                potential_id = match.group(1) if match.groups() else match.group(0)
+                # Validate it looks like a customer ID
+                is_valid, _ = validate_customer_id(potential_id)
+                if is_valid:
+                    customer_id_from_message = potential_id
+                    break
+        
+        # Determine initial customer_id before creating session
+        # Priority: 1) customer_id from request, 2) existing context, 3) user_id as default
+        from tools.order_tool import get_order_context
+        existing_context = get_order_context(session_id)
+        existing_customer_id = existing_context.get("customer_id")
+        
+        # Use customer_id from request if available, otherwise use existing or user_id
+        initial_customer_id = request.customer_id if request.customer_id else (existing_customer_id if existing_customer_id else request.user_id)
+        
         # Create session if it doesn't exist
         try:
             await session_manager.get_service().create_session(
@@ -140,7 +201,9 @@ async def chat(request: ChatRequest, http_request: Request):
             metrics.increment("sessions_started")
             logger.info(f"New session created: {session_id}")
             # Create metadata if new session (utilise Supabase si disponible)
-            session_metadata.create_session(session_id, request.user_id)
+            # Use customer_id from request or existing context
+            session_metadata.create_session(session_id, request.user_id, customer_id=initial_customer_id)
+            logger.info(f"Created session with customer_id: {initial_customer_id}")
         except Exception:
             # Session may already exist, that's okay
             pass
@@ -166,15 +229,68 @@ async def chat(request: ChatRequest, http_request: Request):
         # Also store in a way that's accessible by session_id lookup
         set_ticket_context(session_id=session_id, user_id=request.user_id, request_id=None)
         
+        # Set customer_id context for order tools
+        # Priority: 1) customer_id from request, 2) customer_id from message, 3) existing context, 4) user_id as default
+        from tools.order_tool import set_order_context, get_order_context, update_customer_id, clear_order_context
+        
+        # Get existing context to preserve customer_id if already set
+        existing_context = get_order_context(session_id)
+        existing_customer_id = existing_context.get("customer_id")
+        
+        # Determine customer_id: use from request if provided, then from message, then existing, then user_id
+        if request.customer_id:
+            customer_id = request.customer_id
+            # Update context with customer_id from request
+            update_customer_id(session_id, customer_id)
+            logger.info(f"Customer ID from request: {customer_id}")
+        elif customer_id_from_message:
+            customer_id = customer_id_from_message
+            # Update context with new customer_id
+            update_customer_id(session_id, customer_id)
+            logger.info(f"Customer ID extracted from message: {customer_id}")
+        elif existing_customer_id:
+            customer_id = existing_customer_id
+            logger.info(f"Using existing customer_id from context: {customer_id}")
+        else:
+            customer_id = initial_customer_id  # Use the one we set during session creation
+            logger.info(f"Using customer_id from session creation: {customer_id}")
+        
+        # Ensure session has customer_id (always update to be sure)
+        if customer_id:
+            try:
+                from utils.supabase_client import SUPABASE_ENABLED
+                if SUPABASE_ENABLED:
+                    from supabase import create_client
+                    import os
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                    supabase_url = os.getenv("SUPABASE_URL")
+                    supabase_key = os.getenv("SUPABASE_KEY")
+                    if supabase_url and supabase_key:
+                        supabase = create_client(supabase_url, supabase_key)
+                        # Always update customer_id in session in Supabase to ensure it's set
+                        supabase.table("sessions").update({"customer_id": customer_id}).eq("session_id", session_id).execute()
+                        logger.info(f"Ensured session customer_id is set to: {customer_id}")
+                else:
+                    # Update in JSON metadata
+                    session = session_metadata.get_session(session_id)
+                    if session:
+                        with session_metadata._lock:
+                            session_metadata._metadata[session_id]["customer_id"] = customer_id
+                            session_metadata._save_sessions()
+            except Exception as e:
+                logger.warning(f"Could not update customer_id in session: {e}")
+        
         try:
             # Get agent response with timeout protection
             import time
             response_start_time = time.time()
             response_text = ""
+            detected_agent = None  # Will be set by get_response() if an agent is detected
             
             async def get_response():
                 """Inner async function for timeout handling."""
-                nonlocal response_text
+                nonlocal response_text, detected_agent
                 all_texts = []  # Collect all text responses
                 tool_results = []  # Collect tool results as fallback
                 last_tool_result = None  # Keep track of last tool result for fallback
@@ -185,39 +301,129 @@ async def chat(request: ChatRequest, http_request: Request):
                         session_id=session_id,
                         new_message=message
                     ):
-                        # Collect text from any event with content
+                        # Detect which agent tool was called
                         if event.content and event.content.parts:
                             for part in event.content.parts:
+                                # Check for function calls to detect agent usage
+                                if hasattr(part, "function_call") and part.function_call:
+                                    function_name = getattr(part.function_call, "name", None)
+                                    if function_name:
+                                        # AgentTool functions can be named after the agent
+                                        # Try exact match first, then partial match
+                                        function_lower = function_name.lower()
+                                        
+                                        # Check for agent names in function name
+                                        if "faq" in function_lower or function_lower == "faq_agent":
+                                            detected_agent = "faq_agent"
+                                            logger.info(f"Detected agent: faq_agent via function {function_name}")
+                                        elif "order" in function_lower and "agent" in function_lower:
+                                            detected_agent = "order_agent"
+                                            logger.info(f"Detected agent: order_agent via function {function_name}")
+                                        elif "sentiment" in function_lower:
+                                            detected_agent = "sentiment_agent"
+                                            logger.info(f"Detected agent: sentiment_agent via function {function_name}")
+                                        elif "escalation" in function_lower or "ticket" in function_lower:
+                                            detected_agent = "escalation_agent"
+                                            logger.info(f"Detected agent: escalation_agent via function {function_name}")
+                                
+                                # Also check function_response for agent information
+                                if hasattr(part, "function_response") and part.function_response:
+                                    try:
+                                        # Sometimes the agent name is in the response metadata
+                                        result = part.function_response.result
+                                        if isinstance(result, dict):
+                                            # Check if result contains agent info
+                                            if "agent" in result:
+                                                detected_agent = result["agent"]
+                                                logger.info(f"Detected agent from response: {detected_agent}")
+                                            elif "agent_used" in result:
+                                                detected_agent = result["agent_used"]
+                                                logger.info(f"Detected agent_used from response: {detected_agent}")
+                                    except:
+                                        pass
+                                
+                                # Collect text from any event with content
+                                # IMPORTANT: Collect ALL text, not just final responses
+                                # This ensures we capture agent responses even if orchestrator continues
                                 if hasattr(part, "text") and part.text:
                                     text = part.text.strip()
                                     if text and len(text) > 5:  # Only meaningful text
                                         all_texts.append(text)
-                                        # Prefer final response if available
-                                        if event.is_final_response():
+                                        # Prefer final response if available, but don't break
+                                        # We want to collect all responses from all agents
+                                        if event.is_final_response() and not response_text:
                                             response_text = text
-                                            break
+                                            # Don't break here - continue to collect all agent responses
                                 
                                 # Also collect function_response results as fallback
                                 if hasattr(part, "function_response") and part.function_response:
                                     try:
                                         result = part.function_response.result
                                         last_tool_result = result  # Store for fallback
-                                        if isinstance(result, str) and len(result) > 10:
-                                            tool_results.append(result)
-                                        elif isinstance(result, dict):
+                                        
+                                        # Check for agent info in function response
+                                        if isinstance(result, dict):
                                             # Store the full dict for later processing
                                             tool_results.append(result)
                                             last_tool_result = result
+                                            
+                                            # Try to detect agent from response content
+                                            # Look for patterns that indicate which agent responded
+                                            result_str = str(result).lower()
+                                            if not detected_agent:  # Only if not already detected
+                                                if "order" in result_str and ("status" in result_str or "tracking" in result_str):
+                                                    detected_agent = "order_agent"
+                                                    logger.info("Detected order_agent from response content")
+                                                elif "ticket" in result_str and ("created" in result_str or "id" in result_str):
+                                                    detected_agent = "escalation_agent"
+                                                    logger.info("Detected escalation_agent from response content")
+                                                elif "refund" in result_str or "shipping" in result_str or "policy" in result_str:
+                                                    detected_agent = "faq_agent"
+                                                    logger.info("Detected faq_agent from response content")
+                                            
                                             # Also extract specific fields if available
                                             if "answer" in result:
                                                 tool_results.append(result["answer"])
                                             elif "error_message" in result:
                                                 tool_results.append(result["error_message"])
+                                        elif isinstance(result, str) and len(result) > 10:
+                                            # CRITICAL: AgentTool returns the agent's text response as a string
+                                            # This is the actual response from the specialized agent!
+                                            tool_results.append(result)
+                                            all_texts.append(result)  # Also add to all_texts so it can be selected as final response
+                                            logger.info(f"Captured agent response text from function_response (length: {len(result)})")
+                                            
+                                            # Try to detect agent from text content
+                                            if not detected_agent:
+                                                result_lower = result.lower()
+                                                if "order" in result_lower and ("status" in result_lower or "tracking" in result_lower or "order id" in result_lower):
+                                                    detected_agent = "order_agent"
+                                                    logger.info("Detected order_agent from text content")
+                                                elif "ticket" in result_lower and ("created" in result_lower or "ticket id" in result_lower):
+                                                    detected_agent = "escalation_agent"
+                                                    logger.info("Detected escalation_agent from text content")
+                                                elif "refund" in result_lower or "shipping" in result_lower or "policy" in result_lower:
+                                                    detected_agent = "faq_agent"
+                                                    logger.info("Detected faq_agent from text content")
                                     except:
                                         pass
                         
+                        # Don't break early - we want to collect all agent responses
+                        # The orchestrator might call multiple agents, and we need all their responses
+                        # Only break if we have a final response AND it's from the orchestrator itself
+                        # (not from an agent tool call)
                         if response_text and event.is_final_response():
-                            break
+                            # Check if this is the orchestrator's final response (not an agent tool)
+                            # If it's an agent tool response, continue to collect
+                            is_agent_tool = False
+                            if event.content and event.content.parts:
+                                for part in event.content.parts:
+                                    if hasattr(part, "function_call") or hasattr(part, "function_response"):
+                                        is_agent_tool = True
+                                        break
+                            # Only break if it's the orchestrator's own final response
+                            if not is_agent_tool:
+                                break
                 except TypeError as e:
                     # Handle the specific error from agent_tool when Content is None
                     if "'NoneType' object is not iterable" in str(e) or "NoneType" in str(e):
@@ -229,11 +435,20 @@ async def chat(request: ChatRequest, http_request: Request):
                         raise  # Re-raise if it's a different TypeError
                 
                 # If no final response, use the longest text collected
+                # This captures text from specialized agents even if orchestrator doesn't generate final text
                 if not response_text and all_texts:
                     # Filter meaningful texts (longer than 20 chars)
                     meaningful = [t for t in all_texts if len(t) > 20]
                     if meaningful:
-                        response_text = max(meaningful, key=len)
+                        # Prefer agent responses over orchestrator responses
+                        # Agent responses are usually more specific and helpful
+                        agent_responses = [t for t in meaningful if any(keyword in t.lower() for keyword in ["order", "ticket", "refund", "policy", "shipping"])]
+                        if agent_responses:
+                            response_text = max(agent_responses, key=len)
+                            logger.info(f"Using agent response from collected texts (length: {len(response_text)})")
+                        else:
+                            response_text = max(meaningful, key=len)
+                            logger.info(f"Using longest text from collected responses (length: {len(response_text)})")
                 
                 # Fallback: Generate response from tool results if no text response
                 if not response_text and tool_results:
@@ -319,22 +534,54 @@ async def chat(request: ChatRequest, http_request: Request):
                                 break
                 
                 # Last resort: use tool result if agent didn't generate text
+                # This is critical when orchestrator calls a specialized agent but doesn't generate final text
                 if not response_text and tool_results:
-                    # Use the longest tool result
-                    meaningful_tools = [t for t in tool_results if len(t) > 20]
-                    if meaningful_tools:
-                        response_text = max(meaningful_tools, key=len)
+                    # Prioritize string results from agent tools (they contain the actual agent responses)
+                    string_results = [t for t in tool_results if isinstance(t, str) and len(t) > 20]
+                    if string_results:
+                        # If we have multiple agent responses, prefer the most relevant one
+                        # (usually the longest, but could be enhanced with relevance scoring)
+                        response_text = max(string_results, key=len)
+                        logger.info(f"Using agent tool response from tool_results (length: {len(response_text)})")
                     elif tool_results:
-                        response_text = max(tool_results, key=len)
+                        # Fallback to any result
+                        longest = max(tool_results, key=lambda x: len(str(x)))
+                        response_text = str(longest) if not isinstance(longest, str) else longest
+                        logger.info(f"Using fallback tool result (length: {len(response_text)})")
                 
-                return response_text
+                # CRITICAL: If we still don't have a response but have collected texts from agents,
+                # use the best one. This handles cases where orchestrator calls agents but doesn't
+                # generate its own final response
+                if not response_text and all_texts:
+                    # Filter meaningful texts
+                    meaningful = [t for t in all_texts if len(t) > 20]
+                    if meaningful:
+                        # Prefer agent-specific responses (they're usually more helpful)
+                        agent_keywords = ["order", "ticket", "refund", "policy", "shipping", "cancelled", "status"]
+                        agent_responses = [t for t in meaningful if any(kw in t.lower() for kw in agent_keywords)]
+                        if agent_responses:
+                            response_text = max(agent_responses, key=len)
+                            logger.info(f"Using agent response from all_texts (length: {len(response_text)})")
+                        else:
+                            response_text = max(meaningful, key=len)
+                            logger.info(f"Using longest text from all_texts (length: {len(response_text)})")
+                
+                # Return both response text and detected agent
+                return response_text, detected_agent
         
             # Execute with 30 second timeout
-            response_text = await with_timeout(
+            result = await with_timeout(
                 get_response(),
                 timeout_seconds=30,
-                default_response="I apologize, but the request took too long to process. Please try again with a simpler question."
+                default_response=("I apologize, but the request took too long to process. Please try again with a simpler question.", None)
             )
+            
+            # Handle both tuple (response, agent) and string (fallback) responses
+            if isinstance(result, tuple):
+                response_text, detected_agent = result
+            else:
+                response_text = result
+                detected_agent = None
             
             if not response_text:
                 response_text = "I apologize, but I couldn't generate a response. Please try rephrasing your question."
@@ -349,7 +596,14 @@ async def chat(request: ChatRequest, http_request: Request):
         logger.info(f"Response sent to user: {request.user_id}")
         
         # Extract agent_used from response if available (default to orchestrator)
-        agent_used = "orchestrator"
+        # Use detected_agent if available, otherwise default to orchestrator
+        agent_used = detected_agent if detected_agent else "orchestrator"
+        
+        # Log which agent was detected
+        if detected_agent:
+            logger.info(f"✅ Agent detected: {detected_agent} for user {request.user_id}")
+        else:
+            logger.info(f"⚠️ No agent detected, defaulting to orchestrator for user {request.user_id}")
         
         # Log analytics (now saves to Supabase)
         analytics.log_interaction(
@@ -368,20 +622,100 @@ async def chat(request: ChatRequest, http_request: Request):
             role="user",
             content=sanitized_message
         )
+        # Prepare metadata with A/B testing variant
+        message_metadata = {
+            "response_time": response_time,
+            "agent": agent_used
+        }
+        if ab_variant:
+            message_metadata["ab_test_variant"] = ab_variant
+        
         conversation_history.add_message(
             user_id=request.user_id,
             session_id=session_id,
             role="assistant",
             content=response_text,
-            metadata={"response_time": response_time, "agent": agent_used}
+            metadata=message_metadata
         )
+        
+        # QA & Compliance Check
+        qa_result = None
+        try:
+            from utils.qa_checker import get_qa_checker
+            qa_checker = get_qa_checker()
+            qa_result = qa_checker.check_response(
+                response=response_text,
+                user_message=sanitized_message,
+                agent_used=agent_used
+            )
+            
+            # Log quality issues if any
+            if qa_result.get("overall_status") != "pass":
+                logger.warning(
+                    f"QA check for session {session_id}: {qa_result.get('overall_status')} "
+                    f"(score: {qa_result.get('quality_score', 0):.2f})"
+                )
+                if qa_result.get("quality_issues"):
+                    logger.warning(f"Quality issues: {qa_result.get('quality_issues')}")
+            
+            # Store QA result in message metadata for analytics
+            try:
+                from utils.supabase_client import SUPABASE_ENABLED, supabase
+                if SUPABASE_ENABLED:
+                    # Update last message with QA metadata
+                    supabase.table("messages").update({
+                        "metadata": {
+                            "response_time": response_time,
+                            "agent": agent_used,
+                            "qa_score": qa_result.get("quality_score"),
+                            "qa_status": qa_result.get("overall_status"),
+                            "compliance_flags": qa_result.get("compliance_flags", [])
+                        }
+                    }).eq("session_id", session_id).order("timestamp", desc=True).limit(1).execute()
+            except Exception as e:
+                logger.debug(f"Could not store QA metadata: {e}")
+                
+        except Exception as e:
+            logger.warning(f"Could not run QA check: {e}")
+            qa_result = None
+        
+        # A/B Testing - Record metrics if test is active
+        ab_variant = None
+        try:
+            from utils.ab_testing import get_ab_testing
+            ab_testing = get_ab_testing()
+            
+            # Check if there's an active test for this agent
+            if agent_used and agent_used in ab_testing.active_tests:
+                # Get variant for this user (consistent hashing)
+                ab_variant = ab_testing.get_variant(agent_used, request.user_id)
+                
+                # Record metrics (will be updated with feedback later)
+                ab_testing.record_metrics(
+                    agent_name=agent_used,
+                    variant=ab_variant,
+                    response_time=response_time,
+                    escalated=False,  # Will be updated if ticket created
+                    resolved=False,  # Will be updated based on feedback
+                    thumbs_up=False,  # Will be updated from feedback
+                    thumbs_down=False  # Will be updated from feedback
+                )
+                
+                logger.debug(f"A/B Testing: Recorded metrics for {agent_used} variant {ab_variant}")
+        except Exception as e:
+            logger.debug(f"Could not record A/B testing metrics: {e}")
+            ab_variant = None
         
         return ChatResponse(
             response=response_text,
             session_id=session_id,
             agent_used=agent_used,
             response_time=response_time,
-            metrics=metrics.get_counts()
+            metrics=metrics.get_counts(),
+            quality_score=qa_result.get("quality_score") if qa_result else None,
+            quality_status=qa_result.get("overall_status") if qa_result else None,
+            compliance_flags=qa_result.get("compliance_flags") if qa_result else None,
+            ab_test_variant=ab_variant
         )
     
     except HTTPException:
@@ -398,6 +732,139 @@ async def chat(request: ChatRequest, http_request: Request):
 async def get_metrics():
     """Get current metrics."""
     return metrics.get_counts()
+
+
+@app.get("/ab-testing/results")
+async def get_ab_test_results(
+    agent_name: Optional[str] = Query(None, description="Agent name to get results for")
+):
+    """
+    Get A/B test results.
+    
+    Args:
+        agent_name: Optional agent name to filter results
+        
+    Returns:
+        A/B test results with statistical analysis
+    """
+    try:
+        from utils.ab_testing import get_ab_testing
+        ab_testing = get_ab_testing()
+        
+        if agent_name:
+            result = ab_testing.get_test_results(agent_name)
+            return result
+        else:
+            # Return all tests
+            all_tests = ab_testing.get_all_tests()
+            return {
+                "status": "success",
+                "tests": all_tests
+            }
+    except Exception as e:
+        logger.error(f"Error getting A/B test results: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting A/B test results: {str(e)}")
+
+
+@app.post("/ab-testing/create")
+async def create_ab_test(request: dict):
+    """
+    Create a new A/B test for an agent.
+    
+    Body:
+    {
+        "agent_name": "order_agent",
+        "variant_a_instruction": "Current instruction...",
+        "variant_b_instruction": "Test instruction...",
+        "description": "Optional description"
+    }
+    """
+    try:
+        from utils.ab_testing import get_ab_testing
+        ab_testing = get_ab_testing()
+        
+        agent_name = request.get("agent_name")
+        variant_a = request.get("variant_a_instruction")
+        variant_b = request.get("variant_b_instruction")
+        description = request.get("description")
+        
+        if not agent_name or not variant_a or not variant_b:
+            raise HTTPException(status_code=400, detail="agent_name, variant_a_instruction, and variant_b_instruction are required")
+        
+        success = ab_testing.create_test(
+            agent_name=agent_name,
+            variant_a_instruction=variant_a,
+            variant_b_instruction=variant_b,
+            description=description
+        )
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"A/B test created for {agent_name}",
+                "test": ab_testing.get_test_results(agent_name)
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create A/B test")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating A/B test: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error creating A/B test: {str(e)}")
+
+
+@app.get("/qa/check")
+async def check_qa(
+    session_id: Optional[str] = Query(None, description="Session ID to check"),
+    limit: int = Query(10, description="Number of recent responses to check")
+):
+    """
+    Get QA results for recent responses.
+    
+    Returns QA report with quality scores and issues.
+    """
+    try:
+        from utils.qa_checker import get_qa_checker
+        from utils.supabase_client import get_messages, SUPABASE_ENABLED
+        
+        qa_checker = get_qa_checker()
+        
+        # Get recent messages
+        if SUPABASE_ENABLED and session_id:
+            messages = get_messages(user_id="", session_id=session_id, limit=limit)
+        else:
+            from memory.conversation_history import conversation_history
+            messages = conversation_history.get_history(session_id=session_id, limit=limit) if session_id else []
+        
+        # Filter assistant messages
+        assistant_messages = [
+            {
+                "response": msg.get("content", ""),
+                "user_message": "",
+                "agent_used": msg.get("metadata", {}).get("agent", "unknown")
+            }
+            for msg in messages if msg.get("role") == "assistant"
+        ]
+        
+        if not assistant_messages:
+            return {
+                "status": "no_data",
+                "message": "No assistant messages found"
+            }
+        
+        # Run batch QA check
+        batch_result = qa_checker.check_batch(assistant_messages)
+        
+        return {
+            "status": "success",
+            "qa_report": batch_result,
+            "checked_responses": len(assistant_messages)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in QA check endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error checking QA: {str(e)}")
 
 @app.post("/metrics/reset")
 async def reset_metrics():
@@ -477,52 +944,312 @@ async def get_analytics():
     return result
 
 
+@app.get("/analytics/daily")
+async def get_daily_analytics():
+    """Get daily analytics data for charts (last 7 days)."""
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED
+        if SUPABASE_ENABLED:
+            from supabase import create_client
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                
+                # Get last 7 days
+                today = datetime.now().date()
+                days_data = []
+                day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                
+                for i in range(6, -1, -1):  # Last 7 days
+                    target_date = today - timedelta(days=i)
+                    day_name = day_names[target_date.weekday()]
+                    
+                    # Count messages for this day
+                    start_of_day = datetime.combine(target_date, datetime.min.time())
+                    end_of_day = datetime.combine(target_date, datetime.max.time())
+                    
+                    result = supabase.table("messages").select("id", count="exact").gte("created_at", start_of_day.isoformat()).lte("created_at", end_of_day.isoformat()).limit(1).execute()
+                    message_count = result.count if hasattr(result, 'count') and result.count is not None else 0
+                    interactions = message_count // 2  # Each interaction = user + assistant
+                    
+                    # Get average satisfaction for this day
+                    feedback_result = supabase.table("feedback").select("rating").gte("created_at", start_of_day.isoformat()).lte("created_at", end_of_day.isoformat()).execute()
+                    ratings = [f.get("rating") for f in feedback_result.data if f.get("rating") is not None]
+                    avg_satisfaction = sum(ratings) / len(ratings) if ratings else 0.0
+                    
+                    days_data.append({
+                        "day": day_name,
+                        "interactions": interactions,
+                        "satisfaction": round(avg_satisfaction, 1)
+                    })
+                
+                return days_data
+    except Exception as e:
+        logger.warning(f"Error getting daily analytics: {e}")
+    
+    # Fallback: return empty data
+    return [
+        {"day": "Mon", "interactions": 0, "satisfaction": 0},
+        {"day": "Tue", "interactions": 0, "satisfaction": 0},
+        {"day": "Wed", "interactions": 0, "satisfaction": 0},
+        {"day": "Thu", "interactions": 0, "satisfaction": 0},
+        {"day": "Fri", "interactions": 0, "satisfaction": 0},
+        {"day": "Sat", "interactions": 0, "satisfaction": 0},
+        {"day": "Sun", "interactions": 0, "satisfaction": 0},
+    ]
+
+
+@app.get("/analytics/ticket-status")
+async def get_ticket_status_distribution():
+    """Get ticket status distribution for pie chart."""
+    from tools.ticket_tool import get_all_tickets
+    
+    all_tickets = get_all_tickets()
+    if isinstance(all_tickets, dict):
+        tickets_list = list(all_tickets.values())
+    else:
+        tickets_list = all_tickets if isinstance(all_tickets, list) else []
+    
+    # Count by status
+    status_counts = {
+        "Open": 0,
+        "In Progress": 0,
+        "Resolved": 0,
+        "Closed": 0
+    }
+    
+    for ticket in tickets_list:
+        status = ticket.get("status", "").title()
+        if status == "In_Progress" or status == "In Progress":
+            status_counts["In Progress"] += 1
+        elif status in status_counts:
+            status_counts[status] += 1
+        elif status:
+            # Handle other statuses
+            status_counts["Open"] += 1
+    
+    # Convert to array format for chart
+    chart_colors = [
+        "hsl(var(--chart-1))",
+        "hsl(var(--chart-2))",
+        "hsl(var(--chart-3))",
+        "hsl(var(--chart-4))"
+    ]
+    
+    result = []
+    for i, (status, count) in enumerate(status_counts.items()):
+        if count > 0:  # Only include statuses with tickets
+            result.append({
+                "name": status,
+                "value": count,
+                "fill": chart_colors[i % len(chart_colors)]
+            })
+    
+    return result
+
+
+@app.get("/feedback/improvements/{agent_name}")
+async def get_agent_improvements(agent_name: str):
+    """
+    Get improvement suggestions and applied refinements for an agent.
+    
+    Shows how feedback is being used to improve the agent.
+    """
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED, get_agent_refinements, get_feedback_insights
+        
+        if not SUPABASE_ENABLED:
+            return {"error": "Supabase not enabled"}
+        
+        # Get refinements
+        all_refinements = get_agent_refinements(agent_name=agent_name)
+        pending = [r for r in all_refinements if r.get("status") == "pending"]
+        applied = [r for r in all_refinements if r.get("status") == "applied"]
+        
+        # Get feedback insights
+        insights = get_feedback_insights(agent_name=agent_name)
+        
+        return {
+            "agent_name": agent_name,
+            "pending_refinements": len(pending),
+            "applied_refinements": len(applied),
+            "total_refinements": len(all_refinements),
+            "pending_details": pending[:5],  # Last 5 pending
+            "applied_details": applied[-5:],  # Last 5 applied
+            "feedback_insights": insights[-10:] if insights else [],  # Last 10 insights
+            "total_feedback_count": len(insights) if insights else 0,
+            "message": f"Feedback is being analyzed to improve {agent_name}. Refinements are automatically applied daily at 2 AM."
+        }
+    except Exception as e:
+        logger.error(f"Error getting improvements: {e}")
+        return {"error": str(e)}
+
+
 @app.post("/feedback")
-async def submit_feedback(
-    session_id: str,
-    feedback_type: str,
-    rating: Optional[int] = None,
-    comment: Optional[str] = None,
-    user_id: Optional[str] = None,
-    reason: Optional[str] = None,
-    category: Optional[str] = None,
-    agent_used: Optional[str] = None
-):
+async def submit_feedback(request: FeedbackRequest):
     """
     Submit user feedback.
     
     Args:
-        session_id: Session identifier
-        feedback_type: "thumbs_up", "thumbs_down", or "rating"
-        rating: Numeric rating (1-5) if feedback_type is "rating"
-        comment: Optional comment
-        user_id: Optional user identifier
-        reason: Optional reason for feedback
-        category: Optional feedback category
-        agent_used: Optional agent that handled the conversation
+        request: FeedbackRequest with session_id, feedback_type, and optional fields
     """
     # Essayer Supabase d'abord
     try:
         from utils.supabase_client import SUPABASE_ENABLED, create_feedback
-        if SUPABASE_ENABLED and user_id:
+        from utils.feedback_manager import FeedbackManager
+        
+        if SUPABASE_ENABLED and request.user_id:
             result = create_feedback(
-                session_id=session_id,
-                user_id=user_id,
-                feedback_type=feedback_type,
-                rating=rating,
-                comment=comment,
-                reason=reason,
-                category=category,
-                agent_used=agent_used
+                session_id=request.session_id,
+                user_id=request.user_id,
+                feedback_type=request.feedback_type,
+                rating=request.rating,
+                comment=request.comment,
+                reason=request.reason,
+                category=request.category,
+                agent_used=request.agent_used
             )
             if result.get("status") == "success":
-                analytics.log_feedback(session_id, feedback_type, rating, comment)
-                return {"status": "success", "message": "Feedback recorded", "feedback_id": result.get("feedback_id")}
-    except Exception:
+                analytics.log_feedback(request.session_id, request.feedback_type, request.rating, request.comment)
+                
+                # Auto-extract reason and category from comment if not provided
+                reason = request.reason
+                category = request.category
+                
+                if not reason and request.comment:
+                    comment_lower = request.comment.lower()
+                    # Extract reason from comment
+                    if any(word in comment_lower for word in ["incorrect", "wrong", "error", "mistake"]):
+                        reason = "incorrect"
+                    elif any(word in comment_lower for word in ["missing", "incomplete", "more info", "details"]):
+                        reason = "missing_info"
+                    elif any(word in comment_lower for word in ["unclear", "confusing", "vague", "don't understand"]):
+                        reason = "unclear"
+                    elif any(word in comment_lower for word in ["slow", "delay", "waiting", "took too long"]):
+                        reason = "slow"
+                    elif any(word in comment_lower for word in ["helpful", "useful", "good", "great", "excellent"]):
+                        reason = "helpful"
+                
+                if not category and request.comment:
+                    comment_lower = request.comment.lower()
+                    # Extract category from comment
+                    if any(word in comment_lower for word in ["wrong", "incorrect", "error", "accurate", "accuracy"]):
+                        category = "accuracy"
+                    elif any(word in comment_lower for word in ["slow", "fast", "quick", "speed", "delay"]):
+                        category = "speed"
+                    elif any(word in comment_lower for word in ["unclear", "confusing", "understand", "explain", "clarity"]):
+                        category = "clarity"
+                    elif any(word in comment_lower for word in ["helpful", "useful", "helpfulness"]):
+                        category = "helpfulness"
+                    elif any(word in comment_lower for word in ["missing", "incomplete", "complete", "details"]):
+                        category = "completeness"
+                
+                # If still no reason/category, set defaults based on feedback_type
+                if not reason:
+                    if request.feedback_type == "thumbs_up":
+                        reason = "helpful"
+                    elif request.feedback_type == "thumbs_down":
+                        reason = "low_rating"
+                
+                if not category:
+                    category = "general"
+                
+                # Update feedback in database with extracted reason/category if they were missing
+                if (not request.reason and reason) or (not request.category and category):
+                    try:
+                        from supabase import create_client
+                        import os
+                        supabase_url = os.getenv("SUPABASE_URL")
+                        supabase_key = os.getenv("SUPABASE_KEY")
+                        if supabase_url and supabase_key:
+                            supabase = create_client(supabase_url, supabase_key)
+                            update_data = {}
+                            if not request.reason and reason:
+                                update_data["reason"] = reason
+                            if not request.category and category:
+                                update_data["category"] = category
+                            if update_data:
+                                supabase.table("feedback").update(update_data).eq("feedback_id", result.get("feedback_id")).execute()
+                    except Exception as e:
+                        logger.warning(f"Failed to update feedback with extracted fields: {e}")
+                
+                # Analyze feedback for improvements (async, non-blocking)
+                try:
+                    feedback_manager = FeedbackManager()
+                    feedback_data = {
+                        "id": result.get("feedback_id"),
+                        "session_id": request.session_id,
+                        "user_id": request.user_id,
+                        "feedback_type": request.feedback_type,
+                        "rating": request.rating,
+                        "comment": request.comment,
+                        "reason": reason,  # Use extracted or provided reason
+                        "category": category,  # Use extracted or provided category
+                        "agent_used": request.agent_used or "orchestrator"
+                    }
+                    # Analyze feedback asynchronously (won't block response)
+                    feedback_manager._analyze_feedback_async(feedback_data)
+                except Exception as e:
+                    logger.warning(f"Failed to analyze feedback: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                # Record A/B Testing metrics from feedback
+                try:
+                    from utils.ab_testing import get_ab_testing
+                    ab_testing = get_ab_testing()
+                    
+                    if request.agent_used and request.agent_used in ab_testing.active_tests:
+                        # Get variant from most recent message metadata
+                        try:
+                            from utils.supabase_client import get_messages, SUPABASE_ENABLED
+                            if SUPABASE_ENABLED:
+                                recent_messages = get_messages(user_id=request.user_id, session_id=request.session_id, limit=1)
+                                if recent_messages:
+                                    variant = recent_messages[0].get("metadata", {}).get("ab_test_variant")
+                                    if variant:
+                                        # Calculate satisfaction score from feedback
+                                        satisfaction = None
+                                        if request.feedback_type == "thumbs_up":
+                                            satisfaction = 1.0
+                                        elif request.feedback_type == "thumbs_down":
+                                            satisfaction = 0.0
+                                        elif request.rating:
+                                            satisfaction = request.rating / 5.0
+                                        
+                                        # Record metrics
+                                        ab_testing.record_metrics(
+                                            agent_name=request.agent_used,
+                                            variant=variant,
+                                            satisfaction_score=satisfaction,
+                                            resolved=(request.feedback_type == "thumbs_up" or (request.rating and request.rating >= 4)),
+                                            thumbs_up=(request.feedback_type == "thumbs_up"),
+                                            thumbs_down=(request.feedback_type == "thumbs_down")
+                                        )
+                        except Exception as e:
+                            logger.debug(f"Could not record A/B testing metrics from feedback: {e}")
+                except Exception as e:
+                    logger.debug(f"Could not process A/B testing for feedback: {e}")
+                
+                return {
+                    "status": "success", 
+                    "message": "Feedback recorded and will be analyzed for improvements", 
+                    "feedback_id": result.get("feedback_id")
+                }
+    except Exception as e:
+        logger.error(f"Error processing feedback: {e}")
         pass  # Fallback vers analytics
     
     # Fallback vers analytics (JSON)
-    analytics.log_feedback(session_id, feedback_type, rating, comment)
+    analytics.log_feedback(request.session_id, request.feedback_type, request.rating, request.comment)
     return {"status": "success", "message": "Feedback recorded"}
 
 
@@ -542,24 +1269,26 @@ async def get_history(user_id: str, limit: Optional[int] = 50, session_id: Optio
 
 
 @app.get("/sessions/{user_id}")
-async def get_user_sessions(user_id: str):
-    """Get all sessions for a user with metadata."""
-    sessions = session_metadata.get_user_sessions(user_id)
-    return {"user_id": user_id, "sessions": sessions, "count": len(sessions)}
+async def get_user_sessions(user_id: str, customer_id: Optional[str] = Query(None)):
+    """Get all sessions for a user with metadata, optionally filtered by customer_id."""
+    sessions = session_metadata.get_user_sessions(user_id, customer_id)
+    # Return array directly for frontend compatibility
+    return sessions
 
 
 class CreateSessionRequest(BaseModel):
     user_id: str
     name: Optional[str] = None
+    customer_id: Optional[str] = None
 
 
 @app.post("/sessions/create")
 async def create_session(request: CreateSessionRequest):
     """
-    Create a new session with optional custom name.
+    Create a new session with optional custom name and customer_id.
     
     Args:
-        request: CreateSessionRequest with user_id and optional name
+        request: CreateSessionRequest with user_id, optional name, and optional customer_id
     """
     import os
     session_id = f"session_{request.user_id}_{os.urandom(4).hex()}"
@@ -575,8 +1304,29 @@ async def create_session(request: CreateSessionRequest):
     except Exception:
         pass  # Session may already exist
     
-    # Create metadata
-    metadata = session_metadata.create_session(session_id, request.user_id, request.name)
+    # Create metadata with customer_id
+    logger.info(f"Creating session with user_id={request.user_id}, customer_id={request.customer_id}, name={request.name}")
+    metadata = session_metadata.create_session(session_id, request.user_id, request.name, request.customer_id)
+    logger.info(f"Session created: {session_id}, metadata: {metadata}")
+    
+    # Ensure customer_id is saved in Supabase if provided
+    if request.customer_id:
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED
+            if SUPABASE_ENABLED:
+                from supabase import create_client
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_KEY")
+                if supabase_url and supabase_key:
+                    supabase = create_client(supabase_url, supabase_key)
+                    # Ensure customer_id is set in Supabase
+                    result = supabase.table("sessions").update({"customer_id": request.customer_id}).eq("session_id", session_id).execute()
+                    logger.info(f"Updated session customer_id in Supabase: {request.customer_id}")
+        except Exception as e:
+            logger.warning(f"Could not update customer_id in Supabase session: {e}")
     
     return {
         "status": "success",
@@ -621,9 +1371,41 @@ async def get_session_metadata(session_id: str):
     return metadata
 
 
+@app.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Delete a session and all its messages."""
+    # Delete session metadata (handles both Supabase and JSON)
+    success = session_metadata.delete_session(session_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    
+    return {
+        "status": "success",
+        "message": f"Session {session_id} deleted successfully"
+    }
+
+
 @app.get("/orders")
 async def get_orders():
     """Get all orders from the system."""
+    # Try Supabase first
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED, get_orders as supabase_get_orders
+        if SUPABASE_ENABLED:
+            orders_list = supabase_get_orders()
+            return {
+                "orders": orders_list,
+                "count": len(orders_list),
+                "statuses": {
+                    status: sum(1 for o in orders_list if o.get("status") == status)
+                    for status in ["processing", "shipped", "delivering", "delivery_soon", "delivered", "cancelled"]
+                }
+            }
+    except Exception as e:
+        logger.warning(f"Error fetching orders from Supabase: {e}")
+    
+    # Fallback to JSON
     from tools.order_tool import _MOCK_ORDERS
     orders_list = list(_MOCK_ORDERS.values())
     return {
@@ -631,7 +1413,7 @@ async def get_orders():
         "count": len(orders_list),
         "statuses": {
             status: sum(1 for o in orders_list if o.get("status") == status)
-            for status in ["processing", "shipped", "delivered", "cancelled"]
+            for status in ["processing", "shipped", "delivering", "delivery_soon", "delivered", "cancelled"]
         }
     }
 
@@ -644,6 +1426,92 @@ async def get_order(order_id: str):
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
     return {"order": order}
+
+
+@app.put("/orders/{order_id}")
+async def update_order(order_id: str, order_data: dict):
+    """Update an order in the system."""
+    from tools.order_tool import lookup_order, add_order
+    
+    # Check if order exists
+    existing_order = lookup_order(order_id)
+    if existing_order.get("status") == "error":
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+    
+    # Merge existing order with updates
+    updated_order = existing_order.get("order", {})
+    updated_order.update(order_data)
+    updated_order["order_id"] = order_id  # Ensure order_id doesn't change
+    
+    # Validate status if provided
+    if "status" in order_data:
+        valid_statuses = ["processing", "shipped", "delivering", "delivery_soon", "delivered", "cancelled"]
+        if order_data["status"] not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            )
+    
+    # Auto-adjust status based on estimated_delivery date
+    # If estimated_delivery is updated, check if we need to adjust status
+    if "estimated_delivery" in order_data:
+        from datetime import datetime, date
+        try:
+            estimated_delivery = order_data.get("estimated_delivery")
+            if estimated_delivery:
+                # Parse the date
+                if isinstance(estimated_delivery, str):
+                    try:
+                        delivery_date = datetime.strptime(estimated_delivery.split("T")[0], "%Y-%m-%d").date()
+                    except:
+                        delivery_date = datetime.strptime(estimated_delivery, "%Y-%m-%d").date()
+                else:
+                    delivery_date = estimated_delivery
+                
+                today = date.today()
+                current_status = updated_order.get("status", "").lower()
+                
+                # Only auto-update if status is not "delivered" or "cancelled"
+                if current_status not in ["delivered", "cancelled"]:
+                    # If date has passed (current date is after estimated_delivery) → "delivery_soon"
+                    if delivery_date < today:
+                        updated_order["status"] = "delivery_soon"
+                    # If date is in the future → "delivering"
+                    elif delivery_date >= today:
+                        updated_order["status"] = "delivering"
+        except Exception as e:
+            logger.warning(f"Could not parse estimated_delivery date: {e}")
+    
+    # Update order
+    success = add_order(updated_order)
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update order")
+    
+    metrics.increment("orders_updated")
+    
+    return {
+        "status": "success",
+        "message": f"Order {order_id} updated successfully",
+        "order": updated_order
+    }
+
+
+@app.delete("/orders/{order_id}")
+async def delete_order(order_id: str):
+    """Delete an order from the system."""
+    from tools.order_tool import delete_order as remove_order
+    
+    success = remove_order(order_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+    
+    metrics.increment("orders_deleted")
+    
+    return {
+        "status": "success",
+        "message": f"Order {order_id} deleted successfully"
+    }
 
 
 @app.post("/orders")
@@ -664,7 +1532,7 @@ async def create_order(order_data: dict):
         ],
         "total": float,
         "order_date": str,  # YYYY-MM-DD
-        "shipped_date": str | None,  # YYYY-MM-DD
+        "shipped_at": str | None,  # YYYY-MM-DD (shipping date)
         "tracking_number": str | None,
         "estimated_delivery": str | None  # YYYY-MM-DD
     }
@@ -684,7 +1552,7 @@ async def create_order(order_data: dict):
         raise HTTPException(status_code=409, detail=f"Order {order_id} already exists")
     
     # Validate status
-    valid_statuses = ["processing", "shipped", "delivered", "cancelled"]
+    valid_statuses = ["processing", "shipped", "delivery_soon", "delivered", "cancelled"]
     if order_data["status"] not in valid_statuses:
         raise HTTPException(
             status_code=400, 
@@ -755,6 +1623,77 @@ async def get_ticket(ticket_id: str):
     return {"ticket": ticket}
 
 
+@app.post("/tickets/{ticket_id}/message")
+async def send_ticket_message(ticket_id: str, request: dict):
+    """
+    Send a message to the customer from a ticket (human agent response).
+    
+    The message will appear in the customer's chat as if from a human agent.
+    """
+    try:
+        from tools.ticket_tool import get_all_tickets
+        from utils.supabase_client import add_message
+        
+        # Get ticket information
+        all_tickets = get_all_tickets()
+        ticket = None
+        if isinstance(all_tickets, dict):
+            ticket = all_tickets.get(ticket_id)
+        elif isinstance(all_tickets, list):
+            ticket = next((t for t in all_tickets if t.get("ticket_id") == ticket_id), None)
+        
+        if not ticket:
+            raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+        
+        # Get message content
+        message_content = request.get("message", "").strip()
+        if not message_content:
+            raise HTTPException(status_code=400, detail="Message cannot be empty")
+        
+        # Get user_id and session_id from ticket
+        user_id = ticket.get("user_id")
+        session_id = ticket.get("session_id")
+        
+        if not user_id or not session_id:
+            raise HTTPException(
+                status_code=400, 
+                detail="Ticket must have user_id and session_id to send messages"
+            )
+        
+        # Add message to conversation history as assistant message from human agent
+        add_message(
+            user_id=user_id,
+            session_id=session_id,
+            role="assistant",
+            content=message_content,
+            is_human_agent=True
+        )
+        
+        # Update ticket status to "in_progress" if it's "open"
+        if ticket.get("status") == "open":
+            try:
+                from utils.supabase_client import SUPABASE_ENABLED, update_ticket_status
+                if SUPABASE_ENABLED:
+                    update_ticket_status(ticket_id, "in_progress")
+            except Exception as e:
+                logger.warning(f"Failed to update ticket status: {e}")
+        
+        logger.info(f"Human agent message sent for ticket {ticket_id} to user {user_id}")
+        
+        return {
+            "status": "success",
+            "message": "Message sent to customer",
+            "ticket_id": ticket_id,
+            "user_id": user_id,
+            "session_id": session_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending ticket message: {e}")
+        raise HTTPException(status_code=500, detail=f"Error sending message: {str(e)}")
+
+
 @app.get("/tickets/{ticket_id}/summary")
 async def get_ticket_summary(ticket_id: str):
     """Get a summary of a specific ticket."""
@@ -802,6 +1741,304 @@ async def get_ticket_summary(ticket_id: str):
         "summary": summary_text,  # Return the actual summary
         "created_at": ticket.get("created_at")
     }
+
+
+# ============================================================================
+# Agent Improvement & KB Update Endpoints
+# ============================================================================
+
+@app.get("/agent-refinements/{agent_name}")
+async def get_agent_refinements_endpoint(agent_name: str):
+    """Get pending refinements for an agent."""
+    try:
+        from utils.agent_improver import AgentImprover
+        improver = AgentImprover()
+        refinements = improver.get_pending_refinements(agent_name=agent_name)
+        summary = improver.get_improvement_summary(agent_name)
+        return {
+            "agent_name": agent_name,
+            "pending_refinements": refinements,
+            "summary": summary
+        }
+    except Exception as e:
+        logger.error(f"Error getting agent refinements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/agent-refinements/{agent_name}/apply")
+async def apply_agent_refinements(agent_name: str):
+    """Apply pending refinements to an agent."""
+    try:
+        from utils.agent_improver import AgentImprover
+        from agents import orchestrator_agent, faq_agent, order_agent, escalation_agent
+        
+        # Map agent names to modules
+        agent_modules = {
+            "orchestrator": orchestrator_agent,
+            "faq_agent": faq_agent,
+            "order_agent": order_agent,
+            "escalation_agent": escalation_agent
+        }
+        
+        agent_module = agent_modules.get(agent_name)
+        if not agent_module:
+            raise HTTPException(status_code=404, detail=f"Agent {agent_name} not found")
+        
+        improver = AgentImprover()
+        applied_count = improver.auto_apply_refinements(agent_name, agent_module)
+        
+        return {
+            "status": "success",
+            "agent_name": agent_name,
+            "refinements_applied": applied_count,
+            "message": f"Applied {applied_count} refinements to {agent_name}"
+        }
+    except Exception as e:
+        logger.error(f"Error applying agent refinements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/kb-updates")
+async def get_kb_updates_endpoint(status: Optional[str] = None):
+    """
+    Get KB update suggestions.
+    
+    Status options:
+    - "pending": Suggestions waiting for manual approval (default)
+    - "applied": Already applied to FAQ
+    - "rejected": Rejected by company
+    """
+    try:
+        from utils.supabase_client import get_kb_updates
+        updates = get_kb_updates(status=status or "pending")
+        return {
+            "updates": updates,
+            "count": len(updates),
+            "note": "KB updates require manual approval. Use POST /kb-updates/{update_id}/apply to approve."
+        }
+    except Exception as e:
+        logger.error(f"Error getting KB updates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/kb-updates/pending")
+async def get_pending_kb_updates():
+    """Get all pending KB update suggestions (requires manual approval)."""
+    try:
+        from utils.supabase_client import get_kb_updates
+        updates = get_kb_updates(status="pending")
+        return {
+            "status": "success",
+            "updates": updates,
+            "count": len(updates),
+            "message": "These are suggestions that require manual approval before being added to FAQ"
+        }
+    except Exception as e:
+        logger.error(f"Error getting pending KB updates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/kb-updates/{update_id}/apply")
+async def apply_single_kb_update(
+    update_id: str,
+    question: Optional[str] = None,
+    answer: Optional[str] = None,
+    category: Optional[str] = "General"
+):
+    """
+    Apply a single KB update suggestion (with optional manual edits).
+    
+    Args:
+        update_id: ID of the KB update to apply
+        question: Optional - override the auto-generated question
+        answer: Optional - override the auto-generated answer (RECOMMENDED)
+        category: Optional - FAQ category (default: "General")
+    """
+    try:
+        from utils.kb_updater import KBUpdater
+        from utils.supabase_client import get_kb_updates, update_kb_update_status
+        
+        updater = KBUpdater()
+        
+        # Get the specific update
+        all_updates = get_kb_updates(status="pending")
+        update = next((u for u in all_updates if u.get("update_id") == update_id), None)
+        
+        if not update:
+            raise HTTPException(status_code=404, detail=f"KB update {update_id} not found")
+        
+        # Apply with manual overrides if provided
+        content = update.get("content", {})
+        customer_comment = content.get("customer_comment", "")
+        
+        # Use provided question/answer or generate from feedback
+        final_question = question or updater._extract_question(customer_comment)
+        final_answer = answer or updater._generate_answer(customer_comment, content.get("reason", ""))
+        
+        # Load current KB
+        import json
+        from pathlib import Path
+        kb_file = Path(__file__).parent.parent / "data" / "faq_knowledge_base.json"
+        
+        if not kb_file.exists():
+            raise HTTPException(status_code=500, detail="FAQ knowledge base file not found")
+        
+        with open(kb_file, "r", encoding="utf-8") as f:
+            kb_data = json.load(f)
+        
+        # Create new FAQ entry
+        new_faq = {
+            "id": f"faq_{len(kb_data.get('faqs', [])) + 1}",
+            "question": final_question,
+            "answer": final_answer,
+            "category": category,
+            "tags": ["feedback", "approved"],
+            "source": "feedback",
+            "created_from_feedback": True,
+            "approved_by": "manual"  # Indicates manual approval
+        }
+        
+        # Add to KB
+        if "faqs" not in kb_data:
+            kb_data["faqs"] = []
+        kb_data["faqs"].append(new_faq)
+        
+        # Save KB
+        with open(kb_file, "w", encoding="utf-8") as f:
+            json.dump(kb_data, f, indent=2, ensure_ascii=False)
+        
+        # Mark update as applied
+        update_kb_update_status(update_id, "applied")
+        
+        logger.info(f"Applied KB update {update_id} with manual approval")
+        
+        return {
+            "status": "success",
+            "update_id": update_id,
+            "faq_added": new_faq,
+            "message": "KB update applied successfully with manual approval"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error applying KB update: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/kb-updates/{update_id}/reject")
+async def reject_kb_update(update_id: str, reason: Optional[str] = None):
+    """Reject a KB update suggestion."""
+    try:
+        from utils.supabase_client import update_kb_update_status
+        update_kb_update_status(update_id, "rejected")
+        
+        return {
+            "status": "success",
+            "update_id": update_id,
+            "message": f"KB update {update_id} rejected",
+            "reason": reason
+        }
+    except Exception as e:
+        logger.error(f"Error rejecting KB update: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/improvements/run-now")
+async def run_improvements_now_endpoint():
+    """Manually trigger improvements (refinements + KB updates) immediately."""
+    try:
+        result = run_improvements_now()
+        return {
+            "status": "success",
+            **result,
+            "message": f"Applied {result.get('refinements_applied', 0)} refinements and {result.get('kb_updates_applied', 0)} KB updates"
+        }
+    except Exception as e:
+        logger.error(f"Error running improvements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/refunds")
+async def get_refunds():
+    """
+    Get all refund requests.
+    Returns a list of all refunds in the database.
+    """
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED
+        if SUPABASE_ENABLED:
+            from supabase import create_client
+            import os
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                result = supabase.table("refunds").select("*").order("created_at", desc=True).execute()
+                return result.data or []
+        
+        # Fallback: return empty list if Supabase not enabled
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching refunds: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch refunds: {str(e)}")
+
+
+@app.put("/refunds/{refund_id}/status")
+async def update_refund_status(refund_id: str, request: dict):
+    """
+    Update the status of a refund request.
+    
+    Body:
+    {
+        "status": "pending" | "approved" | "rejected" | "processed",
+        "note": "optional note"
+    }
+    """
+    try:
+        new_status = request.get("status")
+        note = request.get("note")
+        
+        if new_status not in ["pending", "approved", "rejected", "processed"]:
+            raise HTTPException(status_code=400, detail="Invalid status. Must be: pending, approved, rejected, or processed")
+        
+        from utils.supabase_client import SUPABASE_ENABLED
+        if SUPABASE_ENABLED:
+            from supabase import create_client
+            from datetime import datetime
+            import os
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                
+                # Update refund status
+                update_data = {
+                    "status": new_status,
+                    "updated_at": datetime.now().isoformat()
+                }
+                
+                # If status is processed, set processed_at
+                if new_status == "processed":
+                    update_data["processed_at"] = datetime.now().isoformat()
+                
+                result = supabase.table("refunds").update(update_data).eq("refund_id", refund_id).execute()
+                
+                if not result.data:
+                    raise HTTPException(status_code=404, detail=f"Refund {refund_id} not found")
+                
+                return {
+                    "status": "success",
+                    "refund_id": refund_id,
+                    "new_status": new_status,
+                    "message": f"Refund status updated to {new_status}"
+                }
+        
+        raise HTTPException(status_code=500, detail="Supabase not enabled")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating refund status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update refund status: {str(e)}")
 
 
 if __name__ == "__main__":

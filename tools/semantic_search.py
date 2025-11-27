@@ -74,9 +74,10 @@ class SemanticSearchEngine:
         self._index: Optional[faiss.Index] = None
         self._faq_data: List[Dict] = []
         self._dimension: int = 384  # Default for all-MiniLM-L6-v2
+        self._model_initialized: bool = False
         
-        # Initialize model (lazy loading)
-        self._initialize_model()
+        # Don't initialize model here - use lazy loading when actually needed
+        # This prevents downloading/loading the model if semantic search isn't used
     
     def _initialize_model(self) -> None:
         """Initialize the sentence transformer model."""
@@ -96,6 +97,9 @@ class SemanticSearchEngine:
         Args:
             faqs: List of FAQ dictionaries with 'question' and 'answer' fields
         """
+        # Ensure model is loaded before building index
+        self._ensure_model_loaded()
+        
         if not faqs:
             raise ValueError("FAQ list cannot be empty")
         
@@ -120,10 +124,15 @@ class SemanticSearchEngine:
             self._save_index()
     
     def _save_index(self) -> None:
-        """Save FAISS index and FAQ data to disk."""
+        """Save FAISS index and FAQ data to Supabase Storage or disk."""
         if self._index is None:
             return
         
+        # Try Supabase Storage first
+        if self._save_index_to_supabase():
+            return
+        
+        # Fallback to local disk
         try:
             # Save FAISS index
             index_file = self.index_path / "faq_index.faiss"
@@ -141,13 +150,149 @@ class SemanticSearchEngine:
             # Log error but don't fail
             print(f"Warning: Failed to save index: {str(e)}")
     
+    def _save_index_to_supabase(self) -> bool:
+        """Save FAISS index to Supabase Storage."""
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED
+            if not SUPABASE_ENABLED:
+                return False
+            
+            from supabase import create_client
+            import os
+            from dotenv import load_dotenv
+            import tempfile
+            
+            load_dotenv()
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            
+            if not supabase_url or not supabase_key:
+                return False
+            
+            supabase = create_client(supabase_url, supabase_key)
+            
+            # Save index to temporary file first (FAISS needs a file path, not BytesIO)
+            tmp_index_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.faiss') as tmp_file:
+                    tmp_index_path = tmp_file.name
+                
+                # Write index to temporary file
+                faiss.write_index(self._index, tmp_index_path)
+                
+                # Read the file content
+                with open(tmp_index_path, 'rb') as f:
+                    index_data = f.read()
+                
+                # Upload to Supabase Storage bucket "Storage"
+                try:
+                    # Try upload with upsert
+                    result = supabase.storage.from_("Storage").upload(
+                        "faq_index.faiss",
+                        index_data,
+                        file_options={"content-type": "application/octet-stream", "upsert": "true"}
+                    )
+                except Exception as e:
+                    error_str = str(e).lower()
+                    # If file exists, try to update it
+                    if "already exists" in error_str or "duplicate" in error_str or "409" in error_str:
+                        try:
+                            supabase.storage.from_("Storage").update(
+                                "faq_index.faiss",
+                                index_data,
+                                file_options={"content-type": "application/octet-stream"}
+                            )
+                        except Exception as e2:
+                            # If update also fails, try remove then upload
+                            try:
+                                supabase.storage.from_("Storage").remove(["faq_index.faiss"])
+                                supabase.storage.from_("Storage").upload(
+                                    "faq_index.faiss",
+                                    index_data,
+                                    file_options={"content-type": "application/octet-stream"}
+                                )
+                            except Exception as e3:
+                                raise e3
+                    else:
+                        # Check if it's a permission error
+                        if "403" in str(e) or "unauthorized" in error_str or "row-level security" in error_str:
+                            print(f"\n⚠️  Permission Error: Make sure you're using SERVICE_ROLE key in .env")
+                            print(f"   Current key starts with: {supabase_key[:20]}...")
+                            print(f"   Go to Supabase Dashboard → Settings → API → Copy SERVICE_ROLE key")
+                            raise
+                        raise
+            finally:
+                # Clean up temporary file
+                if tmp_index_path and os.path.exists(tmp_index_path):
+                    try:
+                        os.unlink(tmp_index_path)
+                    except Exception:
+                        pass
+            
+            # Save metadata
+            metadata = {
+                'faq_data': self._faq_data,
+                'dimension': self._dimension,
+                'model_name': self.model_name
+            }
+            metadata_bytes = pickle.dumps(metadata)
+            
+            try:
+                supabase.storage.from_("Storage").upload(
+                    "faq_metadata.pkl",
+                    metadata_bytes,
+                    file_options={"content-type": "application/octet-stream", "upsert": "true"}
+                )
+            except Exception as e:
+                # If file exists, try to update it
+                if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
+                    supabase.storage.from_("Storage").update(
+                        "faq_metadata.pkl",
+                        metadata_bytes,
+                        file_options={"content-type": "application/octet-stream"}
+                    )
+                else:
+                    raise
+            
+            print("✅ FAQ index saved to Supabase Storage")
+            return True
+        except Exception as e:
+            error_msg = str(e)
+            # Check if it's a permission error
+            if "403" in error_msg or "unauthorized" in error_msg.lower() or "row-level security" in error_msg.lower():
+                print(f"\n⚠️  PERMISSION ERROR - Supabase Storage")
+                print(f"   Error: {error_msg}")
+                print(f"\n   Solutions:")
+                print(f"   1. Use SERVICE_ROLE key (recommended):")
+                print(f"      - Go to Supabase Dashboard → Settings → API")
+                print(f"      - Copy the 'service_role' key (NOT 'anon' key)")
+                print(f"      - Update .env: SUPABASE_KEY=your_service_role_key")
+                print(f"   2. Or configure RLS policies:")
+                print(f"      - Run sql/setup_storage_permissions.sql in Supabase SQL Editor")
+                print(f"      - Or make bucket public in Storage settings")
+            else:
+                print(f"Warning: Failed to save index to Supabase Storage: {error_msg}")
+            return False
+        finally:
+            # Clean up temporary file
+            try:
+                if 'tmp_index_path' in locals() and os.path.exists(tmp_index_path):
+                    os.unlink(tmp_index_path)
+            except Exception:
+                pass
+    
     def load_index(self) -> bool:
         """
-        Load FAISS index from disk.
+        Load FAISS index from Supabase Storage or disk.
         
         Returns:
             True if index loaded successfully, False otherwise
         """
+        # Try Supabase Storage first
+        if self._load_index_from_supabase():
+            return True
+        
+        # Fallback to local disk
         index_file = self.index_path / "faq_index.faiss"
         metadata_file = self.index_path / "faq_metadata.pkl"
         
@@ -176,6 +321,83 @@ class SemanticSearchEngine:
             print(f"Warning: Failed to load index: {str(e)}")
             return False
     
+    def _load_index_from_supabase(self) -> bool:
+        """Load FAISS index from Supabase Storage."""
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED
+            if not SUPABASE_ENABLED:
+                return False
+            
+            from supabase import create_client
+            import os
+            from dotenv import load_dotenv
+            import io
+            
+            load_dotenv()
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            
+            if not supabase_url or not supabase_key:
+                return False
+            
+            supabase = create_client(supabase_url, supabase_key)
+            
+            # Download index from Supabase Storage bucket "Storage"
+            try:
+                index_data = supabase.storage.from_("Storage").download("faq_index.faiss")
+            except Exception as e:
+                # File doesn't exist in Storage
+                return False
+            
+            # FAISS requires a file path, not bytes directly
+            # Save to temporary file first, then load
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.faiss') as tmp_file:
+                tmp_index_path = tmp_file.name
+                tmp_file.write(index_data)
+            
+            try:
+                # Load index from temporary file
+                self._index = faiss.read_index(tmp_index_path)
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(tmp_index_path)
+                except:
+                    pass
+            
+            # Download metadata
+            try:
+                metadata_data = supabase.storage.from_("Storage").download("faq_metadata.pkl")
+            except Exception as e:
+                print(f"Warning: Metadata not found in Supabase Storage: {str(e)}")
+                return False
+            
+            # Load metadata
+            metadata = pickle.loads(metadata_data)
+            self._faq_data = metadata.get('faq_data', [])
+            self._dimension = metadata.get('dimension', self._dimension)
+            saved_model = metadata.get('model_name', self.model_name)
+            
+            # Check if model matches
+            if saved_model != self.model_name:
+                print(f"Warning: Saved model ({saved_model}) differs from current ({self.model_name})")
+                return False
+            
+            print("✅ FAQ index loaded from Supabase Storage")
+            return True
+        except Exception as e:
+            print(f"Warning: Failed to load index from Supabase Storage: {str(e)}")
+            return False
+    
+    def _ensure_model_loaded(self) -> None:
+        """Ensure the model is loaded (lazy initialization)."""
+        if not self._model_initialized:
+            with self._lock:
+                if not self._model_initialized:
+                    self._initialize_model()
+                    self._model_initialized = True
+    
     def search(
         self,
         query: str,
@@ -193,6 +415,9 @@ class SemanticSearchEngine:
         Returns:
             List of tuples (FAQ dict, similarity score) sorted by score
         """
+        # Ensure model is loaded (lazy initialization)
+        self._ensure_model_loaded()
+        
         if self._index is None or not self._faq_data:
             return []
         
@@ -291,6 +516,11 @@ def get_semantic_engine() -> Optional[SemanticSearchEngine]:
                         similarity_threshold=similarity_threshold,
                         top_k=top_k
                     )
+                    
+                    # Try to load existing index automatically
+                    if not _semantic_engine.is_index_loaded():
+                        _semantic_engine.load_index()
+                        
                 except Exception as e:
                     print(f"Warning: Failed to initialize semantic search: {str(e)}")
                     return None

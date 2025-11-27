@@ -95,3 +95,42 @@ def validate_user_id(user_id: str) -> tuple[bool, Optional[str]]:
     
     return True, None
 
+
+def validate_customer_id(customer_id: str, custom_pattern: Optional[str] = None) -> tuple[bool, Optional[str]]:
+    """
+    Validate customer ID format.
+    
+    Default format: cust_XXX or CUST-XXX (e.g., cust_001, CUST-123)
+    Must start with "cust" (case insensitive) followed by underscore/hyphen and numbers.
+    
+    Args:
+        customer_id: Customer ID to validate
+        custom_pattern: Optional custom regex pattern. If None, uses default pattern.
+                       Default: r'^cust[_\-][0-9]+$' for "cust_001" or "CUST-123" format
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not customer_id or not customer_id.strip():
+        return False, "Customer ID cannot be empty"
+    
+    trimmed = customer_id.strip()
+    
+    # Check minimum length (cust_001 = 8 chars minimum)
+    if len(trimmed) < 6:
+        return False, "Customer ID is too short. Must be at least 6 characters (e.g., cust_001)"
+    
+    # Check maximum length
+    if len(trimmed) > 50:
+        return False, "Customer ID is too long. Maximum 50 characters"
+    
+    # Default pattern: Must start with "cust" (case insensitive) followed by underscore/hyphen and numbers
+    # Examples: cust_001, CUST-123, cust_12345, CUST_999
+    default_pattern = r'^cust[_\-][0-9]+$'
+    pattern = custom_pattern if custom_pattern is not None else default_pattern
+    
+    if not re.match(pattern, trimmed, re.IGNORECASE):
+        return False, "Invalid customer ID format. Must be in format: cust_XXX or CUST-XXX (e.g., cust_001, CUST-123)"
+    
+    return True, None
+

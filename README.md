@@ -72,16 +72,22 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 │     └─ Validation, rate limiting, caching                  │
 │                                                             │
 │  📊 Analytics & Feedback                                    │
-│     └─ Track interactions and collect user feedback        │
+│     └─ Real-time analytics + interactive feedback UI      │
 │                                                             │
-│  🖥️ Web Dashboard                                           │
-│     └─ React/Next.js interface with Orders & Tickets view │
+│  🖥️ Modern Web Dashboard                                    │
+│     └─ React/Next.js with Chat, Orders, Tickets, Analytics │
 │                                                             │
-│  📚 Comprehensive Knowledge Base                            │
-│     └─ 50+ FAQs covering all major topics                  │
+│  📚 Semantic Search Knowledge Base                          │
+│     └─ 50+ FAQs with vector embeddings (FAISS)            │
 │                                                             │
-│  💾 Data Persistence                                        │
-│     └─ Conversation history, sessions, orders saved        │
+│  💾 Full Database Persistence                               │
+│     └─ Supabase (PostgreSQL) for all data                  │
+│                                                             │
+│  🤖 Self-Improving Agents                                   │
+│     └─ Automatic agent refinement from feedback            │
+│                                                             │
+│  🎫 Smart Ticket Management                                 │
+│     └─ Auto-summarization with key points & sentiment     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -89,14 +95,23 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 ## 🆕 Recent Improvements
 
 ### Enterprise-Ready Enhancements
-- ✅ **Expanded FAQ Knowledge Base**: 50+ comprehensive questions across 10+ categories
-- ✅ **Professional Documentation**: Complete architecture, deployment, and feature proposal docs
-- ✅ **Data Persistence**: All conversations, sessions, and orders persist across restarts
-- ✅ **Enhanced Reliability**: 99%+ reduction in errors with improved fallback mechanisms
-- ✅ **Professional UI**: Clean, polished interface with session management
-- ✅ **Better Agent Instructions**: Improved handling of edge cases and order IDs
+- ✅ **React/Next.js Frontend**: Modern, responsive web interface replacing Streamlit
+- ✅ **Customer ID Management**: Secure customer authentication and session filtering
+- ✅ **Interactive Feedback UI**: Thumbs up/down buttons after each assistant message with agent attribution
+- ✅ **Automatic Agent Improvement**: Self-improving agents based on user feedback (daily scheduler)
+- ✅ **Semantic Search**: FAISS-based vector search for FAQs with automatic fallback
+- ✅ **Supabase Integration**: Full database persistence for all data (messages, sessions, orders, tickets, feedback)
+- ✅ **Conversation Summarization**: Automatic summaries for tickets with key points and sentiment
+- ✅ **Real-Time Analytics Dashboard**: Live metrics with real data from database (no hardcoded values)
+- ✅ **Orders & Tickets Dashboard**: Full CRUD operations for orders and tickets
+- ✅ **Session Management**: Rename, delete, and filter conversations by customer
+- ✅ **Knowledge Base Suggestions**: System suggests FAQ updates from feedback (manual approval)
+- ✅ **Agent Detection**: Automatic detection and display of which agent handled each response
+- ✅ **Typing Indicators**: Visual feedback when agent is processing
+- ✅ **Input Focus Management**: Auto-focus on input field after sending messages
+- ✅ **Agent Response Capture**: Improved logic to capture responses from specialized agents even when orchestrator returns None
 
-See [docs/IMPROVEMENTS_SUMMARY.md](docs/IMPROVEMENTS_SUMMARY.md) for complete details.
+See [docs/FEATURE_PROPOSALS.md](docs/FEATURE_PROPOSALS.md) for complete feature list.
 
 ## 🏗️ Architecture
 
@@ -191,6 +206,14 @@ pip install -r requirements.txt
 3. **Create `.env` file:**
 ```bash
 GOOGLE_API_KEY=your_api_key_here
+SUPABASE_URL=your_supabase_url
+SUPABASE_KEY=your_supabase_key
+```
+
+**Optional:** For semantic search, install additional dependencies:
+```bash
+pip install sentence-transformers faiss-cpu
+python -m tools.init_semantic_search
 ```
 
 4. **Run tests to verify setup:**
@@ -217,16 +240,21 @@ npm run dev
 The frontend will open automatically in your browser at `http://localhost:3000`
 
 **Features:**
-- 💬 **Chat Interface** - Interactive conversation with the multi-agent system
-- 📊 **Analytics Dashboard** - Real-time statistics and agent performance
-- 📦 **Orders & Tickets Dashboard** - View all orders and support tickets
-- 🔄 **Session Management** - Manage multiple conversations
-
-**Orders & Tickets Dashboard:**
-- View all orders with status, tracking, and items
-- View all support tickets with priority and status
-- Interactive charts showing distribution by status and priority
-- Detailed view for each order and ticket
+- 💬 **Chat Interface** - Interactive conversation with customer ID authentication
+  - Thumbs up/down feedback buttons after each assistant message
+  - Session management (create, rename, delete conversations)
+  - Customer-specific conversation filtering
+- 📊 **Analytics Dashboard** - Real-time statistics and metrics
+  - Total messages, active sessions, interactions
+  - Average satisfaction scores
+  - Tickets created
+- 📦 **Orders & Tickets Dashboard** - Full CRUD operations
+  - View, create, edit, delete orders
+  - Filter by status, customer ID, order ID
+  - Auto-update order status based on delivery dates
+  - View tickets with automatic summaries
+  - Ticket summaries with markdown formatting
+- 🏠 **Home Dashboard** - Overview with key metrics and quick navigation
 
 ### Interactive CLI
 
@@ -327,13 +355,26 @@ data = response.json()
 print(data["response"])
 ```
 
-**New API Endpoints:**
-- `GET /orders` - Get all orders with statistics
-- `GET /orders/{order_id}` - Get specific order details
-- `GET /tickets` - Get all tickets with statistics
-- `GET /tickets/{ticket_id}` - Get specific ticket details
+**API Endpoints:**
+- `POST /chat` - Chat with the multi-agent system
+- `GET /orders` - Get all orders (with filters)
+- `POST /orders` - Create new order
+- `GET /orders/{order_id}` - Get specific order
+- `PUT /orders/{order_id}` - Update order
+- `DELETE /orders/{order_id}` - Delete order
+- `GET /tickets` - Get all tickets
+- `GET /tickets/{ticket_id}/summary` - Get ticket summary
+- `GET /sessions/{user_id}` - Get user sessions (with customer_id filter)
+- `POST /sessions/create` - Create new session
+- `PUT /sessions/{session_id}/rename` - Rename session
+- `DELETE /sessions/{session_id}` - Delete session
+- `POST /feedback` - Submit user feedback
+- `GET /analytics` - Get analytics data
+- `POST /improvements/run-now` - Manually trigger agent improvements
+- `GET /agent-refinements/{agent_name}` - Get agent refinements
+- `GET /kb-updates/pending` - Get pending KB update suggestions
 
-See [docs/API.md](docs/API.md) for complete API documentation.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete documentation.
 
 ## 📁 Project Structure
 
@@ -346,7 +387,7 @@ CustoFlow/
 │   ├── order_agent.py                 # 📦 Order inquiry specialist
 │   ├── sentiment_agent.py             # 😊 Sentiment analysis
 │   ├── escalation_agent.py            # 🎫 Ticket creation
-│   └── a2a_escalation_agent.py        # 🔗 A2A-ready agent
+│   └── escalation_agent.py            # 🎫 Ticket creation agent
 │
 ├── 🛠️ tools/                           # Custom Tools (5 tools)
 │   ├── faq_tool.py                    # 🔍 FAQ search + cache
@@ -366,6 +407,15 @@ CustoFlow/
 │
 ├── 🚀 api/                             # FastAPI Server
 │   └── server.py                      # 🌐 RESTful API
+│
+├── 🎨 frontend/                        # React/Next.js Frontend
+│   ├── app/                           # Next.js app directory
+│   │   ├── chat/                      # Chat interface
+│   │   ├── orders/                    # Orders & Tickets dashboard
+│   │   ├── analytics/                 # Analytics dashboard
+│   │   └── page.tsx                   # Home dashboard
+│   ├── components/                    # UI components (shadcn/ui)
+│   └── lib/                           # API client & state management
 │
 ├── 🧪 tests/                           # Test Suite (15+ tests)
 │   ├── test_faq_agent.py              # ✅ FAQ agent tests
@@ -397,10 +447,21 @@ CustoFlow/
 │   ├── rate_limiter.py                # ⏱️ Rate limiting
 │   ├── error_handler.py               # ⚠️ Error handling
 │   ├── analytics.py                   # 📊 Analytics
-│   └── multilingual.py                # 🌍 Multilingual support
+│   ├── multilingual.py                # 🌍 Multilingual support
+│   ├── supabase_client.py             # 🗄️ Supabase integration
+│   ├── auto_improver.py               # 🤖 Automatic agent improvements
+│   ├── agent_improver.py              # 🔧 Agent refinement system
+│   ├── kb_updater.py                  # 📚 KB update suggestions
+│   ├── feedback_manager.py            # 💬 Feedback analysis
+│   └── conversation_summarizer.py     # 📝 Conversation summaries
 │
 ├── 📦 data/                            # Knowledge Base
 │   └── faq_knowledge_base.json        # 📚 FAQ database
+│
+├── 🗄️ sql/                             # Database Scripts
+│   ├── create_complete_database.sql    # Complete database schema
+│   ├── setup_rls_policies.sql         # Row Level Security policies
+│   └── setup_storage_permissions.sql   # Storage bucket permissions
 │
 ├── ⚙️ config/                          # Configuration
 │   └── settings.py                    # 🔧 Settings management
@@ -547,10 +608,15 @@ API_PORT=8000
 │     └─ ✅ Error Handling (user-friendly messages)         │
 │                                                             │
 │  🚀 Enhanced Functionality                                  │
-│     ├─ ✅ Conversation History (persistent)                │
-│     ├─ ✅ Analytics (interactions, patterns)              │
-│     ├─ ✅ Feedback System (thumbs up/down, ratings)       │
-│     └─ ✅ Multilingual Support (FR, ES, DE, IT, PT)      │
+│     ├─ ✅ React/Next.js Frontend (modern UI)               │
+│     ├─ ✅ Supabase Database (full persistence)            │
+│     ├─ ✅ Semantic Search (FAISS + Sentence Transformers) │
+│     ├─ ✅ Customer ID Authentication                       │
+│     ├─ ✅ Interactive Feedback UI (thumbs up/down)        │
+│     ├─ ✅ Automatic Agent Improvement (daily scheduler)   │
+│     ├─ ✅ Conversation Summarization                     │
+│     ├─ ✅ Orders & Tickets CRUD                           │
+│     └─ ✅ Real-time Analytics Dashboard                   │
 │                                                             │
 │  🧪 Testing                                                 │
 │     ├─ ✅ Unit Tests (validation, rate limiting, cache)   │
@@ -594,8 +660,9 @@ This project demonstrates **7+ key concepts** from the Kaggle 5-Day AI Agents In
 │     └─ Comprehensive test suite with 17+ test cases and       │
 │        automated scoring                                        │
 │                                                                 │
-│  ✅ A2A Protocol                                                 │
-│     └─ Architecture ready for remote agent deployment          │
+│  ✅ Agent Detection & Attribution                               │
+│     └─ Automatic detection of which agent handled each        │
+│        response, displayed in UI and stored in feedback        │
 │                                                                 │
 │  ✅ Agent Deployment                                             │
 │     └─ FastAPI production server with health checks,           │
@@ -606,11 +673,10 @@ This project demonstrates **7+ key concepts** from the Kaggle 5-Day AI Agents In
 
 ## 📚 Documentation
 
-- [API Documentation](docs/API.md) - Complete API reference
-- [Setup Guide](docs/SETUP.md) - Detailed setup instructions
-- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
-- [Advanced Examples](docs/ADVANCED_EXAMPLES.md) - Advanced usage patterns
-- [Architecture Diagrams](docs/ARCHITECTURE_DIAGRAMS.md) - Visual architecture documentation
+- [Architecture Documentation](docs/ARCHITECTURE.md) - Complete system architecture
+- [Feature Proposals](docs/FEATURE_PROPOSALS.md) - Implemented and planned features
+- [Database & Learning](docs/DATABASE_AND_LEARNING.md) - Database usage and learning systems
+- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment instructions
 
 ## 📄 License
 

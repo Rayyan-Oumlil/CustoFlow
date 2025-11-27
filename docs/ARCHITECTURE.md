@@ -83,9 +83,10 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
                                  │
                     ┌────────────▼────────────┐
                     │   Data Persistence       │
-                    │   - JSON Files           │
+                    │   - Supabase (PostgreSQL)│
                     │   - Session Storage      │
                     │   - Conversation History│
+                    │   - Analytics & Feedback │
                     └──────────────────────────┘
 ```
 
@@ -97,7 +98,16 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
 
 #### React Frontend (`frontend/`)
 - **Purpose**: Web-based user interface
+- **Technology**: Next.js 15, React, TypeScript, Tailwind CSS
 - **Features**:
+  - Real-time chat interface with typing indicators
+  - Agent attribution display (shows which agent responded)
+  - Interactive feedback (thumbs up/down) with agent tracking
+  - Customer ID authentication and validation
+  - Session management and filtering
+  - Orders and tickets dashboard
+  - Real-time analytics dashboard (no hardcoded data)
+  - Auto-focus on input field for better UX
   - Real-time chat interface
   - Conversation history
   - Analytics dashboard
@@ -132,7 +142,10 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Route to appropriate specialist agent
   - Aggregate responses from multiple agents
   - Handle complex multi-part questions
+  - Detect which agent handled each response
+  - Capture agent responses even when orchestrator returns None
 - **Tools**: AgentTool wrappers for all specialist agents
+- **Agent Detection**: Automatic detection via function calls and response content analysis
 
 #### FAQ Agent (`agents/faq_agent.py`)
 - **Role**: Handle general questions and FAQs
@@ -174,17 +187,32 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
 
 #### FAQ Tool (`tools/faq_tool.py`)
 - **Function**: Search FAQ knowledge base
-- **Implementation**: JSON-based knowledge base with keyword matching
-- **Future**: Semantic search with vector embeddings
+- **Implementation**: Semantic search using FAISS vector embeddings
+- **Features**: 
+  - 50+ FAQs with vector embeddings
+  - Sentence Transformers for semantic similarity
+  - Automatic fallback to LLM knowledge
+  - Supabase Storage for index persistence
 
 #### Order Tool (`tools/order_tool.py`)
 - **Function**: Retrieve order information
-- **Implementation**: JSON-based order database with persistence
-- **Features**: Order lookup, customer order history, order creation
+- **Implementation**: Supabase PostgreSQL database
+- **Features**: 
+  - Order lookup by ID
+  - Customer order history (automatic customer_id from session)
+  - Order creation and updates
+  - Status management (processing, shipped, delivering, delivery_soon, delivered, cancelled)
+  - Automatic status updates based on estimated_delivery date
 
 #### Ticket Tool (`tools/ticket_tool.py`)
 - **Function**: Create and manage support tickets
-- **Implementation**: In-memory ticket storage with persistence
+- **Implementation**: Supabase PostgreSQL database
+- **Features**:
+  - Ticket creation with automatic summarization
+  - Priority assignment (low, normal, high, urgent)
+  - Status tracking (open, in_progress, resolved, closed)
+  - Sentiment analysis integration
+  - Key points extraction
 
 ---
 
@@ -231,6 +259,9 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Agent performance tracking
   - Query pattern analysis
   - Success rate calculation
+  - Real-time metrics collection
+  - Feedback aggregation
+  - Agent usage statistics
 
 ---
 
@@ -269,21 +300,30 @@ FastAPI Server (Validation, Rate Limiting)
 Orchestrator Agent (Query Analysis)
     │
     ▼
-Specialist Agent Selection
+Specialist Agent Selection & Detection
     │
-    ├─► FAQ Agent ──► FAQ Tool ──► Knowledge Base
-    ├─► Order Agent ──► Order Tool ──► Order Database
+    ├─► FAQ Agent ──► FAQ Tool ──► Semantic Search (FAISS)
+    ├─► Order Agent ──► Order Tool ──► Order Database (Supabase)
     ├─► Sentiment Agent ──► Sentiment Analysis
-    └─► Escalation Agent ──► Ticket Tool
+    └─► Escalation Agent ──► Ticket Tool ──► Ticket Database
     │
+    ▼
+Agent Response Capture
+    │ (Captures response even if orchestrator returns None)
+    ▼
+Agent Attribution
+    │ (Detects and stores which agent handled the response)
     ▼
 Response Aggregation
     │
     ▼
-Conversation History Storage
+Conversation History Storage (Supabase)
     │
     ▼
-Response to User
+Analytics & Feedback Logging
+    │
+    ▼
+Response to User (with agent_used metadata)
 ```
 
 ### 2. Session Management Flow
@@ -322,14 +362,18 @@ Save to Persistence Layer
 - **React/Next.js**: Web dashboard
 
 ### Data Storage
-- **JSON Files**: Persistent storage (orders, sessions, history)
+- **Supabase (PostgreSQL)**: Primary database for all persistent data
+  - Messages, sessions, orders, tickets, feedback
+  - Analytics, agent refinements, KB updates
 - **In-Memory**: Session management, caching
+- **FAISS**: Vector embeddings for semantic search
 
 ### Libraries
 - **Pydantic**: Data validation
-- **Plotly**: Data visualization
-- **Pandas**: Data manipulation
-- **Requests**: HTTP client
+- **Supabase**: PostgreSQL database and storage
+- **Sentence Transformers**: Semantic search embeddings
+- **FAISS**: Vector similarity search
+- **APScheduler**: Scheduled tasks (agent improvements)
 
 ---
 

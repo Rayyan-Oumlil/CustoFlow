@@ -4,6 +4,7 @@
 -- ============================================================================
 
 -- Drop existing tables (in reverse dependency order)
+DROP TABLE IF EXISTS refunds CASCADE;
 DROP TABLE IF EXISTS kb_updates_from_feedback CASCADE;
 DROP TABLE IF EXISTS analytics_interactions CASCADE;
 DROP TABLE IF EXISTS agent_refinements CASCADE;
@@ -22,6 +23,7 @@ DROP TABLE IF EXISTS orders CASCADE;
 CREATE TABLE public.sessions (
     session_id character varying NOT NULL,
     user_id character varying NOT NULL,
+    customer_id character varying,
     name character varying,
     created_at timestamp without time zone DEFAULT now(),
     updated_at timestamp without time zone DEFAULT now(),
@@ -39,6 +41,7 @@ CREATE TABLE public.orders (
     status character varying NOT NULL,
     total numeric NOT NULL,
     items jsonb NOT NULL,
+    notes jsonb DEFAULT '[]'::jsonb,
     tracking_number character varying,
     estimated_delivery date,
     created_at timestamp without time zone DEFAULT now(),
@@ -77,7 +80,6 @@ CREATE TABLE public.tickets (
     issue text NOT NULL,
     priority character varying DEFAULT 'normal'::character varying,
     status character varying DEFAULT 'open'::character varying,
-    assigned_to character varying,
     created_at timestamp without time zone DEFAULT now(),
     updated_at timestamp without time zone DEFAULT now(),
     CONSTRAINT tickets_pkey PRIMARY KEY (ticket_id),
@@ -125,7 +127,6 @@ CREATE TABLE public.feedback (
     reason text,
     category character varying,
     agent_used character varying,
-    sentiment_score double precision,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
     CONSTRAINT feedback_pkey PRIMARY KEY (id),
@@ -234,6 +235,12 @@ CREATE INDEX IF NOT EXISTS idx_tickets_status ON public.tickets(status);
 CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON public.orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
 
+-- Indexes for refunds
+CREATE INDEX IF NOT EXISTS idx_refunds_order_id ON public.refunds(order_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_customer_id ON public.refunds(customer_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_status ON public.refunds(status);
+CREATE INDEX IF NOT EXISTS idx_refunds_created_at ON public.refunds(created_at);
+
 -- Indexes for conversation_summaries
 CREATE INDEX IF NOT EXISTS idx_conversation_summaries_session_id ON public.conversation_summaries(session_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_summaries_user_id ON public.conversation_summaries(user_id);
@@ -271,6 +278,7 @@ BEGIN
     RAISE NOTICE '   - kb_updates_from_feedback';
     RAISE NOTICE '   - analytics_interactions';
     RAISE NOTICE '   - agent_refinements';
+    RAISE NOTICE '   - refunds';
     RAISE NOTICE '========================================';
 END $$;
 

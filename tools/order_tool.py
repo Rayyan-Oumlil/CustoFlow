@@ -21,11 +21,70 @@ import random
 import sys
 import json
 from pathlib import Path
+import threading
 
 # Add utils to path for cache import
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.cache import order_cache, generate_cache_key
-from utils.validation import validate_order_id
+from utils.validation import validate_order_id, validate_customer_id
+
+# Global context storage for order operations (session_id, user_id, customer_id)
+# Key: session_id, Value: dict with session_id, user_id, and customer_id
+_order_contexts = {}
+_order_context_lock = threading.Lock()
+
+
+def set_order_context(session_id: Optional[str] = None, user_id: Optional[str] = None, customer_id: Optional[str] = None):
+    """Set context for order operations (session_id, user_id, customer_id)."""
+    if not session_id:
+        return
+    key = session_id
+    with _order_context_lock:
+        # If context already exists, update it (don't overwrite existing customer_id unless new one is provided)
+        if key in _order_contexts and customer_id is None:
+            existing_customer_id = _order_contexts[key].get("customer_id")
+            customer_id = existing_customer_id
+        _order_contexts[key] = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "customer_id": customer_id
+        }
+
+
+def update_customer_id(session_id: str, customer_id: str):
+    """Update customer_id for a session (called when user provides their customer_id)."""
+    if not session_id:
+        return
+    key = session_id
+    with _order_context_lock:
+        if key in _order_contexts:
+            _order_contexts[key]["customer_id"] = customer_id
+        else:
+            # Create context if it doesn't exist
+            _order_contexts[key] = {
+                "session_id": session_id,
+                "user_id": None,
+                "customer_id": customer_id
+            }
+
+
+def get_order_context(session_id: Optional[str] = None) -> Dict:
+    """Get context for order operations."""
+    if not session_id:
+        return {}
+    key = session_id
+    with _order_context_lock:
+        return _order_contexts.get(key, {})
+
+
+def clear_order_context(session_id: Optional[str] = None):
+    """Clear context for order operations."""
+    if not session_id:
+        return
+    key = session_id
+    with _order_context_lock:
+        if key in _order_contexts:
+            del _order_contexts[key]
 
 
 # ============================================================================
@@ -157,13 +216,109 @@ def add_order(order_data: Dict) -> bool:
         if not order_id:
             return False
         
-        # Add order to in-memory dict
+        # Try Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED
+            if SUPABASE_ENABLED:
+                from supabase import create_client
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_KEY")
+                if supabase_url and supabase_key:
+                    supabase = create_client(supabase_url, supabase_key)
+                    # Prepare order data for Supabase
+                    # Note: Supabase table has 'created_at' but not 'order_date'
+                    # Use 'order_date' from order_data if available, otherwise use 'created_at'
+                    order_date_value = order_data.get("order_date") or order_data.get("created_at")
+                    created_at_value = order_data.get("created_at") or order_data.get("order_date") or datetime.now().isoformat()
+                    
+                    supabase_order = {
+                        "order_id": order_data.get("order_id"),
+                        "customer_id": order_data.get("customer_id"),
+                        "status": order_data.get("status"),
+                        "items": order_data.get("items", []),
+                        "total": order_data.get("total", 0),
+                        "tracking_number": order_data.get("tracking_number"),
+                        "estimated_delivery": order_data.get("estimated_delivery"),
+                        "created_at": created_at_value,
+                        "updated_at": datetime.now().isoformat(),
+                    }
+                    
+                    # Only include shipped_at if it exists in the schema (it might not)
+                    # Check if shipped_at exists, otherwise skip it
+                    if order_data.get("shipped_at") or order_data.get("shipped_date"):
+                        # Note: shipped_at might not be in the schema, so we'll skip it for now
+                        # If you need shipped_at, add it to the schema first
+                        pass
+                    # Insert or update in Supabase
+                    supabase.table("orders").upsert(supabase_order).execute()
+                    # Return True if Supabase is enabled (don't need to save to JSON)
+                    return True
+        except Exception as e:
+            print(f"Warning: Could not save order to Supabase: {e}. Falling back to JSON.")
+        
+        # Fallback to JSON only if Supabase is not available
+        global _MOCK_ORDERS
         _MOCK_ORDERS[order_id] = order_data
         
         # Save to file
         return _save_orders(_MOCK_ORDERS)
     except Exception as e:
         print(f"Error adding order: {e}")
+        return False
+
+
+def delete_order(order_id: str) -> bool:
+    """
+    Delete an order from the database and save to file.
+    
+    Args:
+        order_id: Order ID to delete
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Try Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED
+            if SUPABASE_ENABLED:
+                from supabase import create_client
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_KEY")
+                if supabase_url and supabase_key:
+                    supabase = create_client(supabase_url, supabase_key)
+                    # Delete from Supabase (always try, even if order doesn't exist)
+                    try:
+                        supabase.table("orders").delete().eq("order_id", order_id).execute()
+                    except Exception as delete_error:
+                        # If order doesn't exist in Supabase, that's okay, continue
+                        print(f"Note: Order {order_id} may not exist in Supabase: {delete_error}")
+                    
+                    # Return True if Supabase is enabled (don't need to update JSON)
+                    return True
+        except Exception as e:
+            print(f"Warning: Could not delete order from Supabase: {e}. Falling back to JSON.")
+        
+        # Fallback to JSON
+        global _MOCK_ORDERS
+        _MOCK_ORDERS = _load_orders()
+        
+        if order_id not in _MOCK_ORDERS:
+            return False
+        
+        # Remove order from in-memory dict
+        del _MOCK_ORDERS[order_id]
+        
+        # Save to file
+        return _save_orders(_MOCK_ORDERS)
+    except Exception as e:
+        print(f"Error deleting order: {e}")
         return False
 
 
@@ -223,7 +378,44 @@ def lookup_order(order_id: str) -> Dict[str, any]:
         if cached_result:
             return cached_result
         
-        # Reload orders from file to get latest data
+        # Try Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED
+            if SUPABASE_ENABLED:
+                from supabase import create_client
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_KEY")
+                if supabase_url and supabase_key:
+                    supabase = create_client(supabase_url, supabase_key)
+                    # Look up order in Supabase
+                    result = supabase.table("orders").select("*").eq("order_id", order_id).execute()
+                    if result.data and len(result.data) > 0:
+                        order = result.data[0]
+                        response = {
+                            "status": "success",
+                            "order": order
+                        }
+                        # Cache successful result
+                        order_cache.set(cache_key, response)
+                        return response
+                    else:
+                        # Order not found in Supabase
+                        result = {
+                            "status": "error",
+                            "error_message": f"Order {order_id} not found. Please check the order ID and try again.",
+                            "helpful_info": "Order IDs are typically 5-10 digits. You can find your order number in your confirmation email or account dashboard. If you're having trouble, please contact support with your email address or customer ID."
+                        }
+                        # Cache error result briefly (5 minutes) to avoid repeated lookups
+                        error_cache_key = generate_cache_key("order_error", order_id)
+                        order_cache.set(error_cache_key, result)
+                        return result
+        except Exception as e:
+            print(f"Warning: Could not lookup order from Supabase: {e}. Falling back to JSON.")
+        
+        # Fallback to JSON
         global _MOCK_ORDERS
         _MOCK_ORDERS = _load_orders()
         
@@ -257,26 +449,112 @@ def lookup_order(order_id: str) -> Dict[str, any]:
         }
 
 
-def get_customer_orders(customer_id: str) -> Dict[str, any]:
+def get_customer_orders(customer_id: Optional[str] = None, session_id: Optional[str] = None) -> Dict[str, any]:
     """
     Get all orders for a customer.
     
     Args:
-        customer_id: The customer ID to look up
+        customer_id: The customer ID to look up (optional, will try to get from context if not provided)
+        session_id: Optional session ID to get customer_id from context (will try to find from context if not provided)
         
     Returns:
         Dictionary with status and list of orders
     """
     try:
-        customer_id = str(customer_id).strip()
+        # If session_id not provided, try to get it from any available context
+        if not session_id:
+            # Try to get session_id from the most recent context entry
+            with _order_context_lock:
+                if _order_contexts:
+                    # Get the most recent context (last entry in dict)
+                    latest_context = list(_order_contexts.values())[-1] if _order_contexts else {}
+                    session_id = latest_context.get("session_id")
+        
+        # If customer_id not provided, try to get it from context
+        if not customer_id and session_id:
+            ctx = get_order_context(session_id)
+            customer_id = ctx.get("customer_id")
+        
+        # If still no customer_id, try to get from session in Supabase
+        if not customer_id and session_id:
+            try:
+                from utils.supabase_client import SUPABASE_ENABLED
+                if SUPABASE_ENABLED:
+                    from supabase import create_client
+                    import os
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                    supabase_url = os.getenv("SUPABASE_URL")
+                    supabase_key = os.getenv("SUPABASE_KEY")
+                    if supabase_url and supabase_key:
+                        supabase = create_client(supabase_url, supabase_key)
+                        # Get session to retrieve customer_id
+                        session_result = supabase.table("sessions").select("customer_id").eq("session_id", session_id).limit(1).execute()
+                        if session_result.data and len(session_result.data) > 0:
+                            customer_id = session_result.data[0].get("customer_id")
+                            if customer_id:
+                                print(f"[ORDER] Retrieved customer_id from session: {customer_id}")
+                                # Update context with found customer_id
+                                update_customer_id(session_id, customer_id)
+            except Exception as e:
+                print(f"[ORDER] Could not get customer_id from session: {e}")
+        
+        # If still no customer_id, try to extract from user_id (use user_id as customer_id)
+        if not customer_id and session_id:
+            ctx = get_order_context(session_id)
+            user_id = ctx.get("user_id")
+            if user_id:
+                customer_id = user_id  # Use user_id as customer_id by default
         
         if not customer_id:
             return {
                 "status": "error",
-                "error_message": "Customer ID cannot be empty"
+                "error_message": "Customer ID is required. Please provide your customer ID or ask about a specific order.",
+                "helpful_info": "I need your customer ID to look up your orders. You can also ask about a specific order by providing the order ID."
             }
         
-        # Reload orders from file to get latest data
+        customer_id = str(customer_id).strip()
+        
+        # Validate customer ID format (you can customize this in utils/validation.py)
+        is_valid, error_msg = validate_customer_id(customer_id)
+        if not is_valid:
+            return {
+                "status": "error",
+                "error_message": error_msg or "Invalid customer ID format",
+                "helpful_info": "Customer IDs should be alphanumeric with underscores or hyphens (e.g., cust_001, CUST-123). You can customize the validation pattern in utils/validation.py"
+            }
+        
+        # Try Supabase first
+        try:
+            from utils.supabase_client import SUPABASE_ENABLED
+            if SUPABASE_ENABLED:
+                from supabase import create_client
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_KEY")
+                if supabase_url and supabase_key:
+                    supabase = create_client(supabase_url, supabase_key)
+                    # Get orders from Supabase
+                    result = supabase.table("orders").select("*").eq("customer_id", customer_id).order("created_at", desc=True).execute()
+                    customer_orders = result.data or []
+                    
+                    if customer_orders:
+                        return {
+                            "status": "success",
+                            "orders": customer_orders,
+                            "count": len(customer_orders)
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "error_message": f"No orders found for customer {customer_id}"
+                        }
+        except Exception as e:
+            print(f"Warning: Could not get customer orders from Supabase: {e}. Falling back to JSON.")
+        
+        # Fallback to JSON
         global _MOCK_ORDERS
         _MOCK_ORDERS = _load_orders()
         
