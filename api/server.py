@@ -605,6 +605,22 @@ async def chat(request: ChatRequest, http_request: Request):
         else:
             logger.info(f"⚠️ No agent detected, defaulting to orchestrator for user {request.user_id}")
         
+        # Initialize A/B testing variant (will be set later if test is active)
+        ab_variant = None
+        
+        # A/B Testing - Get variant if test is active (before storing message)
+        try:
+            from utils.ab_testing import get_ab_testing
+            ab_testing = get_ab_testing()
+            
+            # Check if there's an active test for this agent
+            if agent_used and agent_used in ab_testing.active_tests:
+                # Get variant for this user (consistent hashing)
+                ab_variant = ab_testing.get_variant(agent_used, request.user_id)
+        except Exception as e:
+            logger.debug(f"Could not get A/B testing variant: {e}")
+            ab_variant = None
+        
         # Log analytics (now saves to Supabase)
         analytics.log_interaction(
             user_id=request.user_id,
@@ -679,16 +695,11 @@ async def chat(request: ChatRequest, http_request: Request):
             logger.warning(f"Could not run QA check: {e}")
             qa_result = None
         
-        # A/B Testing - Record metrics if test is active
-        ab_variant = None
-        try:
-            from utils.ab_testing import get_ab_testing
-            ab_testing = get_ab_testing()
-            
-            # Check if there's an active test for this agent
-            if agent_used and agent_used in ab_testing.active_tests:
-                # Get variant for this user (consistent hashing)
-                ab_variant = ab_testing.get_variant(agent_used, request.user_id)
+        # A/B Testing - Record metrics if test is active (ab_variant already set above)
+        if ab_variant:
+            try:
+                from utils.ab_testing import get_ab_testing
+                ab_testing = get_ab_testing()
                 
                 # Record metrics (will be updated with feedback later)
                 ab_testing.record_metrics(
@@ -702,9 +713,8 @@ async def chat(request: ChatRequest, http_request: Request):
                 )
                 
                 logger.debug(f"A/B Testing: Recorded metrics for {agent_used} variant {ab_variant}")
-        except Exception as e:
-            logger.debug(f"Could not record A/B testing metrics: {e}")
-            ab_variant = None
+            except Exception as e:
+                logger.debug(f"Could not record A/B testing metrics: {e}")
         
         return ChatResponse(
             response=response_text,

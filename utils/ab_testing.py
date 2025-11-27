@@ -5,10 +5,9 @@ Tests different agent instructions and response strategies to optimize customer 
 Uses statistical analysis to determine which variant performs better.
 """
 import logging
-import random
 import statistics
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+from datetime import datetime
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)

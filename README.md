@@ -89,6 +89,15 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 │  🎫 Smart Ticket Management                                 │
 │     └─ Auto-summarization with key points & sentiment     │
 │                                                             │
+│  🎤 Audio Support                                            │
+│     └─ Speech-to-Text and Text-to-Speech (Google Cloud)   │
+│                                                             │
+│  ✅ QA & Compliance                                          │
+│     └─ Automated quality scoring and compliance checks     │
+│                                                             │
+│  📊 A/B Testing                                             │
+│     └─ Statistical testing for agent instruction variants │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -110,8 +119,13 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 - ✅ **Typing Indicators**: Visual feedback when agent is processing
 - ✅ **Input Focus Management**: Auto-focus on input field after sending messages
 - ✅ **Agent Response Capture**: Improved logic to capture responses from specialized agents even when orchestrator returns None
+- ✅ **Audio Input/Output**: Google Cloud Speech-to-Text and Text-to-Speech integration
+- ✅ **Order Notes & Refunds**: Agents can add notes to orders and request refunds
+- ✅ **Ticket Management**: Dedicated tickets page with chat panel integration
+- ✅ **QA & Compliance System**: Automated quality scoring, compliance keyword detection, and profanity filtering
+- ✅ **A/B Testing Framework**: Statistical A/B testing for agent instruction variants with automatic winner selection
 
-See [docs/FEATURE_PROPOSALS.md](docs/FEATURE_PROPOSALS.md) for complete feature list.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete documentation.
 
 ## 🏗️ Architecture
 
@@ -373,6 +387,14 @@ print(data["response"])
 - `POST /improvements/run-now` - Manually trigger agent improvements
 - `GET /agent-refinements/{agent_name}` - Get agent refinements
 - `GET /kb-updates/pending` - Get pending KB update suggestions
+- `GET /qa/check` - Get QA results for recent responses
+- `POST /ab-testing/create` - Create A/B test for an agent
+- `GET /ab-testing/results` - Get A/B test results
+- `POST /speech/transcribe` - Transcribe audio to text
+- `POST /speech/synthesize` - Convert text to speech
+- `GET /refunds` - Get refund requests
+- `PUT /refunds/{refund_id}/status` - Update refund status
+- `POST /tickets/{ticket_id}/message` - Send message to customer via ticket
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete documentation.
 
@@ -616,7 +638,11 @@ API_PORT=8000
 │     ├─ ✅ Automatic Agent Improvement (daily scheduler)   │
 │     ├─ ✅ Conversation Summarization                     │
 │     ├─ ✅ Orders & Tickets CRUD                           │
-│     └─ ✅ Real-time Analytics Dashboard                   │
+│     ├─ ✅ Real-time Analytics Dashboard                   │
+│     ├─ ✅ Audio Input/Output (Google Cloud)               │
+│     ├─ ✅ Order Notes & Refunds Management                │
+│     ├─ ✅ QA & Compliance System                          │
+│     └─ ✅ A/B Testing Framework                           │
 │                                                             │
 │  🧪 Testing                                                 │
 │     ├─ ✅ Unit Tests (validation, rate limiting, cache)   │
@@ -667,6 +693,14 @@ This project demonstrates **7+ key concepts** from the Kaggle 5-Day AI Agents In
 │  ✅ Agent Deployment                                             │
 │     └─ FastAPI production server with health checks,           │
 │        metrics, and analytics                                   │
+│                                                                 │
+│  ✅ Quality Assurance & Compliance                              │
+│     └─ Automated quality scoring, compliance keyword          │
+│        detection, and profanity filtering                      │
+│                                                                 │
+│  ✅ A/B Testing                                                 │
+│     └─ Statistical A/B testing framework for optimizing       │
+│        agent instructions with automatic winner selection       │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```

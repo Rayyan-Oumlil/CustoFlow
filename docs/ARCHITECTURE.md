@@ -118,13 +118,22 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
 #### REST API (`api/server.py`)
 - **Purpose**: Programmatic access to the system
 - **Endpoints**:
-  - `POST /chat` - Send messages
+  - `POST /chat` - Send messages (with QA & A/B testing integration)
   - `GET /health` - Health check
   - `GET /metrics` - System metrics
   - `GET /analytics` - Analytics data
   - `GET /orders` - Order management
   - `GET /tickets` - Ticket management
   - `GET /sessions/{user_id}` - Session management
+  - `POST /feedback` - Submit user feedback
+  - `GET /qa/check` - Get QA results for responses
+  - `POST /ab-testing/create` - Create A/B test
+  - `GET /ab-testing/results` - Get A/B test results
+  - `POST /speech/transcribe` - Transcribe audio
+  - `POST /speech/synthesize` - Text-to-speech
+  - `GET /refunds` - Get refund requests
+  - `PUT /refunds/{refund_id}/status` - Update refund status
+  - `POST /tickets/{ticket_id}/message` - Send message via ticket
 - **Technology**: FastAPI, Uvicorn
 
 #### CLI Interface (`main.py`)
@@ -163,7 +172,9 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Retrieve order history
   - Provide tracking information
   - Handle order modifications
-- **Tools**: `lookup_order`, `get_customer_orders`
+  - Add notes to orders
+  - Request refunds
+- **Tools**: `lookup_order`, `get_customer_orders`, `add_order_note`, `request_refund`
 
 #### Sentiment Agent (`agents/sentiment_agent.py`)
 - **Role**: Analyze customer emotion and urgency
@@ -179,7 +190,9 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Create support tickets
   - Escalate to human agents
   - Provide escalation context
-- **Tools**: `create_ticket` tool
+  - Cancel tickets
+  - Use conversation context (no asking for details)
+- **Tools**: `create_ticket`, `cancel_ticket`
 
 ---
 
@@ -262,6 +275,34 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Real-time metrics collection
   - Feedback aggregation
   - Agent usage statistics
+
+#### QA & Compliance (`utils/qa_checker.py`)
+- **Purpose**: Automated quality assurance and compliance checking
+- **Features**:
+  - Quality scoring (0.0-1.0) based on response characteristics
+  - Compliance keyword detection (GDPR, privacy, security, legal, financial)
+  - Profanity detection
+  - Quality issue flagging (pass, warning, fail)
+  - Batch QA checking for multiple responses
+  - Automatic integration with chat endpoint
+
+#### A/B Testing (`utils/ab_testing.py`)
+- **Purpose**: Statistical A/B testing framework for agent optimization
+- **Features**:
+  - Create A/B tests for agent instruction variants
+  - Consistent variant routing (50/50 split using hashing)
+  - Metrics collection (satisfaction, response time, escalations, resolutions, feedback)
+  - Statistical analysis (t-test) to determine winner
+  - Automatic winner recommendation
+  - Persistent storage of test data
+
+#### Audio Processing (`utils/google_speech.py`)
+- **Purpose**: Speech-to-Text and Text-to-Speech integration
+- **Features**:
+  - Google Cloud Speech-to-Text for audio transcription
+  - Google Cloud Text-to-Speech for response audio generation
+  - Support for multiple audio formats
+  - Client-side WebM to WAV conversion
 
 ---
 
@@ -374,6 +415,9 @@ Save to Persistence Layer
 - **Sentence Transformers**: Semantic search embeddings
 - **FAISS**: Vector similarity search
 - **APScheduler**: Scheduled tasks (agent improvements)
+- **Google Cloud Speech**: Speech-to-Text and Text-to-Speech
+- **scipy**: Statistical analysis for A/B testing
+- **numpy**: Numerical operations for A/B testing
 
 ---
 
@@ -390,11 +434,19 @@ Save to Persistence Layer
 3. **Async Processing**: Non-blocking I/O for better concurrency
 4. **Connection Pooling**: Efficient database connections (when implemented)
 
+### Optimization Strategies
+1. **Caching**: FAQ and order data cached to reduce database queries
+2. **Rate Limiting**: Prevents abuse and ensures fair resource usage
+3. **Async Processing**: Non-blocking I/O for better concurrency
+4. **Lazy Loading**: Sentence Transformer model loaded only when needed
+5. **Singleton Pattern**: Single instance of expensive resources (SemanticSearchEngine, QAChecker, ABTestingManager)
+6. **Connection Pooling**: Efficient database connections via Supabase client
+
 ### Future Scalability
-- **Database Migration**: Move from JSON to PostgreSQL/MongoDB
 - **Load Balancing**: Multiple API server instances
 - **Caching Layer**: Redis for distributed caching
 - **Message Queue**: RabbitMQ/Kafka for async processing
+- **CDN**: Static asset delivery for frontend
 
 ---
 
@@ -449,11 +501,12 @@ cd frontend && npm run dev
 - **Scalability**: Can scale agents independently
 - **Accuracy**: Better routing = better responses
 
-### Why JSON Persistence?
-- **Simplicity**: Easy to understand and debug
-- **Portability**: No database setup required
-- **Development**: Fast iteration
-- **Future**: Easy migration to database
+### Why Supabase (PostgreSQL)?
+- **Production-Ready**: Full-featured database with RLS policies
+- **Scalability**: Handles large datasets efficiently
+- **Real-time**: Built-in real-time subscriptions
+- **Storage**: Integrated file storage for FAISS indices
+- **Security**: Row-level security for data access control
 
 ### Why FastAPI + React?
 - **FastAPI**: High performance, async support, automatic docs
@@ -462,17 +515,35 @@ cd frontend && npm run dev
 
 ---
 
+## Quality Assurance & Compliance
+
+### QA System
+- **Automatic Quality Scoring**: Every assistant response is scored (0.0-1.0)
+- **Compliance Detection**: Keywords related to GDPR, privacy, security, legal, financial
+- **Profanity Filtering**: Flags inappropriate language
+- **Quality Indicators**: Checks for helpfulness, politeness, actionable information
+- **Status Classification**: Responses categorized as pass, warning, or fail
+
+### A/B Testing System
+- **Variant Management**: Create and manage instruction variants for agents
+- **Consistent Routing**: Same user always gets same variant (hashing-based)
+- **Metrics Collection**: Satisfaction, response time, escalations, resolutions, feedback
+- **Statistical Analysis**: T-test to determine if one variant performs significantly better
+- **Automatic Recommendations**: System suggests the best-performing variant
+
+---
+
 ## Future Architecture Improvements
 
 1. **Microservices**: Split into separate services
 2. **Event-Driven**: Message queue for async processing
-3. **Database**: PostgreSQL for structured data, MongoDB for documents
-4. **Caching**: Redis for hot data
-5. **CDN**: Static asset delivery
-6. **Monitoring**: APM tools (Datadog, New Relic)
+3. **Caching**: Redis for hot data
+4. **CDN**: Static asset delivery
+5. **Monitoring**: APM tools (Datadog, New Relic)
+6. **ML Integration**: Predictive escalation with ML models
 
 ---
 
-*Last Updated: 2025-01-16*
-*Version: 1.0*
+*Last Updated: 2025-01-27*
+*Version: 2.0*
 
