@@ -1,5 +1,11 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
+// Debug: Log the API URL (only in browser)
+if (typeof window !== "undefined") {
+  console.log("🔗 API_BASE_URL:", API_BASE_URL)
+  console.log("🔗 NEXT_PUBLIC_API_URL env:", process.env.NEXT_PUBLIC_API_URL)
+}
+
 async function safeFetch<T>(fetchFn: () => Promise<Response>): Promise<T> {
   try {
     const response = await fetchFn()
