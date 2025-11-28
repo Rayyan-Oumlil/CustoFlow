@@ -118,7 +118,7 @@ Comprehensive logging, metrics collection, request tracing, and real-time analyt
 
 ### 8. Deployment ✅
 
-Production-ready FastAPI server with REST API, React/Next.js frontend, health checks, API documentation (Swagger UI), and Supabase integration. System includes error handling, rate limiting, caching, and security measures.
+Production-ready FastAPI server deployed on **Google Cloud Run** with REST API, React/Next.js frontend on Vercel, health checks, API documentation (Swagger UI), and Supabase integration. We chose Cloud Run over Agent Engine for cost-effectiveness (3-4x cheaper at $5-45/month vs $50-200/month) while maintaining excellent performance (latency <300ms) and full control over the infrastructure. System includes error handling, rate limiting, caching, and security measures.
 
 ---
 

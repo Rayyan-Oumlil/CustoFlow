@@ -84,13 +84,15 @@
 ## ⚠️ Missing Features & Gaps
 
 ### Minor Gaps (All Optional)
-- [ ] Agent Engine Deployment (optional bonus - 5 points)
-  - **Note**: You've already deployed to Cloud Run + Vercel ✅
-  - Agent Engine is an alternative managed deployment for ADK agents
-  - Current deployment is production-ready and sufficient
-  - **📖 Guide Available**: See `docs/AGENT_ENGINE_DEPLOYMENT.md` for complete instructions
 - [ ] MCP Tools (file system access)
 - [ ] Payment Gateway Integration (automated refunds)
+
+**Note on Agent Engine**: We chose **Cloud Run** over Agent Engine for deployment because:
+- **Cost**: 3-4x cheaper ($5-45/mois vs $50-200/mois)
+- **Performance**: Excellent latency (<300ms) already achieved
+- **Flexibility**: Full control over FastAPI server and integrations
+- **Simplicity**: No migration needed, already production-ready
+- See `docs/AGENT_ENGINE_VS_CLOUD_RUN.md` for detailed comparison
 
 ### Documentation Gaps
 - [ ] Architecture diagrams
@@ -238,7 +240,6 @@
 2. [ ] Add code examples to writeup
 3. [ ] Document deployment process
 4. [ ] Add metrics/analytics screenshots
-5. [ ] Agent Engine deployment (bonus points)
 
 ---
 
