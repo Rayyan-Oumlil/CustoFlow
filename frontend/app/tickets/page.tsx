@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useStore } from "@/lib/store"
 import { apiClient } from "@/lib/api-client"
+import { cache, CACHE_KEYS } from "@/lib/cache"
 import { PageHeader } from "@/components/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -89,12 +90,30 @@ export default function TicketsPage() {
 
   const fetchData = async () => {
     try {
+      // Check cache first (30 second TTL for tickets)
+      const cacheKey = CACHE_KEYS.tickets()
+      const cached = cache.get<TicketWithSummary[]>(cacheKey)
+      if (cached) {
+        setTickets(cached)
+        setLoading(false)
+        return
+      }
+      
       setLoading(true)
       const response = await apiClient.get<any>("/tickets")
       const ticketsList = response.tickets || []
       setTickets(ticketsList)
+      
+      // Cache the tickets (30 second TTL)
+      cache.set(cacheKey, ticketsList, 30000)
     } catch (error) {
       console.error("Failed to fetch tickets:", error)
+      // Try to use cached data on error
+      const cacheKey = CACHE_KEYS.tickets()
+      const cached = cache.get<TicketWithSummary[]>(cacheKey)
+      if (cached) {
+        setTickets(cached)
+      }
     } finally {
       setLoading(false)
     }
@@ -102,7 +121,8 @@ export default function TicketsPage() {
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 30000) // Refresh every 30 seconds
+    // Poll every 30 seconds (tickets don't change as frequently)
+    const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
   }, [])
 

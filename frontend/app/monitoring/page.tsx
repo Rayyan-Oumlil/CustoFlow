@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { useStore } from "@/lib/store"
 import { apiClient, type Message } from "@/lib/api-client"
+import { cache, CACHE_KEYS } from "@/lib/cache"
 import { PageHeader } from "@/components/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -36,20 +37,48 @@ export default function MonitoringPage() {
     initFromStorage()
   }, [initFromStorage])
 
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     try {
+      // Check cache first (10 second TTL for active sessions)
+      const cacheKey = "sessions:all:active"
+      const cached = cache.get<ActiveSession[]>(cacheKey)
+      if (cached) {
+        setSessions(cached)
+        setLoading(false)
+        return
+      }
+      
       const data = await apiClient.get<ActiveSession[]>("/sessions/all/active")
-      setSessions(Array.isArray(data) ? data : [])
+      const sessionsArray = Array.isArray(data) ? data : []
+      setSessions(sessionsArray)
+      
+      // Cache the sessions (10 second TTL)
+      cache.set(cacheKey, sessionsArray, 10000)
     } catch (error) {
       console.error("Failed to fetch active sessions:", error)
-      setSessions([])
+      // Try to use cached data on error
+      const cacheKey = "sessions:all:active"
+      const cached = cache.get<ActiveSession[]>(cacheKey)
+      if (cached) {
+        setSessions(cached)
+      } else {
+        setSessions([])
+      }
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const fetchMessages = async (sessionId: string) => {
+  const fetchMessages = useCallback(async (sessionId: string) => {
     if (!userId) return
+    
+    // Check cache first (5 second TTL for messages)
+    const cacheKey = CACHE_KEYS.messages(userId, sessionId)
+    const cached = cache.get<Message[]>(cacheKey)
+    if (cached) {
+      setMessages(prev => ({ ...prev, [sessionId]: cached }))
+      return
+    }
     
     try {
       const data = await apiClient.get(`/history/${userId}?session_id=${sessionId}`)
@@ -78,6 +107,9 @@ export default function MonitoringPage() {
       
       setMessages(prev => ({ ...prev, [sessionId]: msgs }))
       
+      // Cache the messages (5 second TTL)
+      cache.set(cacheKey, msgs, 5000)
+      
       // Auto-scroll to bottom
       setTimeout(() => {
         const ref = messagesEndRefs.current[sessionId]
@@ -87,8 +119,13 @@ export default function MonitoringPage() {
       }, 100)
     } catch (error) {
       console.error(`Failed to fetch messages for session ${sessionId}:`, error)
+      // Try to use cached data on error
+      const cached = cache.get<Message[]>(cacheKey)
+      if (cached) {
+        setMessages(prev => ({ ...prev, [sessionId]: cached }))
+      }
     }
-  }
+  }, [userId])
 
   const sendMessage = async (sessionId: string) => {
     const message = inputMessages[sessionId]?.trim()
@@ -125,16 +162,69 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     fetchSessions()
-    const interval = setInterval(() => {
+    
+    // Adaptive polling: faster when user is active, slower when inactive
+    let pollingInterval: NodeJS.Timeout | null = null
+    let lastActivity = Date.now()
+    let isActive = true
+    
+    const poll = () => {
       fetchSessions()
       // Refresh messages for selected session
       if (selectedSession) {
         fetchMessages(selectedSession)
       }
-    }, 10000) // Refresh every 10 seconds (reduced from 5 to reduce server load)
-
-    return () => clearInterval(interval)
-  }, [selectedSession, userId])
+      
+      // Adjust interval based on activity
+      const timeSinceActivity = Date.now() - lastActivity
+      const newInterval = timeSinceActivity > 30000 ? 30000 : 10000 // 30s if inactive, 10s if active
+      
+      if (pollingInterval) {
+        clearInterval(pollingInterval)
+      }
+      pollingInterval = setInterval(poll, newInterval)
+    }
+    
+    // Initial poll
+    poll()
+    
+    // Track activity
+    const handleActivity = () => {
+      lastActivity = Date.now()
+      isActive = true
+    }
+    
+    const events = ['mousedown', 'keypress', 'scroll', 'touchstart', 'focus']
+    events.forEach(event => {
+      window.addEventListener(event, handleActivity, { passive: true })
+    })
+    
+    // Check activity periodically
+    const activityCheck = setInterval(() => {
+      const timeSinceActivity = Date.now() - lastActivity
+      if (timeSinceActivity > 30000 && isActive) {
+        isActive = false
+        if (pollingInterval) {
+          clearInterval(pollingInterval)
+          pollingInterval = setInterval(poll, 30000)
+        }
+      } else if (timeSinceActivity <= 30000 && !isActive) {
+        isActive = true
+        if (pollingInterval) {
+          clearInterval(pollingInterval)
+          pollingInterval = setInterval(poll, 10000)
+        }
+      }
+    }, 5000)
+    
+    return () => {
+      if (pollingInterval) clearInterval(pollingInterval)
+      clearInterval(activityCheck)
+      events.forEach(event => {
+        window.removeEventListener(event, handleActivity)
+      })
+    }
+  }, [selectedSession, userId, fetchSessions, fetchMessages])
 
   useEffect(() => {
     if (selectedSession) {

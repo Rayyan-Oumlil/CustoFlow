@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useStore } from "@/lib/store"
 import { apiClient, type Analytics } from "@/lib/api-client"
+import { cache, CACHE_KEYS } from "@/lib/cache"
 import { PageHeader } from "@/components/page-header"
 import { Card } from "@/components/ui/card"
 import {
@@ -32,6 +33,16 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
+        // Check cache first (30 second TTL for analytics)
+        const cacheKey = CACHE_KEYS.analytics()
+        const cached = cache.get<any>(cacheKey)
+        if (cached) {
+          setAnalytics(cached.analytics || {})
+          setChartData(cached.chartData || [])
+          setLoading(false)
+          return
+        }
+        
         setLoading(true)
         const [analyticsData, metricsData] = await Promise.all([
           apiClient.get<any>("/analytics").catch(() => null),
@@ -87,14 +98,28 @@ export default function AnalyticsPage() {
           console.error("Failed to fetch daily analytics:", error)
           setChartData([])
         }
+        
+        // Cache the analytics data (30 second TTL)
+        cache.set(cacheKey, {
+          analytics: analyticsData || metricsData || null,
+          chartData: chartData || [],
+        }, 30000)
       } catch (error) {
         console.error("Failed to fetch analytics:", error)
+        // Try to use cached data on error
+        const cacheKey = CACHE_KEYS.analytics()
+        const cached = cache.get<any>(cacheKey)
+        if (cached) {
+          setAnalytics(cached.analytics || null)
+          setChartData(cached.chartData || [])
+        }
       } finally {
         setLoading(false)
       }
     }
 
     fetchAnalytics()
+    // Poll every 30 seconds (analytics don't need to be super real-time)
     const interval = setInterval(fetchAnalytics, 30000)
     return () => clearInterval(interval)
   }, [])

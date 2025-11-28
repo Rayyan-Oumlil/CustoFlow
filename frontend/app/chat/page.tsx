@@ -2,10 +2,11 @@
 
 import type React from "react"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useStore } from "@/lib/store"
 import { apiClient, type Message } from "@/lib/api-client"
+import { cache, CACHE_KEYS } from "@/lib/cache"
 import { PageHeader } from "@/components/page-header"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -46,7 +47,6 @@ export default function ChatPage() {
   const [feedbackReason, setFeedbackReason] = useState("")
   const [feedbackCategory, setFeedbackCategory] = useState("")
   const [isRecording, setIsRecording] = useState(false)
-  const [audioEnabled, setAudioEnabled] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
   const [recordingDuration, setRecordingDuration] = useState(0)
@@ -59,6 +59,9 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
+  // Track which message is currently playing TTS
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null)
+  const messageAudioRefs = useRef<Record<string, HTMLAudioElement>>({})
 
   useEffect(() => {
     initFromStorage()
@@ -73,6 +76,24 @@ export default function ChatPage() {
 
     const fetchConversations = async () => {
       try {
+        // Check cache first (30 second TTL for conversations)
+        const cacheKey = customerId 
+          ? CACHE_KEYS.sessions(customerId)
+          : `sessions:${userId}`
+        const cached = cache.get<Conversation[]>(cacheKey)
+        if (cached) {
+          setConversations(cached)
+          setLoading(false)
+          // Still check session status
+          if (sessionId) {
+            const currentSession = cached.find(c => c.session_id === sessionId)
+            if (currentSession) {
+              setIsSessionClosed(currentSession.is_active === false)
+            }
+          }
+          return
+        }
+        
         setLoading(true)
         // Get sessions by customer_id only (user_id is ignored when customer_id is provided)
         // Use the new endpoint that searches only by customer_id
@@ -115,6 +136,9 @@ export default function ChatPage() {
             }))
         console.log("Mapped conversations for customer_id:", customerId, "conversations:", convos)
         setConversations(convos)
+        
+        // Cache conversations (30 second TTL)
+        cache.set(cacheKey, convos, 30000)
         
         // Check if current session is closed
         if (sessionId) {
@@ -208,14 +232,20 @@ export default function ChatPage() {
     )
   }
 
-  useEffect(() => {
+  // Fetch messages function with cache support
+  const fetchMessages = useCallback(async (mergeWithLocal: boolean = false) => {
     if (!userId || !sessionId) return
-
-    // Track if component is mounted to prevent state updates after unmount
-    let isMounted = true
-
-    const fetchMessages = async (mergeWithLocal: boolean = false) => {
       if (!isMounted) return
+      
+      // Check cache first (5 second TTL for messages) - only for non-merge requests
+      const cacheKey = CACHE_KEYS.messages(userId, sessionId)
+      if (!mergeWithLocal) {
+        const cached = cache.get<Message[]>(cacheKey)
+        if (cached && isMounted) {
+          setMessages(cached)
+          return
+        }
+      }
       
       try {
         const data = await apiClient.get(`/history/${userId}?session_id=${sessionId}`)
@@ -304,14 +334,20 @@ export default function ChatPage() {
         } else {
           // Initial load: deduplicate server messages
           if (isMounted) {
-            setMessages(deduplicateMessages(serverMsgs))
+            const deduplicated = deduplicateMessages(serverMsgs)
+            setMessages(deduplicated)
+            // Cache the messages (5 second TTL - short because messages change frequently)
+            cache.set(cacheKey, deduplicated, 5000)
           }
         }
       } catch (error) {
         if (!isMounted) return
         console.error("Failed to fetch messages:", error)
-        // Don't clear messages on error if merging - keep what we have
-        if (!mergeWithLocal) {
+        // On error, try to use cached data if available
+        const cached = cache.get<Message[]>(cacheKey)
+        if (cached && isMounted) {
+          setMessages(cached)
+        } else if (!mergeWithLocal) {
           setMessages([])
         }
       }
@@ -339,20 +375,78 @@ export default function ChatPage() {
       setIsSessionClosed(false)
     }
     
-    // Poll for new messages every 5 seconds (to catch human agent messages)
-    // Use merge mode to preserve local messages that haven't been saved yet
-    // Reduced from 2s to 5s to reduce server load (60% fewer requests)
-    const interval = setInterval(() => {
-      if (isMounted && userId && sessionId) {
+    // Adaptive polling: fast when active (2s), slow when inactive (15s)
+    // Pauses when tab is hidden
+    let pollingInterval: NodeJS.Timeout | null = null
+    let isActive = true
+    let lastActivity = Date.now()
+    
+    const startPolling = () => {
+      if (!isMounted || !userId || !sessionId) return
+      
+      const poll = () => {
+        if (!isMounted || !userId || !sessionId) return
+        // Don't poll if tab is hidden
+        if (document.hidden) return
+        
         fetchMessages(true) // Merge with local messages
+        
+        // Update interval based on activity
+        const timeSinceActivity = Date.now() - lastActivity
+        const newInterval = timeSinceActivity > 30000 ? 15000 : 2000 // 15s if inactive, 2s if active
+        
+        if (pollingInterval) {
+          clearInterval(pollingInterval)
+        }
+        pollingInterval = setInterval(poll, newInterval)
       }
-    }, 5000) // 5 seconds instead of 2
+      
+      // Initial poll
+      poll()
+      
+      // Check activity periodically and adjust interval
+      const activityCheck = setInterval(() => {
+        if (!isMounted) return
+        const timeSinceActivity = Date.now() - lastActivity
+        const shouldBeActive = timeSinceActivity <= 30000
+        if (shouldBeActive !== isActive) {
+          isActive = shouldBeActive
+          // Restart polling with new interval
+          if (pollingInterval) {
+            clearInterval(pollingInterval)
+          }
+          poll()
+        }
+      }, 5000) // Check every 5 seconds
+      
+      return () => {
+        if (pollingInterval) clearInterval(pollingInterval)
+        clearInterval(activityCheck)
+      }
+    }
+    
+    // Track user activity
+    const handleActivity = () => {
+      lastActivity = Date.now()
+      isActive = true
+    }
+    
+    // Listen for user activity
+    const events = ['mousedown', 'keypress', 'scroll', 'touchstart', 'focus', 'click']
+    events.forEach(event => {
+      window.addEventListener(event, handleActivity, { passive: true })
+    })
+    
+    const cleanup = startPolling()
     
     return () => {
       isMounted = false
-      clearInterval(interval)
+      if (cleanup) cleanup()
+      events.forEach(event => {
+        window.removeEventListener(event, handleActivity)
+      })
     }
-  }, [userId, sessionId, conversations])
+  }, [userId, sessionId, conversations, fetchMessages])
 
   useEffect(() => {
     // Auto-scroll to bottom only if user is already at bottom (don't force scroll when scrolling up)
@@ -549,7 +643,7 @@ export default function ChatPage() {
   // Audio recording functions - Google Cloud Speech-to-Text only
   const startRecording = async () => {
     // Stop any playing audio when starting to record
-    stopAudioPlayback()
+    stopAllAudio()
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -643,14 +737,11 @@ export default function ChatPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
   
-  const playAudioResponse = async (text: string) => {
+  // Play TTS for a specific message
+  const playMessageAudio = async (messageId: string, text: string) => {
     try {
       // Stop any currently playing audio
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause()
-        currentAudioRef.current.currentTime = 0
-        currentAudioRef.current = null
-      }
+      stopAllAudio()
       
       const audioBlob = await apiClient.synthesizeSpeech(text)
       
@@ -663,41 +754,65 @@ export default function ChatPage() {
       const audioUrl = URL.createObjectURL(audioBlob)
       const audio = new Audio(audioUrl)
       
-      // Store reference to current audio
-      currentAudioRef.current = audio
+      // Store reference to this message's audio
+      messageAudioRefs.current[messageId] = audio
+      setPlayingMessageId(messageId)
       
       audio.onerror = (e) => {
         console.error("Audio playback error:", e)
         URL.revokeObjectURL(audioUrl)
-        currentAudioRef.current = null
+        delete messageAudioRefs.current[messageId]
+        setPlayingMessageId(null)
       }
       
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl)
-        currentAudioRef.current = null
+        delete messageAudioRefs.current[messageId]
+        setPlayingMessageId(null)
       }
       
       await audio.play()
     } catch (error: any) {
       console.error("Failed to synthesize speech:", error)
-      currentAudioRef.current = null
-      // Don't show alert for audio errors, just log them
-      // Audio is a nice-to-have feature, not critical
+      delete messageAudioRefs.current[messageId]
+      setPlayingMessageId(null)
     }
   }
   
-  // Stop any playing audio
-  const stopAudioPlayback = () => {
+  // Stop all playing audio
+  const stopAllAudio = () => {
+    // Stop all message audios
+    Object.values(messageAudioRefs.current).forEach(audio => {
+      audio.pause()
+      audio.currentTime = 0
+    })
+    messageAudioRefs.current = {}
+    setPlayingMessageId(null)
+    
+    // Also stop legacy audio ref if exists
     if (currentAudioRef.current) {
       currentAudioRef.current.pause()
       currentAudioRef.current.currentTime = 0
       currentAudioRef.current = null
     }
   }
+  
+  // Legacy function for backward compatibility (not used anymore)
+  const playAudioResponse = async (text: string) => {
+    // This is no longer used - messages have individual TTS buttons
+  }
+  
+  // Legacy function for backward compatibility
+  const stopAudioPlayback = () => {
+    stopAllAudio()
+  }
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || sending || isSessionClosed) return
+    
+    // Stop any playing audio when user sends a message
+    stopAllAudio()
     
     // Create session if it doesn't exist
     let currentSessionId = sessionId
@@ -822,13 +937,8 @@ export default function ChatPage() {
       // Server saves the message, polling will retrieve it
       // This prevents duplicates
       
-      // Only process response if it exists (human agent case returns early)
-      if (response && response.agent_used !== "human_agent") {
-        // Play audio response if enabled (but don't add message locally)
-        if (audioEnabled && response.response) {
-          playAudioResponse(response.response)
-        }
-      }
+      // Audio is now handled per-message with individual buttons
+      // No automatic audio playback
       
       // Trigger immediate fetch to get the saved messages from server
       // This ensures user message and assistant response appear quickly
@@ -1345,8 +1455,33 @@ export default function ChatPage() {
                         </div>
                       )}
                     </div>
+                    {/* Action buttons for assistant messages */}
                     {msg.role === "assistant" && (
                       <div className="flex items-center gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* TTS Button */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                          onClick={() => {
+                            if (playingMessageId === msg.id) {
+                              // Stop if currently playing
+                              stopAllAudio()
+                            } else {
+                              // Play this message
+                              playMessageAudio(msg.id, msg.content)
+                            }
+                          }}
+                          title={playingMessageId === msg.id ? "Stop audio" : "Play audio"}
+                        >
+                          {playingMessageId === msg.id ? (
+                            <VolumeX className="w-4 h-4" />
+                          ) : (
+                            <Volume2 className="w-4 h-4" />
+                          )}
+                        </Button>
+                        
+                        {/* Feedback buttons */}
                         {feedbackGiven.has(msg.id) ? (
                           <span className="text-xs text-muted-foreground">Thank you for your feedback!</span>
                         ) : (
@@ -1373,6 +1508,31 @@ export default function ChatPage() {
                             </Button>
                           </>
                         )}
+                      </div>
+                    )}
+                    
+                    {/* TTS Button for user messages too */}
+                    {msg.role === "user" && (
+                      <div className="flex items-center gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                          onClick={() => {
+                            if (playingMessageId === msg.id) {
+                              stopAllAudio()
+                            } else {
+                              playMessageAudio(msg.id, msg.content)
+                            }
+                          }}
+                          title={playingMessageId === msg.id ? "Stop audio" : "Play audio"}
+                        >
+                          {playingMessageId === msg.id ? (
+                            <VolumeX className="w-4 h-4" />
+                          ) : (
+                            <Volume2 className="w-4 h-4" />
+                          )}
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -1512,8 +1672,8 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => {
                   // Stop any playing audio when user starts typing
-                  if (e.target.value.length > 0 && currentAudioRef.current) {
-                    stopAudioPlayback()
+                  if (e.target.value.length > 0) {
+                    stopAllAudio()
                   }
                   setInput(e.target.value)
                 }}
@@ -1533,20 +1693,6 @@ export default function ChatPage() {
                   <MicOff className="w-4 h-4" />
                 ) : (
                   <Mic className="w-4 h-4" />
-                )}
-              </Button>
-              <Button
-                type="button"
-                variant={audioEnabled ? "default" : "outline"}
-                size="icon"
-                onClick={() => setAudioEnabled(!audioEnabled)}
-                disabled={sending || !userId}
-                title={audioEnabled ? "Disable audio responses" : "Enable audio responses"}
-              >
-                {audioEnabled ? (
-                  <Volume2 className="w-4 h-4" />
-                ) : (
-                  <VolumeX className="w-4 h-4" />
                 )}
               </Button>
               <Button type="submit" disabled={sending || !userId || !input.trim() || isRecording || isSessionClosed} size="icon">
