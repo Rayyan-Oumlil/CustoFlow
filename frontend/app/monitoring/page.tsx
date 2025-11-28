@@ -155,16 +155,16 @@ export default function MonitoringPage() {
   const sessionMessages = selectedSession ? messages[selectedSession] || [] : []
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen overflow-hidden">
       <PageHeader 
         title="Active Sessions Monitoring" 
         description="Monitor and intervene in active customer conversations"
       />
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sessions List */}
-        <div className="w-80 border-r bg-muted/30 flex flex-col">
-          <div className="p-4 border-b flex items-center justify-between">
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Sessions List - Always visible sidebar */}
+        <div className="w-80 border-r bg-muted/30 flex flex-col flex-shrink-0 overflow-hidden">
+          <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
             <h2 className="font-semibold">Active Sessions ({sessions.length})</h2>
             <Button
               variant="outline"
@@ -176,7 +176,7 @@ export default function MonitoringPage() {
             </Button>
           </div>
           
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-2 space-y-2">
               {sessions.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground text-sm">
@@ -220,11 +220,11 @@ export default function MonitoringPage() {
           </ScrollArea>
         </div>
 
-        {/* Chat View */}
-        <div className="flex-1 flex flex-col">
+        {/* Chat View - Agent Perspective */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {selectedSession ? (
             <>
-              <div className="p-4 border-b bg-background">
+              <div className="p-4 border-b bg-background flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="font-semibold">
@@ -242,76 +242,101 @@ export default function MonitoringPage() {
                 </div>
               </div>
 
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
+              {/* Messages Area - Scrollable */}
+              <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                <div className="space-y-4 max-w-4xl mx-auto">
                   {sessionMessages.length === 0 ? (
                     <div className="text-center text-muted-foreground py-8">
                       No messages yet
                     </div>
                   ) : (
-                    sessionMessages.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`flex gap-3 ${
-                          msg.role === "user" ? "justify-end" : "justify-start"
-                        }`}
-                      >
-                        {msg.role === "assistant" && (
-                          <div className="flex-shrink-0">
-                            {msg.agent_used === "human_agent" ? (
-                              <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                                <User className="w-4 h-4 text-green-600 dark:text-green-400" />
-                              </div>
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                                <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                              </div>
-                            )}
-                          </div>
-                        )}
+                    sessionMessages.map((msg) => {
+                      // Agent perspective: user messages are from customer (left), assistant messages are from agent/AI (right)
+                      const isCustomer = msg.role === "user"
+                      const isHumanAgent = msg.agent_used === "human_agent"
+                      const isAI = msg.role === "assistant" && !isHumanAgent
+                      
+                      return (
                         <div
-                          className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                            msg.role === "user"
-                              ? "bg-primary text-primary-foreground"
-                              : msg.agent_used === "human_agent"
-                              ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800"
-                              : "bg-muted"
+                          key={msg.id}
+                          className={`flex gap-3 ${
+                            isCustomer ? "justify-start" : "justify-end"
                           }`}
                         >
-                          {msg.role === "assistant" && msg.agent_used && (
-                            <div className="mb-1">
-                              <Badge
-                                variant="outline"
-                                className={`text-xs ${
-                                  msg.agent_used === "human_agent"
-                                    ? "bg-green-100 text-green-800 border-green-300"
-                                    : "bg-blue-100 text-blue-800 border-blue-300"
-                                }`}
-                              >
-                                {msg.agent_used === "human_agent" ? "👤 Human Agent" : `🤖 ${msg.agent_used}`}
-                              </Badge>
+                          {/* Customer Avatar (left) */}
+                          {isCustomer && (
+                            <div className="flex-shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
+                                <User className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                              </div>
                             </div>
                           )}
-                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                          <p className="text-xs opacity-70 mt-1">
-                            {formatTime(msg.timestamp)}
-                          </p>
-                        </div>
-                        {msg.role === "user" && (
-                          <div className="flex-shrink-0">
-                            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                              <User className="w-4 h-4 text-primary" />
-                            </div>
+                          
+                          {/* Message Bubble */}
+                          <div
+                            className={`max-w-[70%] rounded-lg px-4 py-2 ${
+                              isCustomer
+                                ? "bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800"
+                                : isHumanAgent
+                                ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800"
+                                : "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800"
+                            }`}
+                          >
+                            {/* Agent/AI Badge */}
+                            {!isCustomer && (
+                              <div className="mb-1">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${
+                                    isHumanAgent
+                                      ? "bg-green-100 text-green-800 border-green-300"
+                                      : "bg-blue-100 text-blue-800 border-blue-300"
+                                  }`}
+                                >
+                                  {isHumanAgent ? "👤 Human Agent" : `🤖 ${msg.agent_used || "AI Agent"}`}
+                                </Badge>
+                              </div>
+                            )}
+                            {isCustomer && (
+                              <div className="mb-1">
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs bg-orange-100 text-orange-800 border-orange-300"
+                                >
+                                  👤 Customer
+                                </Badge>
+                              </div>
+                            )}
+                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                            <p className="text-xs opacity-70 mt-1">
+                              {formatTime(msg.timestamp)}
+                            </p>
                           </div>
-                        )}
-                      </div>
-                    ))
+                          
+                          {/* Agent/AI Avatar (right) */}
+                          {!isCustomer && (
+                            <div className="flex-shrink-0">
+                              {isHumanAgent ? (
+                                <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
+                                  <User className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                </div>
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                                  <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
                   )}
                   <div ref={(el) => { if (selectedSession) messagesEndRefs.current[selectedSession] = el }} />
                 </div>
-              </ScrollArea>
+              </div>
 
-              <div className="p-4 border-t bg-background">
+              {/* Input Area - Fixed at bottom */}
+              <div className="p-4 border-t bg-background flex-shrink-0">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault()
@@ -324,7 +349,7 @@ export default function MonitoringPage() {
                     onChange={(e) =>
                       setInputMessages(prev => ({ ...prev, [selectedSession]: e.target.value }))
                     }
-                    placeholder="Type your message to intervene..."
+                    placeholder="Type your message as human agent..."
                     disabled={sending[selectedSession]}
                     className="flex-1"
                   />
@@ -337,7 +362,7 @@ export default function MonitoringPage() {
                   </Button>
                 </form>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Your message will appear as from a human agent
+                  Your message will appear as from a human agent (green badge)
                 </p>
               </div>
             </>
