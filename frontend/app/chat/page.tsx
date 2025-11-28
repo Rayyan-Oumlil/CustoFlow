@@ -84,9 +84,15 @@ export default function ChatPage() {
         let sessionsArray: any[] = []
         if (Array.isArray(data)) {
           sessionsArray = data
-        } else if (data && typeof data === 'object' && 'sessions' in data) {
-          sessionsArray = Array.isArray((data as any).sessions) ? (data as any).sessions : []
+        } else if (data && typeof data === 'object') {
+          // Try 'sessions' property first, then check if data itself is the array
+          if ('sessions' in data && Array.isArray((data as any).sessions)) {
+            sessionsArray = (data as any).sessions
+          } else if (Array.isArray(data)) {
+            sessionsArray = data
+          }
         }
+        console.log("Extracted sessions array:", sessionsArray.length, "sessions")
         
         // Client-side filter: show sessions that match customer_id OR have null/undefined customer_id
         // This handles cases where sessions might not have customer_id set

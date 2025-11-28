@@ -116,24 +116,28 @@ def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[D
         return session_metadata.get_user_sessions(user_id, customer_id)
     
     try:
-        query = supabase.table("sessions").select("*").eq("user_id", user_id)
-        
-        # Filter by customer_id if provided (case-insensitive comparison)
+        # If customer_id is provided, prioritize filtering by customer_id
+        # This is more reliable than user_id which can change between browsers/sessions
         if customer_id:
-            # Get all sessions first, then filter case-insensitively
-            # Supabase doesn't support case-insensitive comparison directly
-            result = query.order("updated_at", desc=True).execute()
-            sessions = result.data or []
-            # Filter case-insensitively: "Cust_001" matches "cust_001"
+            # Get all sessions for this customer_id (case-insensitive)
             customer_id_lower = customer_id.lower()
-            sessions = [s for s in sessions if s.get("customer_id") and s.get("customer_id").lower() == customer_id_lower]
-            print(f"✅ [SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}, customer_id={customer_id}")
+            result = supabase.table("sessions").select("*").order("updated_at", desc=True).execute()
+            sessions = result.data or []
+            # Filter by customer_id case-insensitively and optionally by user_id
+            filtered_sessions = [
+                s for s in sessions 
+                if s.get("customer_id") and s.get("customer_id").lower() == customer_id_lower
+                and (not user_id or s.get("user_id") == user_id)  # Optionally match user_id if provided
+            ]
+            print(f"✅ [SUPABASE] Retrieved {len(filtered_sessions)} sessions from Supabase for customer_id={customer_id} (user_id={user_id})")
+            return filtered_sessions
         else:
+            # If no customer_id, filter by user_id only
+            query = supabase.table("sessions").select("*").eq("user_id", user_id)
             result = query.order("updated_at", desc=True).execute()
             sessions = result.data or []
             print(f"✅ [SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}")
-        
-        return sessions
+            return sessions
     except Exception as e:
         print(f"❌ [SUPABASE] Error get_user_sessions: {e}")
         # Fallback to JSON on error

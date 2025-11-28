@@ -1483,8 +1483,11 @@ async def get_history(user_id: str, limit: Optional[int] = 50, session_id: Optio
 @app.get("/sessions/{user_id}")
 async def get_user_sessions(user_id: str, customer_id: Optional[str] = Query(None)):
     """Get all sessions for a user with metadata, optionally filtered by customer_id."""
+    logger.info(f"Getting sessions for user_id={user_id}, customer_id={customer_id}")
     sessions = session_metadata.get_user_sessions(user_id, customer_id)
-    return {"user_id": user_id, "sessions": sessions, "count": len(sessions)}
+    logger.info(f"Found {len(sessions)} sessions for user_id={user_id}, customer_id={customer_id}")
+    # Return sessions array directly for frontend compatibility (also support object format)
+    return sessions
 
 
 @app.get("/sessions/all/active")
