@@ -52,32 +52,21 @@ Write-Host ""
 # Verifier les variables d'environnement
 Write-Host "Verification des variables d'environnement..." -ForegroundColor Cyan
 $envFile = ".env.gcloud"
-$envVars = @()
+$envVarsFlag = ""
 
 if (Test-Path $envFile) {
     Write-Host "OK Fichier .env.gcloud trouve" -ForegroundColor Green
     
-    # Lire le fichier .env et extraire les variables
-    Get-Content $envFile | ForEach-Object {
-        $line = $_.Trim()
-        # Ignorer les commentaires et lignes vides
-        if ($line -and -not $line.StartsWith("#")) {
-            if ($line -match "^([^=]+)=(.*)$") {
-                $key = $matches[1].Trim()
-                $value = $matches[2].Trim()
-                # Ignorer les valeurs placeholder
-                if ($value -and $value -ne "your_google_api_key_here" -and $value -ne "your_supabase_url_here" -and $value -ne "your_supabase_key_here") {
-                    $envVars += "$key=$value"
-                }
-            }
-        }
-    }
+    # Verifier le format du fichier
+    $lines = Get-Content $envFile | Where-Object { $_.Trim() -and -not $_.Trim().StartsWith("#") }
+    $validLines = $lines | Where-Object { $_ -match "^[^=]+=.*$" }
     
-    if ($envVars.Count -eq 0) {
-        Write-Host "ATTENTION: Aucune variable d'environnement valide trouvee dans .env.gcloud" -ForegroundColor Yellow
-        Write-Host "Assurez-vous d'avoir rempli les valeurs" -ForegroundColor Yellow
+    if ($validLines.Count -eq 0) {
+        Write-Host "ATTENTION: Format du fichier .env.gcloud invalide" -ForegroundColor Yellow
+        Write-Host "Chaque variable doit etre sur une ligne separee: KEY=VALUE" -ForegroundColor Yellow
     } else {
-        Write-Host "OK $($envVars.Count) variable(s) d'environnement trouvee(s)" -ForegroundColor Green
+        Write-Host "OK $($validLines.Count) variable(s) d'environnement trouvee(s)" -ForegroundColor Green
+        $envVarsFlag = "--env-vars-file $envFile"
     }
 } else {
     Write-Host "ATTENTION: Fichier .env.gcloud non trouve" -ForegroundColor Yellow
@@ -89,9 +78,8 @@ Write-Host ""
 Write-Host "Deploiement du service..." -ForegroundColor Cyan
 $deployCommand = "gcloud run deploy $SERVICE_NAME --source . --platform managed --region $REGION --allow-unauthenticated --memory $MEMORY --cpu $CPU --timeout $TIMEOUT --max-instances $MAX_INSTANCES --min-instances $MIN_INSTANCES"
 
-if ($envVars.Count -gt 0) {
-    $envVarsString = $envVars -join ","
-    $deployCommand += " --set-env-vars $envVarsString"
+if ($envVarsFlag) {
+    $deployCommand += " $envVarsFlag"
 }
 
 Invoke-Expression $deployCommand

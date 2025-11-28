@@ -44,25 +44,49 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware - MUST be added before routes
 # Note: Cannot use allow_origins=["*"] with allow_credentials=True
 # Using wildcard "*" with allow_credentials=False to allow all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins
     allow_credentials=False,  # Must be False when using wildcard
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicit methods
+    allow_headers=["*"],  # Allow all headers
     expose_headers=["*"],  # Expose all headers
+    max_age=3600,  # Cache preflight for 1 hour
 )
 
-# Additional CORS headers middleware to ensure headers are always sent
-@app.middleware("http")
-async def add_cors_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
+# Exception handler to ensure CORS headers are always included in error responses
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Ensure CORS headers are included in HTTPException responses."""
+    from fastapi.responses import JSONResponse
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+    return response
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Ensure CORS headers are included in all error responses."""
+    from fastapi.responses import JSONResponse
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
     return response
 
 # Create runner with observability plugins
@@ -330,7 +354,7 @@ async def chat(request: ChatRequest, http_request: Request):
                 from utils.supabase_client import SUPABASE_ENABLED
                 if SUPABASE_ENABLED:
                     from supabase import create_client
-                    import os
+                    # os is already imported at the top of the file
                     from dotenv import load_dotenv
                     load_dotenv()
                     supabase_url = os.getenv("SUPABASE_URL")
@@ -1455,7 +1479,12 @@ async def get_history(user_id: str, limit: Optional[int] = 50, session_id: Optio
 @app.get("/sessions/{user_id}")
 async def get_user_sessions(user_id: str, customer_id: Optional[str] = Query(None)):
     """Get all sessions for a user with metadata, optionally filtered by customer_id."""
-    sessions = session_metadata.get_user_sessions(user_id, customer_id)
+    # Use supabase_client directly to ensure Supabase is used when available
+    from utils.supabase_client import SUPABASE_ENABLED, get_user_sessions as supabase_get_user_sessions
+    if SUPABASE_ENABLED:
+        sessions = supabase_get_user_sessions(user_id, customer_id)
+    else:
+        sessions = session_metadata.get_user_sessions(user_id, customer_id)
     # Return array directly for frontend compatibility
     return sessions
 

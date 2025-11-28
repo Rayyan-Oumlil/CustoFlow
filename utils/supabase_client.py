@@ -12,18 +12,25 @@ try:
     from supabase import create_client, Client
     from dotenv import load_dotenv
     
-    # Charger les variables d'environnement
+    # Charger les variables d'environnement (fichier .env si présent)
+    # Note: Dans Cloud Run, les variables sont déjà dans l'environnement
     load_dotenv()
     
+    # Récupérer les variables d'environnement (depuis .env ou variables système)
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
     
     if SUPABASE_URL and SUPABASE_KEY:
-        supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        SUPABASE_ENABLED = True
+        try:
+            supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            SUPABASE_ENABLED = True
+            print(f"✅ Supabase activé: {SUPABASE_URL[:30]}...")
+        except Exception as e:
+            SUPABASE_ENABLED = False
+            print(f"⚠️  Erreur initialisation Supabase: {e}. Utilisation des fichiers JSON.")
     else:
         SUPABASE_ENABLED = False
-        print("⚠️  Supabase non configuré. Utilisation des fichiers JSON.")
+        print("⚠️  Supabase non configuré (SUPABASE_URL ou SUPABASE_KEY manquants). Utilisation des fichiers JSON.")
 except ImportError:
     SUPABASE_ENABLED = False
     print("⚠️  Supabase non installé. Utilisation des fichiers JSON.")
