@@ -362,8 +362,10 @@ async def chat(request: ChatRequest, http_request: Request):
                     if supabase_url and supabase_key:
                         supabase = create_client(supabase_url, supabase_key)
                         # Always update customer_id in session in Supabase to ensure it's set
-                        supabase.table("sessions").update({"customer_id": customer_id}).eq("session_id", session_id).execute()
-                        logger.info(f"Ensured session customer_id is set to: {customer_id}")
+                        # Normalize to lowercase for consistency
+                        normalized_customer_id = customer_id.lower() if customer_id else None
+                        supabase.table("sessions").update({"customer_id": normalized_customer_id}).eq("session_id", session_id).execute()
+                        logger.info(f"Ensured session customer_id is set to: {normalized_customer_id}")
                 else:
                     # Update in JSON metadata
                     session = session_metadata.get_session(session_id)
@@ -1624,9 +1626,10 @@ async def create_session(request: CreateSessionRequest):
                 supabase_key = os.getenv("SUPABASE_KEY")
                 if supabase_url and supabase_key:
                     supabase = create_client(supabase_url, supabase_key)
-                    # Ensure customer_id is set in Supabase
-                    result = supabase.table("sessions").update({"customer_id": request.customer_id}).eq("session_id", session_id).execute()
-                    logger.info(f"Updated session customer_id in Supabase: {request.customer_id}")
+                    # Ensure customer_id is set in Supabase (normalized to lowercase)
+                    normalized_customer_id = request.customer_id.lower() if request.customer_id else None
+                    result = supabase.table("sessions").update({"customer_id": normalized_customer_id}).eq("session_id", session_id).execute()
+                    logger.info(f"Updated session customer_id in Supabase: {normalized_customer_id}")
         except Exception as e:
             logger.warning(f"Could not update customer_id in Supabase session: {e}")
     

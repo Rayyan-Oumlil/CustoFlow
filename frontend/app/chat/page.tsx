@@ -74,9 +74,9 @@ export default function ChatPage() {
     const fetchConversations = async () => {
       try {
         setLoading(true)
-        // Get all sessions for the user (don't filter by customer_id on server)
-        // We'll filter client-side to handle cases where customer_id might be null or different
-        const url = `/sessions/${userId}`
+        // Get sessions for the user, optionally filtered by customer_id on server
+        // Also filter client-side as fallback for case-insensitive matching
+        const url = `/sessions/${userId}${customerId ? `?customer_id=${encodeURIComponent(customerId)}` : ''}`
         const data = await apiClient.get(url)
         console.log("Fetched sessions from API for customer_id:", customerId, "data:", data)
         
@@ -90,10 +90,12 @@ export default function ChatPage() {
         
         // Client-side filter: show sessions that match customer_id OR have null/undefined customer_id
         // This handles cases where sessions might not have customer_id set
+        // Use case-insensitive comparison to handle "Cust_001" vs "cust_001"
         const filteredSessions = sessionsArray.filter((s: any) => {
           const sessionCustomerId = s.customer_id
-          // Match if customer_id matches, or if session has no customer_id (null/undefined)
-          return sessionCustomerId === customerId || !sessionCustomerId
+          if (!sessionCustomerId) return true // Show sessions with no customer_id
+          // Case-insensitive comparison: "Cust_001" === "cust_001"
+          return sessionCustomerId.toLowerCase() === customerId.toLowerCase()
         })
         
         const convos = filteredSessions.map((s: any) => ({

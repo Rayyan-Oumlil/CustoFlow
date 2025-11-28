@@ -20,10 +20,12 @@ export const useStore = create<StoreState>((set) => ({
   theme: "light",
   setUserId: (id) => set({ userId: id }),
   setCustomerId: (id) => {
-    set({ customerId: id })
+    // Normalize customer_id to lowercase for consistency with backend
+    const normalizedId = id ? id.toLowerCase() : null
+    set({ customerId: normalizedId })
     if (typeof window !== "undefined") {
-      if (id) {
-        localStorage.setItem("custoflow_customer_id", id)
+      if (normalizedId) {
+        localStorage.setItem("custoflow_customer_id", normalizedId)
       } else {
         localStorage.removeItem("custoflow_customer_id")
       }
@@ -43,12 +45,14 @@ export const useStore = create<StoreState>((set) => ({
     if (typeof window === "undefined") return
     const savedUserId = localStorage.getItem("custoflow_user_id") || `user_${Date.now()}`
     const savedCustomerId = localStorage.getItem("custoflow_customer_id")
+    // Normalize saved customer_id to lowercase
+    const normalizedCustomerId = savedCustomerId ? savedCustomerId.toLowerCase() : null
     // Force light theme - ignore saved theme
     const forcedTheme = "light"
     localStorage.setItem("custoflow_user_id", savedUserId)
     localStorage.setItem("custoflow_theme", forcedTheme)
     document.documentElement.classList.remove("dark")
-    set({ userId: savedUserId, customerId: savedCustomerId, theme: forcedTheme })
+    set({ userId: savedUserId, customerId: normalizedCustomerId, theme: forcedTheme })
   },
   logout: () => {
     if (typeof window !== "undefined") {

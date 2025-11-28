@@ -65,35 +65,39 @@ def create_session(session_id: str, user_id: str, name: Optional[str] = None, cu
         from memory.session_metadata import session_metadata
         return session_metadata.create_session(session_id, user_id, name, customer_id)
     
+    # Normalize customer_id to lowercase to avoid case-sensitivity issues
+    # "Cust_001" becomes "cust_001" for consistency
+    normalized_customer_id = customer_id.lower() if customer_id else None
+    
     try:
         session_data = {
             "session_id": session_id,
             "user_id": user_id,
-            "customer_id": customer_id,
+            "customer_id": normalized_customer_id,
             "name": name or f"Session {session_id[-8:]}",
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "message_count": 0
         }
         
-        print(f"Creating session in Supabase: session_id={session_id}, user_id={user_id}, customer_id={customer_id}")
+        print(f"Creating session in Supabase: session_id={session_id}, user_id={user_id}, customer_id={normalized_customer_id}")
         
         # First, try to insert the session
         result = supabase.table("sessions").upsert(session_data).execute()
         
         # If customer_id was provided, ensure it's set (in case upsert didn't work correctly)
-        if customer_id:
+        if normalized_customer_id:
             if result.data:
                 # Double-check and update customer_id if needed
                 existing = result.data[0] if result.data else {}
-                if existing.get("customer_id") != customer_id:
-                    print(f"Updating customer_id for session {session_id} from {existing.get('customer_id')} to {customer_id}")
-                    supabase.table("sessions").update({"customer_id": customer_id}).eq("session_id", session_id).execute()
-                    existing["customer_id"] = customer_id
+                if existing.get("customer_id") != normalized_customer_id:
+                    print(f"Updating customer_id for session {session_id} from {existing.get('customer_id')} to {normalized_customer_id}")
+                    supabase.table("sessions").update({"customer_id": normalized_customer_id}).eq("session_id", session_id).execute()
+                    existing["customer_id"] = normalized_customer_id
             else:
                 # If no data returned, try to update directly
-                print(f"Updating customer_id for session {session_id} to {customer_id} (no data in result)")
-                supabase.table("sessions").update({"customer_id": customer_id}).eq("session_id", session_id).execute()
+                print(f"Updating customer_id for session {session_id} to {normalized_customer_id} (no data in result)")
+                supabase.table("sessions").update({"customer_id": normalized_customer_id}).eq("session_id", session_id).execute()
         
         final_result = result.data[0] if result.data else session_data
         print(f"Session created successfully: customer_id={final_result.get('customer_id')}")
@@ -112,9 +116,23 @@ def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[D
         return session_metadata.get_user_sessions(user_id, customer_id)
     
     try:
-        result = supabase.table("sessions").select("*").eq("user_id", user_id).order("updated_at", desc=True).execute()
-        sessions = result.data or []
-        print(f"✅ [SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}")
+        query = supabase.table("sessions").select("*").eq("user_id", user_id)
+        
+        # Filter by customer_id if provided (case-insensitive comparison)
+        if customer_id:
+            # Get all sessions first, then filter case-insensitively
+            # Supabase doesn't support case-insensitive comparison directly
+            result = query.order("updated_at", desc=True).execute()
+            sessions = result.data or []
+            # Filter case-insensitively: "Cust_001" matches "cust_001"
+            customer_id_lower = customer_id.lower()
+            sessions = [s for s in sessions if s.get("customer_id") and s.get("customer_id").lower() == customer_id_lower]
+            print(f"✅ [SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}, customer_id={customer_id}")
+        else:
+            result = query.order("updated_at", desc=True).execute()
+            sessions = result.data or []
+            print(f"✅ [SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}")
+        
         return sessions
     except Exception as e:
         print(f"❌ [SUPABASE] Error get_user_sessions: {e}")
