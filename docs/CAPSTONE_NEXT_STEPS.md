@@ -223,9 +223,9 @@
 ### 🔴 Critical (Must Do)
 1. [x] Complete writeup (`docs/CAPSTONE_WRITEUP.md`)
 2. [x] Create and upload YouTube video
-3. [ ] Deploy backend (Cloud Run/Railway/Render)
-4. [ ] Deploy frontend (Vercel)
-5. [ ] Add all links to writeup
+3. [x] Deploy backend (Cloud Run) ✅
+4. [x] Deploy frontend (Vercel) ✅
+5. [ ] Add all links to writeup (GitHub, Video, Demo URLs)
 6. [ ] Final proofread and polish
 
 ### 🟠 Important (Should Do)
@@ -248,12 +248,12 @@
 ### Before Submission
 - [x] Writeup complete and polished
 - [x] Video uploaded and linked
-- [ ] Backend deployed and working
-- [ ] Frontend deployed and working
+- [x] Backend deployed and working (Cloud Run) ✅
+- [x] Frontend deployed and working (Vercel) ✅
 - [x] All tests passing (140+ tests)
 - [x] Documentation updated
 - [x] GitHub repo public
-- [ ] All links verified
+- [ ] All links verified and added to writeup
 
 ### Submission Day
 - [ ] Writeup copied to Kaggle
