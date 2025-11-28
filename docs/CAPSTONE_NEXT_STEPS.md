@@ -83,8 +83,12 @@
 
 ## ⚠️ Missing Features & Gaps
 
-### Minor Gaps
+### Minor Gaps (All Optional)
 - [ ] Agent Engine Deployment (optional bonus - 5 points)
+  - **Note**: You've already deployed to Cloud Run + Vercel ✅
+  - Agent Engine is an alternative managed deployment for ADK agents
+  - Current deployment is production-ready and sufficient
+  - **📖 Guide Available**: See `docs/AGENT_ENGINE_DEPLOYMENT.md` for complete instructions
 - [ ] MCP Tools (file system access)
 - [ ] Payment Gateway Integration (automated refunds)
 

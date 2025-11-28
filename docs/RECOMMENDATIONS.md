@@ -105,16 +105,42 @@
 
 ---
 
-### 5. 🔵 **AGENT ENGINE DEPLOYMENT** (Low Priority - 5 Bonus Points)
-**Why**: Optional bonus points, but requires research and setup.
+### 5. 🔵 **AGENT ENGINE DEPLOYMENT** (Optional - 5 Bonus Points)
+**What is Agent Engine?**
+- **Vertex AI Agent Engine** is Google Cloud's managed service specifically for deploying ADK agents
+- It's different from Cloud Run (which you've already deployed)
+- Cloud Run = deploys your FastAPI server (what you have now ✅)
+- Agent Engine = managed deployment of ADK agents themselves (optional bonus)
 
-**Action Items**:
-- [ ] Research Agent Engine deployment process
-- [ ] Create deployment configuration
+**Why it's optional:**
+- You've already deployed to **Cloud Run (backend) + Vercel (frontend)** ✅
+- This is a **production-ready deployment** that works perfectly
+- Agent Engine is just an **alternative/managed way** to deploy agents
+- Worth **5 bonus points** but not required
+
+**Current Deployment Status:**
+- ✅ Backend on Google Cloud Run
+- ✅ Frontend on Vercel
+- ✅ Supabase database
+- ✅ All features working
+
+**Should you do it?**
+- **Only if you have extra time** (3-4 hours)
+- Your current deployment is already excellent
+- The 5 bonus points are nice but not critical
+- Focus on other priorities first (writeup polish, video link, etc.)
+
+**Action Items** (if you decide to do it):
+- [ ] Read `docs/AGENT_ENGINE_DEPLOYMENT.md` guide
+- [ ] Set up Google Cloud project and enable APIs
+- [ ] Create Agent Engine configuration
 - [ ] Deploy agents to Agent Engine
+- [ ] Test and verify deployment
 - [ ] Document in writeup
 
-**Time Estimate**: 3-4 hours (if you have time)
+**Time Estimate**: 3-4 hours (optional)
+
+**📖 Full Guide**: See `docs/AGENT_ENGINE_DEPLOYMENT.md` for complete step-by-step instructions.
 
 ---
 
