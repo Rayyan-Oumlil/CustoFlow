@@ -109,17 +109,19 @@ def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[D
     """Récupérer toutes les sessions d'un utilisateur avec message_count calculé dynamiquement."""
     if not SUPABASE_ENABLED:
         from memory.session_metadata import session_metadata
-        return session_metadata.get_user_sessions(user_id, customer_id)
+        sessions = session_metadata.get_user_sessions(user_id, customer_id)
+        print(f"ℹ️  [SESSIONS] Loaded {len(sessions)} sessions from JSON fallback")
+        return sessions
     
+    # Prioritize Supabase
     try:
         query = supabase.table("sessions").select("*").eq("user_id", user_id)
         
-        # Filter by customer_id if provided - use strict equality to exclude nulls
+        # Filter by customer_id ONLY if provided
+        # If customer_id is not provided, return ALL sessions for the user
         if customer_id:
             query = query.eq("customer_id", customer_id)
-        else:
-            # If no customer_id provided, only return sessions with null customer_id
-            query = query.is_("customer_id", "null")
+        # If customer_id is None, don't filter - return all sessions for the user
         
         result = query.order("updated_at", desc=True).execute()
         sessions = result.data or []
@@ -131,13 +133,20 @@ def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[D
                 msg_result = supabase.table("messages").select("id", count="exact").eq("session_id", session["session_id"]).execute()
                 session["message_count"] = msg_result.count if hasattr(msg_result, 'count') and msg_result.count is not None else 0
             except Exception as e:
-                print(f"Error calculating message_count for session {session['session_id']}: {e}")
+                print(f"⚠️  [SESSIONS] Error calculating message_count for session {session['session_id']}: {e}")
                 session["message_count"] = 0
         
+        print(f"✅ [SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}")
         return sessions
     except Exception as e:
-        print(f"Erreur Supabase get_user_sessions: {e}")
-        return []
+        print(f"❌ [SUPABASE] Error get_user_sessions: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback to JSON on error
+        from memory.session_metadata import session_metadata
+        sessions = session_metadata.get_user_sessions(user_id, customer_id)
+        print(f"ℹ️  [SESSIONS] Fallback to JSON: {len(sessions)} sessions")
+        return sessions
 
 
 def close_session(session_id: str) -> bool:
@@ -361,7 +370,7 @@ def update_ticket_status(ticket_id: str, status: str) -> bool:
 
 
 def get_tickets(session_id: Optional[str] = None) -> List[Dict]:
-    """Récupérer les tickets."""
+    """Récupérer les tickets depuis Supabase."""
     if not SUPABASE_ENABLED:
         from tools.ticket_tool import get_all_tickets
         tickets = get_all_tickets()
@@ -376,10 +385,15 @@ def get_tickets(session_id: Optional[str] = None) -> List[Dict]:
             query = query.eq("session_id", session_id)
         
         result = query.order("created_at", desc=True).execute()
-        return result.data or []
+        tickets_list = result.data or []
+        print(f"✅ [SUPABASE] Retrieved {len(tickets_list)} tickets from Supabase")
+        return tickets_list
     except Exception as e:
-        print(f"Erreur Supabase get_tickets: {e}")
-        return []
+        print(f"❌ [SUPABASE] Error get_tickets: {e}")
+        import traceback
+        traceback.print_exc()
+        # Don't fallback here - let the caller handle it
+        raise
 
 
 # ============================================================================
@@ -395,18 +409,30 @@ def get_orders(customer_id: Optional[str] = None) -> List[Dict]:
         orders = get_all_orders()
         if customer_id:
             orders = [o for o in orders if o.get("customer_id") == customer_id]
-    else:
-        try:
-            query = supabase.table("orders").select("*")
-            
-            if customer_id:
-                query = query.eq("customer_id", customer_id)
-            
-            result = query.order("created_at", desc=True).execute()
-            orders = result.data or []
-        except Exception as e:
-            print(f"Erreur Supabase get_orders: {e}")
-            orders = []
+        print(f"ℹ️  [ORDERS] Loaded {len(orders)} orders from JSON fallback")
+        return orders
+    
+    # Prioritize Supabase
+    try:
+        query = supabase.table("orders").select("*")
+        
+        if customer_id:
+            query = query.eq("customer_id", customer_id)
+        
+        result = query.order("created_at", desc=True).execute()
+        orders = result.data or []
+        print(f"✅ [SUPABASE] Retrieved {len(orders)} orders from Supabase")
+    except Exception as e:
+        print(f"❌ [SUPABASE] Error get_orders: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback to JSON on error
+        from tools.order_tool import get_all_orders
+        orders = get_all_orders()
+        if customer_id:
+            orders = [o for o in orders if o.get("customer_id") == customer_id]
+        print(f"ℹ️  [ORDERS] Fallback to JSON: {len(orders)} orders")
+        return orders
     
     # Check each order and update status based on estimated_delivery date
     today = date.today()

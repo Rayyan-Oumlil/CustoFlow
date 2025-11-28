@@ -1010,7 +1010,9 @@ async def get_analytics():
         else:
             # Fallback to session_metadata
             from memory.session_metadata import session_metadata
-            all_sessions = session_metadata.get_all_sessions()
+            # Get all sessions from metadata dict
+            with session_metadata._lock:
+                all_sessions = dict(session_metadata._metadata)
             active_sessions = sum(1 for s in all_sessions.values() if s.get("message_count", 0) > 0 and s.get("is_active", True) is not False) if isinstance(all_sessions, dict) else 0
     except Exception as e:
         logger.warning(f"Error getting active sessions: {e}")
@@ -1057,9 +1059,9 @@ async def get_analytics():
             # Fallback: try to get from feedback manager
             from utils.feedback_manager import FeedbackManager
             feedback_mgr = FeedbackManager()
-            insights = feedback_mgr.get_insights()
-            if insights and insights.get("average_rating"):
-                avg_satisfaction = float(insights.get("average_rating", 0.0))
+            stats = feedback_mgr.get_feedback_stats()
+            if stats and stats.get("average_rating"):
+                avg_satisfaction = float(stats.get("average_rating", 0.0))
     except Exception as e:
         logger.warning(f"Error getting feedback stats: {e}")
     
@@ -1518,7 +1520,9 @@ async def get_all_active_sessions():
         else:
             # Fallback to session_metadata
             from memory.session_metadata import session_metadata
-            all_sessions = session_metadata.get_all_sessions()
+            # Get all sessions from metadata dict
+            with session_metadata._lock:
+                all_sessions = dict(session_metadata._metadata)
             active_sessions = [
                 s for s in all_sessions.values() 
                 if s.get("message_count", 0) > 0 and s.get("is_active", True) is not False

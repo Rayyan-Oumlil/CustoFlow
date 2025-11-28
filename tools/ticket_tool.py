@@ -401,20 +401,29 @@ def get_ticket_status(ticket_id: str) -> Dict[str, any]:
 
 
 def get_all_tickets() -> Dict[str, Dict]:
-    """Get all tickets (reloads from file or Supabase)."""
-    # Essayer Supabase d'abord
-    try:
-        from utils.supabase_client import SUPABASE_ENABLED, get_tickets as supabase_get_tickets
-        if SUPABASE_ENABLED:
+    """Get all tickets (reloads from file or Supabase). Prioritizes Supabase when enabled."""
+    # Always try Supabase first if enabled
+    from utils.supabase_client import SUPABASE_ENABLED
+    if SUPABASE_ENABLED:
+        try:
+            from utils.supabase_client import get_tickets as supabase_get_tickets
             tickets_list = supabase_get_tickets()
-            # Convertir en dict pour compatibilité
-            return {t["ticket_id"]: t for t in tickets_list}
-    except Exception:
-        pass  # Fallback vers JSON
+            if tickets_list:
+                print(f"✅ [TICKET] Loaded {len(tickets_list)} tickets from Supabase")
+                # Convertir en dict pour compatibilité
+                return {t["ticket_id"]: t for t in tickets_list}
+            else:
+                print(f"ℹ️  [TICKET] Supabase returned empty list, using JSON fallback")
+        except Exception as e:
+            print(f"⚠️  [TICKET] Supabase error (will use JSON fallback): {e}")
+            import traceback
+            traceback.print_exc()
     
-    # Fallback vers JSON
+    # Fallback vers JSON (only if Supabase is disabled or failed)
     global _TICKETS
     _TICKETS = load_tickets()
+    if _TICKETS:
+        print(f"ℹ️  [TICKET] Loaded {len(_TICKETS)} tickets from JSON fallback")
     return _TICKETS
 
 

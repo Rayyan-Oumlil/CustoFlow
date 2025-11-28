@@ -74,8 +74,9 @@ export default function ChatPage() {
     const fetchConversations = async () => {
       try {
         setLoading(true)
-        // Always include customer_id as query parameter to filter sessions strictly
-        const url = `/sessions/${userId}?customer_id=${encodeURIComponent(customerId)}`
+        // Get all sessions for the user (don't filter by customer_id on server)
+        // We'll filter client-side to handle cases where customer_id might be null or different
+        const url = `/sessions/${userId}`
         const data = await apiClient.get(url)
         console.log("Fetched sessions from API for customer_id:", customerId, "data:", data)
         
@@ -87,9 +88,12 @@ export default function ChatPage() {
           sessionsArray = Array.isArray((data as any).sessions) ? (data as any).sessions : []
         }
         
-        // Additional client-side filter to ensure only sessions with matching customer_id are shown
+        // Client-side filter: show sessions that match customer_id OR have null/undefined customer_id
+        // This handles cases where sessions might not have customer_id set
         const filteredSessions = sessionsArray.filter((s: any) => {
-          return s.customer_id === customerId
+          const sessionCustomerId = s.customer_id
+          // Match if customer_id matches, or if session has no customer_id (null/undefined)
+          return sessionCustomerId === customerId || !sessionCustomerId
         })
         
         const convos = filteredSessions.map((s: any) => ({
