@@ -70,10 +70,13 @@ def create_session(session_id: str, user_id: str, name: Optional[str] = None, cu
     normalized_customer_id = customer_id.lower() if customer_id else None
     
     try:
+        # Store BOTH user_id and customer_id in Supabase
+        # user_id: Required by Google ADK (can change between browsers/devices)
+        # customer_id: Stable identifier for finding all customer sessions (normalized to lowercase)
         session_data = {
             "session_id": session_id,
-            "user_id": user_id,
-            "customer_id": normalized_customer_id,
+            "user_id": user_id,  # For Google ADK compatibility
+            "customer_id": normalized_customer_id,  # For session retrieval (primary key)
             "name": name or f"Session {session_id[-8:]}",
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),

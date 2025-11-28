@@ -1621,12 +1621,15 @@ async def create_session(request: CreateSessionRequest):
     except Exception:
         pass  # Session may already exist
     
-    # Create metadata with customer_id
+    # Create metadata with BOTH user_id and customer_id
+    # user_id: Required by Google ADK for session management
+    # customer_id: Used to find all sessions for a customer (stable identifier)
     logger.info(f"Creating session with user_id={request.user_id}, customer_id={request.customer_id}, name={request.name}")
     metadata = session_metadata.create_session(session_id, request.user_id, request.name, request.customer_id)
-    logger.info(f"Session created: {session_id}, metadata: {metadata}")
+    logger.info(f"Session created: {session_id}, user_id={request.user_id}, customer_id={request.customer_id}, metadata: {metadata}")
     
-    # Ensure customer_id is saved in Supabase if provided
+    # Ensure BOTH user_id and customer_id are saved in Supabase
+    # Both are stored: user_id for ADK compatibility, customer_id for session retrieval
     if request.customer_id:
         try:
             from utils.supabase_client import SUPABASE_ENABLED
