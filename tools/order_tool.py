@@ -539,13 +539,25 @@ def get_customer_orders(customer_id: Optional[str] = None, session_id: Optional[
                     supabase = create_client(supabase_url, supabase_key)
                     # Get orders from Supabase
                     result = supabase.table("orders").select("*").eq("customer_id", customer_id).order("created_at", desc=True).execute()
-                    customer_orders = result.data or []
+                    all_orders = result.data or []
+                    
+                    # Filter out test orders (orders with order_id starting with "TEST_")
+                    # Prioritize real orders (numeric IDs or meaningful names)
+                    real_orders = [
+                        order for order in all_orders
+                        if not str(order.get("order_id", "")).startswith("TEST_")
+                    ]
+                    
+                    # If we have real orders, use them; otherwise fall back to all orders
+                    customer_orders = real_orders if real_orders else all_orders
                     
                     if customer_orders:
                         return {
                             "status": "success",
                             "orders": customer_orders,
-                            "count": len(customer_orders)
+                            "count": len(customer_orders),
+                            "total_count": len(all_orders),  # Include total for reference
+                            "filtered_test_orders": len(all_orders) - len(real_orders) if real_orders else 0
                         }
                     else:
                         return {
@@ -560,16 +572,28 @@ def get_customer_orders(customer_id: Optional[str] = None, session_id: Optional[
         _MOCK_ORDERS = _load_orders()
         
         # Find all orders for this customer
-        customer_orders = [
+        all_orders = [
             order for order in _MOCK_ORDERS.values()
             if order.get("customer_id") == customer_id
         ]
+        
+        # Filter out test orders (orders with order_id starting with "TEST_")
+        # Prioritize real orders (numeric IDs or meaningful names)
+        real_orders = [
+            order for order in all_orders
+            if not str(order.get("order_id", "")).startswith("TEST_")
+        ]
+        
+        # If we have real orders, use them; otherwise fall back to all orders
+        customer_orders = real_orders if real_orders else all_orders
         
         if customer_orders:
             return {
                 "status": "success",
                 "orders": customer_orders,
-                "count": len(customer_orders)
+                "count": len(customer_orders),
+                "total_count": len(all_orders),  # Include total for reference
+                "filtered_test_orders": len(all_orders) - len(real_orders) if real_orders else 0
             }
         else:
             return {

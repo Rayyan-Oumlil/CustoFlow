@@ -211,6 +211,9 @@ order_agent = LlmAgent(
        - DO NOT ask the customer for their order ID or customer ID - you already have it!
     2. IMMEDIATELY after receiving the tool result, you MUST write a complete, natural, and detailed response:
        - If status is "success" and orders are found:
+         * **FILTER OUT TEST ORDERS**: Ignore orders with order_id starting with "TEST_" - these are test data and not real customer orders
+         * **PRIORITIZE REAL ORDERS**: Focus on orders with numeric IDs (like "12345", "66666", "10000") or meaningful names
+         * **LIMIT THE LIST**: If there are more than 5 real orders, show only the 5 most recent ones and mention that there are more
          * Write a friendly, conversational response
          * Provide details for each order: status, items with quantities, total price
          * Include tracking numbers and delivery dates when available
@@ -221,6 +224,7 @@ order_agent = LlmAgent(
          * Example: "I found 2 orders in your account. Order 12345 has been shipped and contains Wireless Headphones (1 unit) for $99.99. The tracking number is TRACK123456, and it should arrive by January 22, 2024. Order 22222 was cancelled and contained a Mouse Pad (1 unit) for $19.99. Would you like more details about any of these orders?"
          * NEVER use markdown formatting like **Order 12345** or numbered lists like "1. **Order 66666**: ... 2. **Order 12345**: ..."
          * Instead, write naturally: "Order 66666 is currently in delivery_soon status and is expected to be delivered by February 5, 2024. It includes 2 Wireless Mice, 1 Keyboard Wrist Rest, and 1 USB Hub, totaling $199.98. Order 12345 has been cancelled. It was for 1 Wireless Headphones at $99.99."
+         * **CRITICAL**: If you see many TEST_* orders, filter them out and only mention real orders. Say something like: "I found your orders. Here are your recent orders: [list only real orders, not TEST_* ones]."
        - If status is "error" or no orders found:
          * Apologize politely and offer help
          * Suggest alternatives (check customer ID, use order ID, contact support)

@@ -266,20 +266,38 @@ async def chat(request: ChatRequest, http_request: Request):
                 metrics=metrics.get_counts()
             )
         
-        # Check if a human agent has already taken over this session
-        # If so, don't process with AI agent - human agent is handling it
-        from utils.supabase_client import get_messages
-        existing_messages = get_messages(request.user_id, session_id=session_id, limit=50)
-        has_human_agent_message = any(
-            msg.get("role") == "assistant" and 
-            (msg.get("metadata", {}).get("is_human_agent") == True or 
-             msg.get("metadata", {}).get("agent_used") == "human_agent" or
-             msg.get("agent_used") == "human_agent")
-            for msg in existing_messages
-        )
+        # Check if there's an active ticket for this session
+        # If a ticket exists (not closed), human agent is handling - don't process with AI
+        # If no ticket, allow AI to continue even after human agent intervention
+        has_active_ticket = False
+        try:
+            from tools.ticket_tool import get_all_tickets
+            all_tickets = get_all_tickets()
+            if isinstance(all_tickets, dict):
+                # Check if any ticket exists for this session that is not closed
+                for ticket in all_tickets.values():
+                    if ticket.get("session_id") == session_id:
+                        ticket_status = ticket.get("status", "").lower()
+                        if ticket_status not in ["closed", "resolved"]:
+                            has_active_ticket = True
+                            logger.info(f"Active ticket found for session {session_id}: {ticket.get('ticket_id')}")
+                            break
+            elif isinstance(all_tickets, list):
+                # Check if any ticket exists for this session that is not closed
+                for ticket in all_tickets:
+                    if ticket.get("session_id") == session_id:
+                        ticket_status = ticket.get("status", "").lower()
+                        if ticket_status not in ["closed", "resolved"]:
+                            has_active_ticket = True
+                            logger.info(f"Active ticket found for session {session_id}: {ticket.get('ticket_id')}")
+                            break
+        except Exception as e:
+            logger.warning(f"Could not check for active tickets: {e}")
         
-        if has_human_agent_message:
-            logger.info(f"Human agent has taken over session {session_id}, skipping AI agent response")
+        # Only block AI if there's an active ticket (ticket phase)
+        # If no ticket, allow AI to continue responding even after human agent intervention
+        if has_active_ticket:
+            logger.info(f"Active ticket exists for session {session_id}, skipping AI agent response (ticket phase)")
             # Store user message but don't process with AI
             conversation_history.add_message(
                 user_id=request.user_id,
