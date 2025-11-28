@@ -7,14 +7,30 @@ mais utilise Supabase comme backend.
 import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from pathlib import Path
+
+def _load_env_file():
+    """Load .env file from project root (works regardless of current working directory)."""
+    from dotenv import load_dotenv
+    # Find project root (where .env file should be)
+    project_root = Path(__file__).parent.parent
+    env_file = project_root / ".env"
+    
+    # Load .env from project root (works regardless of current working directory)
+    if env_file.exists():
+        load_dotenv(dotenv_path=env_file)
+        return True
+    else:
+        # Fallback: try current directory
+        load_dotenv()
+        return False
 
 try:
     from supabase import create_client, Client
-    from dotenv import load_dotenv
     
     # Charger les variables d'environnement (fichier .env si présent)
     # Note: Dans Cloud Run, les variables sont déjà dans l'environnement
-    load_dotenv()
+    _load_env_file()
     
     # Récupérer les variables d'environnement (depuis .env ou variables système)
     SUPABASE_URL = os.getenv("SUPABASE_URL")

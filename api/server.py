@@ -1480,25 +1480,8 @@ async def get_history(user_id: str, limit: Optional[int] = 50, session_id: Optio
     return history
 
 
-@app.get("/sessions/{user_id}")
-async def get_user_sessions(user_id: str, customer_id: Optional[str] = Query(None)):
-    """Get all sessions for a user with metadata, optionally filtered by customer_id."""
-    logger.info(f"Getting sessions for user_id={user_id}, customer_id={customer_id}")
-    # If customer_id is provided, user_id is IGNORED - sessions are found only by customer_id
-    sessions = session_metadata.get_user_sessions(user_id, customer_id)
-    logger.info(f"Found {len(sessions)} sessions for customer_id={customer_id} (user_id={user_id} was ignored if customer_id provided)")
-    # Return sessions array directly for frontend compatibility (also support object format)
-    return sessions
-
-@app.get("/sessions/by-customer/{customer_id}")
-async def get_sessions_by_customer(customer_id: str):
-    """Get all sessions for a customer_id (ignores user_id completely)."""
-    logger.info(f"Getting sessions for customer_id={customer_id} (user_id ignored)")
-    # Use a dummy user_id since it will be ignored when customer_id is provided
-    sessions = session_metadata.get_user_sessions("dummy", customer_id)
-    logger.info(f"Found {len(sessions)} sessions for customer_id={customer_id}")
-    return sessions
-
+# IMPORTANT: Specific routes must be defined BEFORE generic routes
+# Order matters in FastAPI - more specific routes first
 
 @app.get("/sessions/all/active")
 async def get_all_active_sessions():
@@ -1514,34 +1497,53 @@ async def get_all_active_sessions():
             supabase_key = os.getenv("SUPABASE_KEY")
             if supabase_url and supabase_key:
                 supabase = create_client(supabase_url, supabase_key)
-                # Get all active sessions with messages
-                result = supabase.table("sessions").select("*").eq("is_active", True).gt("message_count", 0).order("updated_at", desc=True).execute()
+                result = supabase.table("sessions").select("*").eq("is_active", True).order("updated_at", desc=True).execute()
                 sessions = result.data or []
-                # Calculate message_count dynamically for each session
-                for session in sessions:
-                    try:
-                        msg_result = supabase.table("messages").select("id", count="exact").eq("session_id", session["session_id"]).execute()
-                        session["message_count"] = msg_result.count if hasattr(msg_result, 'count') and msg_result.count is not None else 0
-                    except Exception as e:
-                        logger.warning(f"Error calculating message_count for session {session['session_id']}: {e}")
-                        session["message_count"] = 0
+                logger.info(f"Retrieved {len(sessions)} active sessions from Supabase")
                 return sessions
-        else:
-            # Fallback to session_metadata
-            from memory.session_metadata import session_metadata
-            # Get all sessions from metadata dict
-            with session_metadata._lock:
-                all_sessions = dict(session_metadata._metadata)
-            active_sessions = [
-                s for s in all_sessions.values() 
-                if s.get("message_count", 0) > 0 and s.get("is_active", True) is not False
-            ] if isinstance(all_sessions, dict) else []
-            # Sort by updated_at descending
-            active_sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
-            return active_sessions
+        
+        # Fallback to in-memory metadata
+        all_sessions = dict(session_metadata._metadata)
+        active_sessions = [
+            {**metadata, "session_id": session_id}
+            for session_id, metadata in all_sessions.items()
+            if metadata.get("is_active", True)
+        ]
+        logger.info(f"Retrieved {len(active_sessions)} active sessions from in-memory metadata")
+        return active_sessions
     except Exception as e:
-        logger.error(f"Error getting all active sessions: {e}")
+        logger.error(f"Error getting active sessions: {e}")
         return []
+
+
+@app.get("/sessions/by-customer/{customer_id}")
+async def get_sessions_by_customer(customer_id: str):
+    """Get all sessions for a customer_id (ignores user_id completely)."""
+    logger.info(f"Getting sessions for customer_id={customer_id} (user_id ignored)")
+    # Use a dummy user_id since it will be ignored when customer_id is provided
+    sessions = session_metadata.get_user_sessions("dummy", customer_id)
+    logger.info(f"Found {len(sessions)} sessions for customer_id={customer_id}")
+    return sessions
+
+
+@app.get("/sessions/{session_id}/metadata")
+async def get_session_metadata(session_id: str):
+    """Get metadata for a specific session."""
+    metadata = session_metadata.get_session(session_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    return metadata
+
+
+@app.get("/sessions/{user_id}")
+async def get_user_sessions(user_id: str, customer_id: Optional[str] = Query(None)):
+    """Get all sessions for a user with metadata, optionally filtered by customer_id."""
+    logger.info(f"Getting sessions for user_id={user_id}, customer_id={customer_id}")
+    # If customer_id is provided, user_id is IGNORED - sessions are found only by customer_id
+    sessions = session_metadata.get_user_sessions(user_id, customer_id)
+    logger.info(f"Found {len(sessions)} sessions for customer_id={customer_id} (user_id={user_id} was ignored if customer_id provided)")
+    # Return sessions array directly for frontend compatibility (also support object format)
+    return sessions
 
 
 class CreateSessionRequest(BaseModel):

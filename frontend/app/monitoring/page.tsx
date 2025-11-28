@@ -131,7 +131,7 @@ export default function MonitoringPage() {
       if (selectedSession) {
         fetchMessages(selectedSession)
       }
-    }, 5000) // Refresh every 5 seconds
+    }, 10000) // Refresh every 10 seconds (reduced from 5 to reduce server load)
 
     return () => clearInterval(interval)
   }, [selectedSession, userId])
