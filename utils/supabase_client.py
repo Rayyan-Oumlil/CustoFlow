@@ -276,13 +276,22 @@ def get_messages(user_id: str, session_id: Optional[str] = None, limit: int = 10
         return conversation_history.get_history(user_id, limit=limit, session_id=session_id)
     
     try:
-        query = supabase.table("messages").select("*").eq("user_id", user_id)
-        
+        # If session_id is provided, search ONLY by session_id (ignore user_id)
+        # This is because user_id can change between browsers, but session_id is stable
         if session_id:
-            query = query.eq("session_id", session_id)
-        
-        result = query.order("timestamp", desc=False).limit(limit).execute()
-        return result.data or []
+            # Search ONLY by session_id - user_id is ignored
+            query = supabase.table("messages").select("*").eq("session_id", session_id)
+            result = query.order("timestamp", desc=False).limit(limit).execute()
+            messages = result.data or []
+            print(f"✅ [SUPABASE] Retrieved {len(messages)} messages from Supabase for session_id={session_id} (user_id ignored)")
+            return messages
+        else:
+            # If no session_id, filter by user_id only
+            query = supabase.table("messages").select("*").eq("user_id", user_id)
+            result = query.order("timestamp", desc=False).limit(limit).execute()
+            messages = result.data or []
+            print(f"✅ [SUPABASE] Retrieved {len(messages)} messages from Supabase for user_id={user_id}")
+            return messages
     except Exception as e:
         print(f"Erreur Supabase get_messages: {e}. Fallback vers JSON.")
         # Fallback vers JSON si Supabase échoue

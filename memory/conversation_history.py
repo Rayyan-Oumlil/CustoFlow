@@ -113,9 +113,9 @@ class ConversationHistory:
         Get conversation history for a user.
         
         Args:
-            user_id: User identifier
+            user_id: User identifier (ignored if session_id is provided)
             limit: Maximum number of messages to return
-            session_id: Optional session filter
+            session_id: Optional session filter (if provided, user_id is ignored)
             
         Returns:
             List of conversation messages
@@ -124,8 +124,9 @@ class ConversationHistory:
         try:
             from utils.supabase_client import SUPABASE_ENABLED, get_messages as supabase_get_messages
             if SUPABASE_ENABLED:
+                # If session_id is provided, user_id will be ignored in get_messages
                 result = supabase_get_messages(user_id, session_id, limit or 100)
-                if result:
+                if result is not None:  # Check for None, not just truthy (empty list is valid)
                     # Convertir le format Supabase vers le format attendu
                     formatted = []
                     for msg in result:
@@ -143,11 +144,20 @@ class ConversationHistory:
         
         # Fallback vers JSON
         with self._lock:
-            history = self._history.get(user_id, [])
-            
-            # Filter by session if specified
+            # If session_id is provided, search across ALL users (ignore user_id)
+            # This handles cases where user_id changed between sessions
             if session_id:
-                history = [msg for msg in history if msg.get("session_id") == session_id]
+                # Search across all user histories for this session_id
+                history = []
+                for user_msgs in self._history.values():
+                    for msg in user_msgs:
+                        if msg.get("session_id") == session_id:
+                            history.append(msg)
+                # Sort by timestamp
+                history.sort(key=lambda x: x.get("timestamp", ""))
+            else:
+                # If no session_id, filter by user_id only
+                history = self._history.get(user_id, [])
             
             # Apply limit
             if limit:
