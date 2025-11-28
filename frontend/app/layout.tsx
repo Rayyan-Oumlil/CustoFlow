@@ -26,11 +26,9 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
-                const theme = localStorage.getItem('custoflow_theme');
-                const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                if (theme === 'dark' || (!theme && systemPrefersDark)) {
-                  document.documentElement.classList.add('dark');
-                }
+                // Force light theme - remove dark mode
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('custoflow_theme', 'light');
               })();
             `,
           }}

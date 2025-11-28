@@ -30,15 +30,25 @@ export const useStore = create<StoreState>((set) => ({
     }
   },
   setSessionId: (id) => set({ sessionId: id }),
-  setTheme: (theme) => set({ theme }),
+  setTheme: (theme) => {
+    // Force light theme only - ignore dark theme requests
+    const forcedTheme = "light"
+    set({ theme: forcedTheme })
+    if (typeof window !== "undefined") {
+      localStorage.setItem("custoflow_theme", forcedTheme)
+      document.documentElement.classList.remove("dark")
+    }
+  },
   initFromStorage: () => {
     if (typeof window === "undefined") return
     const savedUserId = localStorage.getItem("custoflow_user_id") || `user_${Date.now()}`
     const savedCustomerId = localStorage.getItem("custoflow_customer_id")
-    const savedTheme = (localStorage.getItem("custoflow_theme") as "light" | "dark") || "light"
+    // Force light theme - ignore saved theme
+    const forcedTheme = "light"
     localStorage.setItem("custoflow_user_id", savedUserId)
-    localStorage.setItem("custoflow_theme", savedTheme)
-    set({ userId: savedUserId, customerId: savedCustomerId, theme: savedTheme })
+    localStorage.setItem("custoflow_theme", forcedTheme)
+    document.documentElement.classList.remove("dark")
+    set({ userId: savedUserId, customerId: savedCustomerId, theme: forcedTheme })
   },
   logout: () => {
     if (typeof window !== "undefined") {
