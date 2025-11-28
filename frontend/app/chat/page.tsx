@@ -232,9 +232,13 @@ export default function ChatPage() {
     )
   }
 
-  // Fetch messages function with cache support
-  const fetchMessages = useCallback(async (mergeWithLocal: boolean = false) => {
+  useEffect(() => {
     if (!userId || !sessionId) return
+
+    // Track if component is mounted to prevent state updates after unmount
+    let isMounted = true
+
+    const fetchMessages = async (mergeWithLocal: boolean = false) => {
       if (!isMounted) return
       
       // Check cache first (5 second TTL for messages) - only for non-merge requests
@@ -446,7 +450,7 @@ export default function ChatPage() {
         window.removeEventListener(event, handleActivity)
       })
     }
-  }, [userId, sessionId, conversations, fetchMessages])
+  }, [userId, sessionId, conversations])
 
   useEffect(() => {
     // Auto-scroll to bottom only if user is already at bottom (don't force scroll when scrolling up)
