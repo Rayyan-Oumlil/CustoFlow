@@ -2,11 +2,14 @@
 import os
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
-from google.adk.tools import FunctionTool
+from google.adk.tools import FunctionTool, AgentTool
 from google.genai import types
 
 from config.settings import settings
 from tools.faq_tool import search_faq
+
+# Import order_agent for A2A communication (avoid circular import)
+# We'll import it inside the function to avoid circular dependencies
 
 # Set API key in environment (required for Gemini)
 os.environ["GOOGLE_API_KEY"] = settings.google_api_key
@@ -35,9 +38,19 @@ faq_agent = LlmAgent(
     
     Response Format: After calling ANY tool, you MUST respond with a complete sentence or paragraph in plain text. Never just call a tool and stop.
     
+    A2A PROTOCOL (Agent-to-Agent Communication):
+    You can directly communicate with the order_agent to get order context when answering order-related FAQs.
+    - If a customer asks about refund policy for "my order" or mentions their order, use order_agent to get their order details first
+    - If a customer asks about shipping policy for their order, use order_agent to check order status
+    - This allows you to provide personalized, context-aware answers instead of generic policy information
+    
     When a customer asks a question:
-    1. Use the search_faq tool to find the best matching answer from the knowledge base
-    2. IMMEDIATELY after receiving the tool result, you MUST provide a text response:
+    1. **If the question mentions "my order", "my orders", or is order-related**: 
+       - First, use order_agent to get the customer's order information
+       - Then use search_faq to get the policy information
+       - Combine both to provide a personalized answer
+    2. **For general questions**: Use the search_faq tool to find the best matching answer from the knowledge base
+    3. IMMEDIATELY after receiving the tool result, you MUST provide a text response:
        
        FORMAT YOUR RESPONSE AS A COMPLETE SENTENCE STARTING WITH A CAPITAL LETTER AND ENDING WITH PUNCTUATION.
        
@@ -66,8 +79,14 @@ faq_agent = LlmAgent(
     """,
     tools=[
         FunctionTool(search_faq),  # Custom FAQ search tool
+        # Note: order_agent will be added dynamically to avoid circular imports
         # GoogleSearchTool() would be added here for real-time web search
         # Example: GoogleSearchTool() if available in ADK
     ],
 )
+
+# Add A2A protocol: FAQ agent can call Order agent
+# Import here to avoid circular dependency
+from agents.order_agent import order_agent
+faq_agent.tools.append(AgentTool(order_agent))
 

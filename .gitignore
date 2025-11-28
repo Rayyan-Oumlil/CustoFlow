@@ -12,6 +12,7 @@ ENV/
 # Environment
 .env
 .env.local
+.env.gcloud
 
 # IDE
 .vscode/

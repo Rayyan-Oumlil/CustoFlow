@@ -163,7 +163,8 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Answer policy questions
   - Provide product information
   - Handle refund/shipping queries
-- **Tools**: `search_faq` tool
+  - **A2A Protocol**: Can call Order Agent to get order context for personalized answers
+- **Tools**: `search_faq` tool, `order_agent` (via A2A)
 
 #### Order Agent (`agents/order_agent.py`)
 - **Role**: Handle order-related inquiries
@@ -174,7 +175,8 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Handle order modifications
   - Add notes to orders
   - Request refunds
-- **Tools**: `lookup_order`, `get_customer_orders`, `add_order_note`, `request_refund`
+  - **A2A Protocol**: Can call FAQ Agent to get policy information for complete answers
+- **Tools**: `lookup_order`, `get_customer_orders`, `add_order_note`, `request_refund`, `faq_agent` (via A2A)
 
 #### Sentiment Agent (`agents/sentiment_agent.py`)
 - **Role**: Analyze customer emotion and urgency
@@ -182,7 +184,8 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
   - Detect sentiment (positive, neutral, negative)
   - Assess urgency level
   - Recommend escalation if needed
-- **Tools**: Sentiment analysis tool
+  - **A2A Protocol**: Can call Escalation Agent directly to create urgent tickets
+- **Tools**: Sentiment analysis, `escalation_agent` (via A2A)
 
 #### Escalation Agent (`agents/escalation_agent.py`)
 - **Role**: Handle complex issues requiring human intervention
@@ -229,14 +232,17 @@ CustoFlow is a **multi-agent customer support system** built with Google's Agent
 
 #### Shipping Tool (`tools/shipping_tool.py`)
 - **Function**: Real-time shipping tracking via OpenAPI (mock)
-- **Implementation**: Mock OpenAPI tool simulating carrier APIs (UPS, FedEx, DHL)
+- **Implementation**: Mock OpenAPI tool simulating carrier APIs (UPS, FedEx, DHL, USPS)
 - **Features**:
-  - Real-time shipment tracking
-  - Current location and status updates
-  - Estimated delivery times
-  - Tracking event history
+  - Real-time shipment tracking using order data from Supabase
+  - Current location and status updates based on order status
+  - Estimated delivery times from order data
+  - Status mapping (processing → Warehouse, shipped → Origin Facility, etc.)
+  - Carrier name mapping (UPS, FedEx, DHL, USPS)
   - Demonstrates OpenAPI Tools concept for capstone
+  - **Comprehensive test coverage**: 16 test scenarios covering all carriers, statuses, error cases
 - **Note**: This is a mock implementation. In production, would use `OpenAPITool.from_openapi_spec()` with real carrier APIs
+- **Integration**: Integrated with Order Agent for real-time tracking when customers ask about shipments
 
 ---
 
@@ -432,6 +438,312 @@ Save to Persistence Layer
 
 ---
 
+## Database Schema
+
+The complete database schema for Supabase (PostgreSQL) is defined below. This script creates all tables, indexes, and constraints needed for CustoFlow.
+
+```sql
+-- ============================================================================
+-- Complete script to create the entire Supabase database
+-- Run this script to create all tables with their constraints
+-- ============================================================================
+
+-- Drop existing tables (in reverse dependency order)
+DROP TABLE IF EXISTS refunds CASCADE;
+DROP TABLE IF EXISTS kb_updates_from_feedback CASCADE;
+DROP TABLE IF EXISTS analytics_interactions CASCADE;
+DROP TABLE IF EXISTS agent_refinements CASCADE;
+DROP TABLE IF EXISTS feedback_insights CASCADE;
+DROP TABLE IF EXISTS conversation_summaries CASCADE;
+DROP TABLE IF EXISTS feedback CASCADE;
+DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS tickets CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+
+-- ============================================================================
+-- 1. SESSIONS table (must be created first as it's referenced by others)
+-- ============================================================================
+
+CREATE TABLE public.sessions (
+    session_id character varying NOT NULL,
+    user_id character varying NOT NULL,
+    customer_id character varying,
+    name character varying,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    message_count integer DEFAULT 0,
+    is_active boolean DEFAULT TRUE,
+    CONSTRAINT sessions_pkey PRIMARY KEY (session_id)
+);
+
+-- ============================================================================
+-- 2. ORDERS table (independent)
+-- ============================================================================
+
+CREATE TABLE public.orders (
+    order_id character varying NOT NULL,
+    customer_id character varying NOT NULL,
+    status character varying NOT NULL,
+    total numeric NOT NULL,
+    items jsonb NOT NULL,
+    notes jsonb DEFAULT '[]'::jsonb,
+    tracking_number character varying,
+    estimated_delivery date,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT orders_pkey PRIMARY KEY (order_id)
+);
+
+-- ============================================================================
+-- 3. MESSAGES table (depends on sessions)
+-- ============================================================================
+
+CREATE TABLE public.messages (
+    id integer NOT NULL DEFAULT nextval('messages_id_seq'::regclass),
+    user_id character varying NOT NULL,
+    session_id character varying NOT NULL,
+    role character varying NOT NULL,
+    content text NOT NULL,
+    metadata jsonb,
+    timestamp timestamp without time zone DEFAULT now(),
+    CONSTRAINT messages_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.sessions(session_id)
+);
+
+-- Create sequence if it doesn't exist
+CREATE SEQUENCE IF NOT EXISTS messages_id_seq;
+
+-- ============================================================================
+-- 4. TICKETS table (depends on sessions)
+-- ============================================================================
+
+CREATE TABLE public.tickets (
+    ticket_id character varying NOT NULL,
+    customer_id character varying,
+    user_id character varying,
+    session_id character varying,
+    issue text NOT NULL,
+    priority character varying DEFAULT 'normal'::character varying,
+    status character varying DEFAULT 'open'::character varying,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT tickets_pkey PRIMARY KEY (ticket_id),
+    CONSTRAINT tickets_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.sessions(session_id)
+);
+
+-- ============================================================================
+-- 5. CONVERSATION_SUMMARIES table (depends on sessions)
+-- ============================================================================
+
+CREATE TABLE public.conversation_summaries (
+    id bigint NOT NULL DEFAULT nextval('conversation_summaries_id_seq'::regclass),
+    summary_key character varying NOT NULL UNIQUE,
+    user_id character varying NOT NULL,
+    session_id character varying NOT NULL,
+    ticket_id character varying,
+    summary text NOT NULL,
+    key_points jsonb,
+    sentiment jsonb,
+    action_items jsonb,
+    next_steps jsonb,
+    summary_length character varying DEFAULT 'medium'::character varying,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT conversation_summaries_pkey PRIMARY KEY (id),
+    CONSTRAINT conversation_summaries_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.sessions(session_id)
+);
+
+-- Create sequence if it doesn't exist
+CREATE SEQUENCE IF NOT EXISTS conversation_summaries_id_seq;
+
+-- ============================================================================
+-- 6. FEEDBACK table (depends on sessions)
+-- ============================================================================
+
+CREATE TABLE public.feedback (
+    id bigint NOT NULL DEFAULT nextval('feedback_id_seq'::regclass),
+    feedback_id character varying NOT NULL UNIQUE,
+    session_id character varying,
+    user_id character varying NOT NULL,
+    ticket_id character varying,
+    feedback_type character varying NOT NULL,
+    rating integer CHECK (rating >= 1 AND rating <= 5),
+    comment text,
+    reason text,
+    category character varying,
+    agent_used character varying,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT feedback_pkey PRIMARY KEY (id),
+    CONSTRAINT feedback_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.sessions(session_id)
+);
+
+-- Create sequence if it doesn't exist
+CREATE SEQUENCE IF NOT EXISTS feedback_id_seq;
+
+-- ============================================================================
+-- 7. FEEDBACK_INSIGHTS table (independent)
+-- ============================================================================
+
+CREATE TABLE public.feedback_insights (
+    id bigint NOT NULL DEFAULT nextval('feedback_insights_id_seq'::regclass),
+    insight_key character varying NOT NULL UNIQUE,
+    insight_type character varying NOT NULL,
+    data jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT feedback_insights_pkey PRIMARY KEY (id)
+);
+
+-- Create sequence if it doesn't exist
+CREATE SEQUENCE IF NOT EXISTS feedback_insights_id_seq;
+
+-- ============================================================================
+-- 8. KB_UPDATES_FROM_FEEDBACK table (depends on feedback)
+-- ============================================================================
+
+CREATE TABLE public.kb_updates_from_feedback (
+    id bigint NOT NULL DEFAULT nextval('kb_updates_from_feedback_id_seq'::regclass),
+    update_id character varying NOT NULL UNIQUE,
+    feedback_id character varying,
+    update_type character varying NOT NULL,
+    content jsonb NOT NULL,
+    status character varying DEFAULT 'pending'::character varying,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT kb_updates_from_feedback_pkey PRIMARY KEY (id),
+    CONSTRAINT kb_updates_from_feedback_feedback_id_fkey FOREIGN KEY (feedback_id) REFERENCES public.feedback(feedback_id)
+);
+
+-- Create sequence if it doesn't exist
+CREATE SEQUENCE IF NOT EXISTS kb_updates_from_feedback_id_seq;
+
+-- ============================================================================
+-- 9. ANALYTICS_INTERACTIONS table (for tracking user interactions)
+-- ============================================================================
+
+CREATE TABLE public.analytics_interactions (
+    id bigint NOT NULL DEFAULT nextval('analytics_interactions_id_seq'::regclass),
+    user_id character varying NOT NULL,
+    session_id character varying,
+    query text,
+    response_length integer,
+    agent_used character varying,
+    response_time double precision,
+    timestamp timestamp with time zone DEFAULT now(),
+    CONSTRAINT analytics_interactions_pkey PRIMARY KEY (id),
+    CONSTRAINT analytics_interactions_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.sessions(session_id)
+);
+
+-- Create sequence if it doesn't exist
+CREATE SEQUENCE IF NOT EXISTS analytics_interactions_id_seq;
+
+-- ============================================================================
+-- 10. AGENT_REFINEMENTS table (independent)
+-- ============================================================================
+
+CREATE TABLE public.agent_refinements (
+    id bigint NOT NULL DEFAULT nextval('agent_refinements_id_seq'::regclass),
+    refinement_key character varying NOT NULL UNIQUE,
+    agent_name character varying NOT NULL,
+    refinement_type character varying NOT NULL,
+    changes jsonb NOT NULL,
+    feedback_sources jsonb,
+    status character varying DEFAULT 'pending'::character varying,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT agent_refinements_pkey PRIMARY KEY (id)
+);
+
+-- Create sequence if it doesn't exist
+CREATE SEQUENCE IF NOT EXISTS agent_refinements_id_seq;
+
+-- ============================================================================
+-- 11. REFUNDS table (depends on orders)
+-- ============================================================================
+
+CREATE TABLE public.refunds (
+    id bigint NOT NULL DEFAULT nextval('refunds_id_seq'::regclass),
+    refund_id character varying NOT NULL UNIQUE,
+    order_id character varying NOT NULL,
+    customer_id character varying NOT NULL,
+    amount numeric NOT NULL,
+    reason text,
+    status character varying DEFAULT 'pending'::character varying,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT refunds_pkey PRIMARY KEY (id),
+    CONSTRAINT refunds_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(order_id)
+);
+
+-- Create sequence if it doesn't exist
+CREATE SEQUENCE IF NOT EXISTS refunds_id_seq;
+
+-- ============================================================================
+-- 12. Create indexes to improve performance
+-- ============================================================================
+
+-- Indexes for sessions
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON public.sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON public.sessions(created_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_is_active ON public.sessions(is_active);
+
+-- Indexes for messages
+CREATE INDEX IF NOT EXISTS idx_messages_session_id ON public.messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_user_id ON public.messages(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON public.messages(timestamp);
+
+-- Indexes for tickets
+CREATE INDEX IF NOT EXISTS idx_tickets_session_id ON public.tickets(session_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_user_id ON public.tickets(user_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_status ON public.tickets(status);
+
+-- Indexes for orders
+CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON public.orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
+
+-- Indexes for refunds
+CREATE INDEX IF NOT EXISTS idx_refunds_order_id ON public.refunds(order_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_customer_id ON public.refunds(customer_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_status ON public.refunds(status);
+CREATE INDEX IF NOT EXISTS idx_refunds_created_at ON public.refunds(created_at);
+
+-- Indexes for conversation_summaries
+CREATE INDEX IF NOT EXISTS idx_conversation_summaries_session_id ON public.conversation_summaries(session_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_summaries_user_id ON public.conversation_summaries(user_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_summaries_ticket_id ON public.conversation_summaries(ticket_id);
+
+-- Indexes for feedback
+CREATE INDEX IF NOT EXISTS idx_feedback_session_id ON public.feedback(session_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON public.feedback(user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_ticket_id ON public.feedback(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_type ON public.feedback(feedback_type);
+CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON public.feedback(created_at);
+
+-- Indexes for analytics_interactions
+CREATE INDEX IF NOT EXISTS idx_analytics_interactions_user_id ON public.analytics_interactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_interactions_session_id ON public.analytics_interactions(session_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_interactions_timestamp ON public.analytics_interactions(timestamp);
+CREATE INDEX IF NOT EXISTS idx_analytics_interactions_agent_used ON public.analytics_interactions(agent_used);
+```
+
+### Tables Overview
+
+- **sessions**: Conversation sessions with user and customer tracking
+- **orders**: Customer orders with status, items, and tracking
+- **messages**: Chat messages linked to sessions
+- **tickets**: Support tickets with priority and status
+- **conversation_summaries**: AI-generated conversation summaries
+- **feedback**: User feedback with ratings and comments
+- **feedback_insights**: Aggregated insights from feedback analysis
+- **kb_updates_from_feedback**: Knowledge base updates triggered by feedback
+- **analytics_interactions**: User interaction tracking and metrics
+- **agent_refinements**: Agent improvement suggestions from feedback
+- **refunds**: Refund requests linked to orders
+
+---
+
 ## Scalability & Performance
 
 ### Current Capacity
@@ -504,6 +816,41 @@ cd frontend && npm run dev
 
 ---
 
+## A2A Protocol (Agent-to-Agent Communication)
+
+CustoFlow implements **A2A Protocol** to enable direct communication between specialized agents, creating more intelligent and context-aware workflows.
+
+### A2A Connections
+
+1. **FAQ Agent ↔ Order Agent**
+   - FAQ Agent can call Order Agent to get order context when answering order-related FAQs
+   - Example: "What's the refund policy for my order?" → FAQ Agent gets order details → Provides personalized answer
+
+2. **Order Agent ↔ FAQ Agent**
+   - Order Agent can call FAQ Agent to get policy information
+   - Example: "Can I cancel my order?" → Order Agent checks order status → FAQ Agent provides cancellation policy → Combined answer
+
+3. **Sentiment Agent → Escalation Agent**
+   - Sentiment Agent can directly call Escalation Agent for urgent issues
+   - Example: High urgency detected → Sentiment Agent creates ticket with appropriate priority immediately
+
+### Benefits
+
+- **Context-Aware Responses**: Agents gather all needed context before responding
+- **Faster Resolution**: One response instead of multiple back-and-forth exchanges
+- **Better Prioritization**: Urgent issues get flagged immediately
+- **Reduced Orchestrator Overhead**: Agents handle their own sub-routing
+
+### Implementation
+
+A2A Protocol is implemented using ADK's `AgentTool` pattern, allowing agents to call each other as tools. This enables:
+- Direct agent-to-agent communication
+- Context sharing between agents
+- Intelligent sub-routing decisions
+- More natural multi-agent workflows
+
+See [docs/A2A_BENEFITS.md](A2A_BENEFITS.md) for detailed use cases and benefits.
+
 ## Architecture Decisions
 
 ### Why Multi-Agent?
@@ -511,6 +858,7 @@ cd frontend && npm run dev
 - **Maintainability**: Easier to update individual agents
 - **Scalability**: Can scale agents independently
 - **Accuracy**: Better routing = better responses
+- **A2A Protocol**: Agents can collaborate directly for context-aware responses
 
 ### Why Supabase (PostgreSQL)?
 - **Production-Ready**: Full-featured database with RLS policies

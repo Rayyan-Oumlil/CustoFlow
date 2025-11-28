@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { BarChart3, Home, MessageSquare, Package, Ticket } from "lucide-react"
+import { BarChart3, Home, MessageSquare, Package, Ticket, Monitor } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -18,6 +18,7 @@ const navItems: NavItem[] = [
   { label: "Chat", href: "/chat", icon: <MessageSquare className="w-4 h-4" /> },
   { label: "Orders", href: "/orders", icon: <Package className="w-4 h-4" /> },
   { label: "Tickets", href: "/tickets", icon: <Ticket className="w-4 h-4" /> },
+  { label: "Monitoring", href: "/monitoring", icon: <Monitor className="w-4 h-4" /> },
   { label: "Analytics", href: "/analytics", icon: <BarChart3 className="w-4 h-4" /> },
 ]
 

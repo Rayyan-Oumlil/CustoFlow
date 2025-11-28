@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowUp, Plus, Trash2, LogOut, Pencil, ThumbsUp, ThumbsDown, Mic, MicOff, Volume2, VolumeX } from "lucide-react"
+import { ArrowUp, Plus, Trash2, LogOut, Pencil, ThumbsUp, ThumbsDown, Mic, MicOff, Volume2, VolumeX, Paperclip, X } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -21,6 +21,7 @@ interface Conversation {
   name: string
   message_count: number
   created_at: string
+  is_active?: boolean
 }
 
 export default function ChatPage() {
@@ -49,6 +50,11 @@ export default function ChatPage() {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
   const [recordingDuration, setRecordingDuration] = useState(0)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [uploadingDocument, setUploadingDocument] = useState(false)
+  const [documentAnalysisResult, setDocumentAnalysisResult] = useState<any>(null)
+  const [isSessionClosed, setIsSessionClosed] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -91,9 +97,23 @@ export default function ChatPage() {
           name: s.name || `Session ${s.session_id.slice(-8)}`, // Use name from DB or generate from last 8 chars
               message_count: s.message_count || 0,
               created_at: s.created_at,
+              is_active: s.is_active !== false, // Default to true if not specified
             }))
         console.log("Mapped conversations for customer_id:", customerId, "conversations:", convos)
         setConversations(convos)
+        
+        // Check if current session is closed
+        if (sessionId) {
+          const currentSession = convos.find(c => c.session_id === sessionId)
+          if (currentSession) {
+            setIsSessionClosed(currentSession.is_active === false)
+          } else {
+            setIsSessionClosed(false) // Session not found, assume active
+          }
+        } else {
+          setIsSessionClosed(false)
+        }
+        
         // Clear current session if it doesn't belong to this customer
         if (sessionId && !convos.find(c => c.session_id === sessionId)) {
           setSessionId(null)
@@ -285,6 +305,26 @@ export default function ChatPage() {
 
     fetchMessages()
     
+    // Check session status when sessionId changes
+    if (sessionId) {
+      const currentSession = conversations.find(c => c.session_id === sessionId)
+      if (currentSession) {
+        setIsSessionClosed(currentSession.is_active === false)
+      } else {
+        // If session not in conversations list, check via API
+        apiClient.get(`/sessions/${sessionId}/metadata`).then((data: any) => {
+          if (isMounted && data) {
+            setIsSessionClosed(data.is_active === false)
+          }
+        }).catch(() => {
+          // If metadata not found, assume active
+          if (isMounted) setIsSessionClosed(false)
+        })
+      }
+    } else {
+      setIsSessionClosed(false)
+    }
+    
     // Poll for new messages every 5 seconds (to catch human agent messages)
     // Use merge mode to preserve local messages that haven't been saved yet
     // Reduced from 2s to 5s to reduce server load (60% fewer requests)
@@ -298,7 +338,7 @@ export default function ChatPage() {
       isMounted = false
       clearInterval(interval)
     }
-  }, [userId, sessionId])
+  }, [userId, sessionId, conversations])
 
   useEffect(() => {
     // Auto-scroll to bottom only if user is already at bottom (don't force scroll when scrolling up)
@@ -643,7 +683,7 @@ export default function ChatPage() {
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || sending) return
+    if (!input.trim() || sending || isSessionClosed) return
     
     // Create session if it doesn't exist
     let currentSessionId = sessionId
@@ -674,8 +714,26 @@ export default function ChatPage() {
     
     if (!currentSessionId) return
 
-    const userMessage = input
+    let userMessage = input
+    
+    // Include document analysis results in message if available (backend only, not visible to user)
+    if (documentAnalysisResult && uploadedFile) {
+      // Build analysis data for backend (not shown to user)
+      const analysisData = {
+        document_uploaded: uploadedFile.name,
+        analysis_result: documentAnalysisResult
+      }
+      
+      // Include analysis in message for backend processing (hidden from user view)
+      // Format: [DOCUMENT_ANALYSIS: {...}] - this will be parsed by backend
+      const analysisJson = JSON.stringify(analysisData)
+      userMessage = `${userMessage}\n\n[DOCUMENT_ANALYSIS: ${analysisJson}]`
+    }
+    
     setInput("")
+    setUploadedFile(null)
+    setDocumentAnalysisResult(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
     
     // Check if last message was from human agent BEFORE sending
     const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant")
@@ -683,10 +741,12 @@ export default function ChatPage() {
     
     // Add user message IMMEDIATELY for better UX (optimistic update)
     // It will be replaced by server message when fetched (same content, proper ID)
+    // Display only the user's input text (not the analysis details)
+    const displayMessage = input.trim() || "Uploaded document" // Show user's input or simple message
     const userMsg: Message = {
         id: `user_${Date.now()}`, // Temporary ID, will be replaced by server ID
         role: "user",
-        content: userMessage,
+        content: displayMessage, // Show only user's input, not analysis details
         timestamp: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, userMsg])
@@ -1338,7 +1398,101 @@ export default function ChatPage() {
               </div>
             )}
             
+            {/* Session closed notice */}
+            {isSessionClosed && (
+              <div className="mb-3 px-4 py-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                  ⚠️ This conversation has been closed. You cannot send new messages. Please start a new conversation if you need further assistance.
+                </p>
+              </div>
+            )}
+
+            {/* Uploaded file preview */}
+            {uploadedFile && (
+              <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <Paperclip className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm text-blue-700 dark:text-blue-300 flex-1 truncate">
+                  {uploadedFile.name}
+                  {uploadingDocument && (
+                    <span className="ml-2 text-xs opacity-70">(Analyzing...)</span>
+                  )}
+                  {documentAnalysisResult && documentAnalysisResult.status === "success" && (
+                    <span className="ml-2 text-xs text-green-600 dark:text-green-400">✓ Analyzed</span>
+                  )}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={() => {
+                    setUploadedFile(null)
+                    setDocumentAnalysisResult(null)
+                    if (fileInputRef.current) fileInputRef.current.value = ""
+                  }}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+
             <form onSubmit={sendMessage} className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  
+                  // Validate file type
+                  const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"]
+                  if (!validTypes.includes(file.type)) {
+                    alert("Unsupported file type. Please upload JPG, PNG, WebP, or PDF files.")
+                    return
+                  }
+                  
+                  // Validate file size (20MB max)
+                  if (file.size > 20 * 1024 * 1024) {
+                    alert("File too large. Maximum size: 20MB")
+                    return
+                  }
+                  
+                  setUploadedFile(file)
+                  
+                  // Auto-analyze document silently (don't modify input)
+                  try {
+                    setUploadingDocument(true)
+                    const result = await apiClient.analyzeDocument(file, "auto")
+                    
+                    if (result.status === "success") {
+                      setDocumentAnalysisResult(result)
+                      // Don't modify input - let user type their own message
+                      // Results will be included when message is sent
+                    }
+                  } catch (error: any) {
+                    console.error("Failed to analyze document:", error)
+                    // Don't block - user can still send the file
+                  } finally {
+                    setUploadingDocument(false)
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending || !userId || isRecording || uploadingDocument || isSessionClosed}
+                title="Upload document (receipt, invoice, photo)"
+              >
+                {uploadingDocument ? (
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Paperclip className="w-4 h-4" />
+                )}
+              </Button>
               <Input
                 ref={inputRef}
                 value={input}
@@ -1349,8 +1503,8 @@ export default function ChatPage() {
                   }
                   setInput(e.target.value)
                 }}
-                placeholder="Type your message here..."
-                disabled={sending || !userId || isRecording}
+                placeholder={isSessionClosed ? "This conversation has been closed" : "Type your message here..."}
+                disabled={sending || !userId || isRecording || isSessionClosed}
                 autoFocus
               />
               <Button
@@ -1358,7 +1512,7 @@ export default function ChatPage() {
                 variant={isRecording ? "destructive" : "outline"}
                 size="icon"
                 onClick={isRecording ? stopRecording : startRecording}
-                disabled={sending || !userId}
+                disabled={sending || !userId || isSessionClosed}
                 title={isRecording ? "Stop recording" : "Start voice recording"}
               >
                 {isRecording ? (
@@ -1381,7 +1535,7 @@ export default function ChatPage() {
                   <VolumeX className="w-4 h-4" />
                 )}
               </Button>
-              <Button type="submit" disabled={sending || !userId || !input.trim() || isRecording} size="icon">
+              <Button type="submit" disabled={sending || !userId || !input.trim() || isRecording || isSessionClosed} size="icon">
                 <ArrowUp className="w-4 h-4" />
               </Button>
             </form>

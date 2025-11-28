@@ -26,6 +26,7 @@ TEST_FILES = [
     "test_qa_compliance.py",
     "test_ab_testing.py",
     "test_ticket_session_closure.py",
+    "test_session_monitoring.py",  # New: Session monitoring and active session tests
     "test_faq_agent.py",
     "test_order_agent.py",
     "test_sentiment_agent.py",
@@ -44,11 +45,15 @@ TEST_FILES = [
     "test_google_speech_mock.py",
     "test_tracing.py",
     "test_long_term_memory.py",
+    # Shipping and Order API tests
+    "test_shipping_tool.py",
+    "test_order_api_endpoints.py",
 ]
 
 # Tests that can be run standalone (not requiring pytest)
 STANDALONE_TESTS = [
     "test_ticket_session_closure.py",
+    "test_session_monitoring.py",  # New: Session monitoring tests
     "test_feedback_system.py",
     "test_qa_compliance.py",
     "test_ab_testing.py",

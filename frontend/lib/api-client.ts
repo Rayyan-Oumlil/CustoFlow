@@ -112,6 +112,42 @@ export const apiClient = {
   async reopenSession(sessionId: string) {
     return this.put<{ status: string; message: string }>(`/sessions/${sessionId}/reopen`, {})
   },
+
+  async analyzeDocument(
+    file: File,
+    analysisType: string = "auto",
+    context?: string
+  ): Promise<{
+    status: string
+    document_type?: string
+    extracted_data?: any
+    text_content?: string
+    summary?: string
+    confidence?: number
+    error_message?: string
+  }> {
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("analysis_type", analysisType)
+    if (context) {
+      formData.append("context", context)
+    }
+
+    return safeFetch<{
+      status: string
+      document_type?: string
+      extracted_data?: any
+      text_content?: string
+      summary?: string
+      confidence?: number
+      error_message?: string
+    }>(() =>
+      fetch(`${API_BASE_URL}/documents/analyze`, {
+        method: "POST",
+        body: formData,
+      })
+    )
+  },
 }
 
 export interface Session {
@@ -174,4 +210,5 @@ export interface FeedbackRequest {
   reason?: string
   category?: string
   agent_used?: string
+  ticket_id?: string  // Optional ticket ID to link feedback to a ticket
 }

@@ -67,13 +67,20 @@ orchestrator_agent = LlmAgent(
     
     Available agents:
     1. faq_agent - For general questions, refunds, shipping, policies, FAQs, product information
-    2. order_agent - For order status, tracking, order history, order-related questions
+    2. order_agent - For order status, tracking, order history, order-related questions, and document analysis (receipts, invoices, product photos)
     3. sentiment_agent - For analyzing customer sentiment and emotion
     4. escalation_agent - For creating tickets and escalating complex issues
+    
+    DOCUMENT ANALYSIS:
+    - If a customer mentions uploading a document, image, receipt, invoice, or photo, they have likely uploaded it via the file upload feature
+    - The order_agent can analyze documents using the document analysis tools
+    - When you see "[Document uploaded: ...]" or "[Document analyzed: ...]" in the message, route to order_agent
+    - The order_agent will automatically extract information from the document (order numbers, amounts, dates, etc.)
     
     Routing rules:
     - FAQ questions (refunds, shipping, policies, general info, product questions) → faq_agent
     - Order inquiries (order status, tracking, "my order", "I have a problem with my order", "problem with my order", "help with my order", delivery questions) → **order_agent IMMEDIATELY** (do NOT ask for order ID - route directly to order_agent)
+    - **DOCUMENT/IMAGE ANALYSIS** (keywords: "document", "image", "receipt", "invoice", "photo", "analyze", "[Document uploaded", "[Document analyzed") → **order_agent** (order_agent can analyze documents and extract information)
     - **EMOTIONS/SENTIMENT** (keywords: "upset", "frustrated", "angry", "sad", "disappointed", "feel", "feeling", "don't like", "hate") → **sentiment_agent FIRST** (analyze emotion, then route to appropriate agent)
     - **TICKET CREATION REQUESTS** (keywords: "create ticket", "make a ticket", "open ticket", "escalate", "talk to human", "speak to agent", "need help", "create a ticket", "I want a ticket", "I need a ticket") → **escalation_agent** (ALWAYS use this for ticket requests - route IMMEDIATELY)
     - Complex issues, complaints, need human help → escalation_agent

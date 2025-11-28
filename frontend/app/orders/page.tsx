@@ -550,11 +550,26 @@ export default function OrdersPage() {
                             </div>
                             <p className="text-sm text-muted-foreground">Customer: {order.customer_id}</p>
                             {order.items && order.items.length > 0 && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {order.items.length} item{order.items.length > 1 ? "s" : ""}
-                                {order.tracking_number && ` • Tracking: ${order.tracking_number}`}
-                                {order.estimated_delivery && ` • Delivery: ${formatDateOnly(order.estimated_delivery)}`}
-                              </p>
+                              <div className="mt-2">
+                                <p className="text-xs text-muted-foreground mb-1">
+                                  {order.items.length} item{order.items.length > 1 ? "s" : ""}
+                                  {order.tracking_number && ` • Tracking: ${order.tracking_number}`}
+                                  {order.estimated_delivery && ` • Delivery: ${formatDateOnly(order.estimated_delivery)}`}
+                                </p>
+                                <div className="text-xs text-muted-foreground">
+                                  <p className="font-medium mb-1">Products:</p>
+                                  <div className="space-y-0.5">
+                                    {order.items.slice(0, 3).map((item, idx) => (
+                                      <p key={idx}>
+                                        • {item.quantity}x {item.name} (${(item.price * item.quantity).toFixed(2)})
+                                      </p>
+                                    ))}
+                                    {order.items.length > 3 && (
+                                      <p className="italic">+ {order.items.length - 3} more item{order.items.length - 3 > 1 ? "s" : ""}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
                           <div className="text-right ml-4">
@@ -591,44 +606,117 @@ export default function OrdersPage() {
               </DialogHeader>
               {editingOrder && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="edit-status">Status</Label>
-                      <Select
-                        value={editingOrder.status}
-                        onValueChange={(value) => setEditingOrder({ ...editingOrder, status: value as any })}
-                      >
-                        <SelectTrigger id="edit-status">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="processing">Processing</SelectItem>
-                          <SelectItem value="shipped">Shipped</SelectItem>
-                          <SelectItem value="delivering">Delivering</SelectItem>
-                          <SelectItem value="delivery_soon">Delivery Soon</SelectItem>
-                          <SelectItem value="delivered">Delivered</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="edit-tracking">Tracking Number</Label>
-                      <Input
-                        id="edit-tracking"
-                        value={editingOrder.tracking_number || ""}
-                        onChange={(e) => setEditingOrder({ ...editingOrder, tracking_number: e.target.value })}
-                        placeholder="TRACK123456"
-                      />
+                  {/* Order Details Section */}
+                  <div className="border-b pb-4">
+                    <h3 className="text-sm font-semibold mb-3">Order Information</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Order ID</p>
+                        <p className="font-medium">{editingOrder.order_id}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Customer ID</p>
+                        <p className="font-medium">{editingOrder.customer_id}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Total Amount</p>
+                        <p className="font-semibold text-lg">${editingOrder.total?.toFixed(2) || "0.00"}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Order Date</p>
+                        <p className="font-medium">
+                          {editingOrder.created_at
+                            ? (() => {
+                                try {
+                                  const date = new Date(editingOrder.created_at)
+                                  return isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString()
+                                } catch {
+                                  return "N/A"
+                                }
+                              })()
+                            : "N/A"}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <Label htmlFor="edit-delivery">Estimated Delivery</Label>
-                    <Input
-                      id="edit-delivery"
-                      type="date"
-                      value={editingOrder.estimated_delivery ? editingOrder.estimated_delivery.split("T")[0] : ""}
-                      onChange={(e) => setEditingOrder({ ...editingOrder, estimated_delivery: e.target.value })}
-                    />
+
+                  {/* Products/Items Section */}
+                  <div className="border-b pb-4">
+                    <h3 className="text-sm font-semibold mb-3">Products</h3>
+                    {editingOrder.items && editingOrder.items.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-4 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
+                          <div>Product Name</div>
+                          <div className="text-right">Quantity</div>
+                          <div className="text-right">Unit Price</div>
+                          <div className="text-right">Subtotal</div>
+                        </div>
+                        {editingOrder.items.map((item, index) => (
+                          <div key={index} className="grid grid-cols-4 gap-4 text-sm py-2 border-b last:border-0">
+                            <div className="font-medium">{item.name || "Unnamed Item"}</div>
+                            <div className="text-right">{item.quantity || 0}</div>
+                            <div className="text-right">${(item.price || 0).toFixed(2)}</div>
+                            <div className="text-right font-semibold">
+                              ${((item.quantity || 0) * (item.price || 0)).toFixed(2)}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="pt-2 mt-2 border-t">
+                          <div className="flex justify-end">
+                            <div className="text-right">
+                              <p className="text-sm text-muted-foreground">Total</p>
+                              <p className="text-lg font-bold">${editingOrder.total?.toFixed(2) || "0.00"}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No items in this order</p>
+                    )}
+                  </div>
+
+                  {/* Shipping Information */}
+                  <div className="border-b pb-4">
+                    <h3 className="text-sm font-semibold mb-3">Shipping Information</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="edit-status">Status</Label>
+                        <Select
+                          value={editingOrder.status}
+                          onValueChange={(value) => setEditingOrder({ ...editingOrder, status: value as any })}
+                        >
+                          <SelectTrigger id="edit-status">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="processing">Processing</SelectItem>
+                            <SelectItem value="shipped">Shipped</SelectItem>
+                            <SelectItem value="delivering">Delivering</SelectItem>
+                            <SelectItem value="delivery_soon">Delivery Soon</SelectItem>
+                            <SelectItem value="delivered">Delivered</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="edit-tracking">Tracking Number</Label>
+                        <Input
+                          id="edit-tracking"
+                          value={editingOrder.tracking_number || ""}
+                          onChange={(e) => setEditingOrder({ ...editingOrder, tracking_number: e.target.value })}
+                          placeholder="TRACK123456"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <Label htmlFor="edit-delivery">Estimated Delivery</Label>
+                      <Input
+                        id="edit-delivery"
+                        type="date"
+                        value={editingOrder.estimated_delivery ? editingOrder.estimated_delivery.split("T")[0] : ""}
+                        onChange={(e) => setEditingOrder({ ...editingOrder, estimated_delivery: e.target.value })}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

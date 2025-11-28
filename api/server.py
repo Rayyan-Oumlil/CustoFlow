@@ -91,6 +91,7 @@ class FeedbackRequest(BaseModel):
     reason: Optional[str] = None
     category: Optional[str] = None
     agent_used: Optional[str] = None
+    ticket_id: Optional[str] = None  # Optional ticket ID to link feedback to a ticket
 
 
 @app.get("/")
@@ -967,14 +968,14 @@ async def get_analytics():
             supabase_key = os.getenv("SUPABASE_KEY")
             if supabase_url and supabase_key:
                 supabase = create_client(supabase_url, supabase_key)
-                # Get all sessions with message_count > 0
-                result = supabase.table("sessions").select("session_id, message_count").gt("message_count", 0).execute()
+                # Get all sessions with message_count > 0 AND is_active = True (exclude closed sessions)
+                result = supabase.table("sessions").select("session_id, message_count, is_active").gt("message_count", 0).eq("is_active", True).execute()
                 active_sessions = len(result.data) if result.data else 0
         else:
             # Fallback to session_metadata
             from memory.session_metadata import session_metadata
             all_sessions = session_metadata.get_all_sessions()
-            active_sessions = sum(1 for s in all_sessions.values() if s.get("message_count", 0) > 0) if isinstance(all_sessions, dict) else 0
+            active_sessions = sum(1 for s in all_sessions.values() if s.get("message_count", 0) > 0 and s.get("is_active", True) is not False) if isinstance(all_sessions, dict) else 0
     except Exception as e:
         logger.warning(f"Error getting active sessions: {e}")
         active_sessions = 0
@@ -1251,6 +1252,32 @@ async def submit_feedback(request: FeedbackRequest):
         from utils.feedback_manager import FeedbackManager
         
         if SUPABASE_ENABLED and request.user_id:
+            # Try to get ticket_id from session if not provided
+            ticket_id = request.ticket_id
+            if not ticket_id and request.session_id:
+                try:
+                    # Get ticket_id from session using the same logic as the endpoint
+                    from utils.supabase_client import SUPABASE_ENABLED as SUPABASE_CHECK, get_tickets
+                    if SUPABASE_CHECK:
+                        tickets = get_tickets(session_id=request.session_id)
+                        if tickets and len(tickets) > 0:
+                            # Get the most recent ticket
+                            ticket_id = tickets[0].get("ticket_id")
+                    else:
+                        # Fallback: try JSON
+                        from tools.ticket_tool import get_all_tickets
+                        all_tickets = get_all_tickets()
+                        if isinstance(all_tickets, dict):
+                            tickets = [t for t in all_tickets.values() if t.get("session_id") == request.session_id]
+                        else:
+                            tickets = [t for t in all_tickets if t.get("session_id") == request.session_id]
+                        if tickets and len(tickets) > 0:
+                            tickets.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+                            ticket_id = tickets[0].get("ticket_id")
+                except Exception as e:
+                    logger.debug(f"Could not get ticket_id from session: {e}")
+                    ticket_id = None
+            
             result = create_feedback(
                 session_id=request.session_id,
                 user_id=request.user_id,
@@ -1259,7 +1286,8 @@ async def submit_feedback(request: FeedbackRequest):
                 comment=request.comment,
                 reason=request.reason,
                 category=request.category,
-                agent_used=request.agent_used
+                agent_used=request.agent_used,
+                ticket_id=ticket_id
             )
             if result.get("status") == "success":
                 analytics.log_feedback(request.session_id, request.feedback_type, request.rating, request.comment)
@@ -1418,6 +1446,48 @@ async def get_user_sessions(user_id: str, customer_id: Optional[str] = Query(Non
     sessions = session_metadata.get_user_sessions(user_id, customer_id)
     # Return array directly for frontend compatibility
     return sessions
+
+
+@app.get("/sessions/all/active")
+async def get_all_active_sessions():
+    """Get all active sessions for human agent monitoring."""
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED
+        if SUPABASE_ENABLED:
+            from supabase import create_client
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                # Get all active sessions with messages
+                result = supabase.table("sessions").select("*").eq("is_active", True).gt("message_count", 0).order("updated_at", desc=True).execute()
+                sessions = result.data or []
+                # Calculate message_count dynamically for each session
+                for session in sessions:
+                    try:
+                        msg_result = supabase.table("messages").select("id", count="exact").eq("session_id", session["session_id"]).execute()
+                        session["message_count"] = msg_result.count if hasattr(msg_result, 'count') and msg_result.count is not None else 0
+                    except Exception as e:
+                        logger.warning(f"Error calculating message_count for session {session['session_id']}: {e}")
+                        session["message_count"] = 0
+                return sessions
+        else:
+            # Fallback to session_metadata
+            from memory.session_metadata import session_metadata
+            all_sessions = session_metadata.get_all_sessions()
+            active_sessions = [
+                s for s in all_sessions.values() 
+                if s.get("message_count", 0) > 0 and s.get("is_active", True) is not False
+            ] if isinstance(all_sessions, dict) else []
+            # Sort by updated_at descending
+            active_sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+            return active_sessions
+    except Exception as e:
+        logger.error(f"Error getting all active sessions: {e}")
+        return []
 
 
 class CreateSessionRequest(BaseModel):
@@ -1903,6 +1973,56 @@ async def update_ticket_status_endpoint(ticket_id: str, request: dict):
     except Exception as e:
         logger.error(f"Error updating ticket status: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to update ticket status: {str(e)}")
+
+
+@app.post("/sessions/send-message")
+async def send_session_message(request: dict):
+    """
+    Send a message directly to a session (human agent intervention).
+    
+    Body:
+    {
+        "session_id": str,
+        "user_id": str,
+        "customer_id": Optional[str],
+        "message": str
+    }
+    """
+    try:
+        from utils.supabase_client import add_message
+        
+        session_id = request.get("session_id")
+        user_id = request.get("user_id")
+        message_content = request.get("message", "").strip()
+        
+        if not session_id or not user_id:
+            raise HTTPException(status_code=400, detail="session_id and user_id are required")
+        
+        if not message_content:
+            raise HTTPException(status_code=400, detail="Message cannot be empty")
+        
+        # Add message to conversation history as assistant message from human agent
+        add_message(
+            user_id=user_id,
+            session_id=session_id,
+            role="assistant",
+            content=message_content,
+            metadata={"agent_used": "human_agent", "is_human_agent": True},
+            is_human_agent=True
+        )
+        
+        logger.info(f"Human agent sent message to session {session_id}")
+        
+        return {
+            "status": "success",
+            "message": "Message sent successfully",
+            "session_id": session_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending message to session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
 
 
 @app.post("/tickets/{ticket_id}/message")
@@ -2419,6 +2539,102 @@ async def synthesize_speech(request: dict):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to synthesize speech: {str(e)}"
+        )
+
+
+@app.post("/documents/analyze")
+async def analyze_document_endpoint(
+    file: UploadFile = File(..., description="Document file (PDF, JPG, PNG, WebP)"),
+    analysis_type: str = Form("auto", description="Type of analysis: auto, receipt, invoice, product_photo, order_confirmation, general"),
+    context: Optional[str] = Form(None, description="Optional context about what to look for")
+):
+    """
+    Analyze a document (PDF or image) using Gemini Vision API.
+    
+    Supported file types:
+    - PDF files
+    - Images: JPG, PNG, WebP
+    
+    Analysis types:
+    - auto: Automatically detect and extract relevant information
+    - receipt: Extract order/receipt information (order number, amount, date, items)
+    - invoice: Extract invoice information
+    - product_photo: Analyze product photo for defects/issues
+    - order_confirmation: Extract order confirmation details
+    - general: General text extraction and summary
+    
+    Returns:
+    {
+        "status": "success" | "error",
+        "document_type": "receipt" | "invoice" | "product_photo" | "unknown",
+        "extracted_data": {
+            "order_id": "...",
+            "amount": 99.99,
+            "date": "2024-01-15",
+            "items": [...],
+            ...
+        },
+        "text_content": "Full extracted text",
+        "summary": "Brief summary",
+        "confidence": 0.95,
+        "error_message": "..." (if error)
+    }
+    """
+    try:
+        from tools.document_analysis_tool import analyze_document
+        
+        # Validate file type
+        allowed_types = [
+            "application/pdf",
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp"
+        ]
+        
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file.content_type}. Supported: PDF, JPG, PNG, WebP"
+            )
+        
+        # Read file data
+        file_data = await file.read()
+        
+        if not file_data or len(file_data) == 0:
+            raise HTTPException(status_code=400, detail="Empty file")
+        
+        # Check file size (max 20MB for Gemini Vision)
+        max_size = 20 * 1024 * 1024  # 20MB
+        if len(file_data) > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size: 20MB. Your file: {len(file_data) / 1024 / 1024:.2f}MB"
+            )
+        
+        # Analyze document
+        result = analyze_document(
+            file_data=file_data,
+            file_type=file.content_type,
+            analysis_type=analysis_type,
+            context=context
+        )
+        
+        if result.get("status") == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("error_message", "Failed to analyze document")
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing document: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to analyze document: {str(e)}"
         )
 
 

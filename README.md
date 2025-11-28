@@ -501,15 +501,20 @@ CustoFlow/
 │                    Test Coverage                        │
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
-│  ✅ Unit Tests                                          │
+│  ✅ Unit Tests (30+ test files, 140+ test cases)        │
 │     ├─ Validation tests                                │
 │     ├─ Rate limiter tests                              │
-│     └─ Cache tests                                     │
+│     ├─ Cache tests                                     │
+│     ├─ Error handler tests                             │
+│     ├─ Multilingual tests                             │
+│     └─ Analytics tests                                 │
 │                                                         │
 │  ✅ Integration Tests                                   │
 │     ├─ Agent workflows                                 │
 │     ├─ End-to-end scenarios                            │
-│     └─ API integration                                 │
+│     ├─ API integration                                 │
+│     ├─ Shipping tool tests                             │
+│     └─ Order API endpoint tests                        │
 │                                                         │
 │  ✅ Security Tests                                      │
 │     ├─ SQL injection prevention                        │
@@ -517,14 +522,22 @@ CustoFlow/
 │     └─ Input sanitization                              │
 │                                                         │
 │  ✅ Load Tests                                          │
-│     ├─ Concurrent requests                          │
+│     ├─ Concurrent requests                             │
 │     ├─ Performance metrics                             │
 │     └─ Stress testing                                  │
 │                                                         │
 │  ✅ Evaluation Suite                                    │
-│     ├─ 17+ test cases                                  │
+│     ├─ 140+ comprehensive test cases                    │
 │     ├─ Automated scoring                               │
-│     └─ Performance benchmarks                           │
+│     └─ Performance benchmarks                          │
+│                                                         │
+│  ✅ Comprehensive Coverage                              │
+│     ├─ Order modification tests                        │
+│     ├─ Ticket modification tests                       │
+│     ├─ Conversation tool tests                         │
+│     ├─ Google Speech API tests                         │
+│     ├─ Tracing tests                                   │
+│     └─ Long-term memory tests                          │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -548,12 +561,20 @@ python scripts/check_project.py
 
 ## 📊 Evaluation Results
 
-The system has been evaluated on **17+ comprehensive test cases** covering:
+The system has been evaluated on **140+ comprehensive test cases** across **30+ test files** covering:
 - FAQ queries (refunds, shipping, policies)
-- Order inquiries (status, tracking)
+- Order inquiries (status, tracking, modifications)
 - Sentiment analysis (frustration, urgency)
 - Escalation scenarios (complex issues)
 - Orchestrator routing (multi-agent coordination)
+- Shipping tool (OpenAPI pattern, all carriers)
+- Order API endpoints (create, update, delete)
+- Error handling and validation
+- Multilingual support
+- Analytics and metrics
+- Conversation tools
+- QA & Compliance
+- A/B Testing framework
 
 ### Performance Metrics
 
@@ -655,7 +676,7 @@ API_PORT=8000
 
 ## 🎓 Course Concepts Demonstrated
 
-This project demonstrates **7+ key concepts** from the Kaggle 5-Day AI Agents Intensive Course (exceeds minimum requirement of 3):
+This project demonstrates **8 key concepts** from the Kaggle 5-Day AI Agents Intensive Course (exceeds minimum requirement of 3):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -689,6 +710,10 @@ This project demonstrates **7+ key concepts** from the Kaggle 5-Day AI Agents In
 │  ✅ Agent Detection & Attribution                               │
 │     └─ Automatic detection of which agent handled each        │
 │        response, displayed in UI and stored in feedback        │
+│                                                                 │
+│  ✅ A2A Protocol (Agent-to-Agent Communication)                 │
+│     └─ Direct agent communication: FAQ↔Order,                 │
+│        Sentiment→Escalation for context-aware responses        │
 │                                                                 │
 │  ✅ Agent Deployment                                             │
 │     └─ FastAPI production server with health checks,           │

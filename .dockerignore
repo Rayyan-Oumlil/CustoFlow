@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Data files (should be in Supabase)
+data/*.json
+data/faq_index/
+data/kb_versions/
+!data/faq_knowledge_base.json
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+test_*.py
+
+# Frontend (deployed separately)
+frontend/
+node_modules/
+
+# Credentials (NEVER commit!)
+*.json
+credentials.json
+*-credentials.json
+gen-lang-client-*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tailwind.config.js
+!next.config.js
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+

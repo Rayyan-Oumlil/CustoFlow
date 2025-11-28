@@ -85,8 +85,35 @@ def transcribe_audio(audio_data: bytes, language_code: str = "en-US") -> Optiona
             logger.info("Converted WebM to WAV")
     
     try:
-        # Initialize client
-        client = speech.SpeechClient()
+        # Initialize client with credentials if provided
+        # Priority order:
+        # 1. GOOGLE_APPLICATION_CREDENTIALS_JSON (env var - for Railway/deployment)
+        # 2. GOOGLE_APPLICATION_CREDENTIALS (file path - env var)
+        # 3. credentials.json in project root (local development)
+        # 4. Application Default Credentials (ADC)
+        
+        credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        
+        if credentials_json:
+            # Option 1: JSON from environment variable (Railway/deployment)
+            import json
+            from google.oauth2 import service_account
+            credentials_dict = json.loads(credentials_json)
+            credentials = service_account.Credentials.from_service_account_info(credentials_dict)
+            client = speech.SpeechClient(credentials=credentials)
+        elif credentials_path and os.path.exists(credentials_path):
+            # Option 2: File path from environment variable
+            client = speech.SpeechClient()
+        else:
+            # Option 3: Try credentials.json in project root (local development)
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            local_credentials = os.path.join(project_root, "credentials.json")
+            if os.path.exists(local_credentials):
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = local_credentials
+                logger.info(f"Using credentials.json from project root: {local_credentials}")
+            # Option 4: Use default credentials (ADC or GOOGLE_APPLICATION_CREDENTIALS)
+            client = speech.SpeechClient()
         
         # If WAV, use LINEAR16 directly (most reliable)
         if is_wav:
@@ -282,8 +309,35 @@ def text_to_speech(text: str, language_code: str = "en-US", voice_name: Optional
         return None
     
     try:
-        # Initialize client
-        client = texttospeech.TextToSpeechClient()
+        # Initialize client with credentials if provided
+        # Priority order:
+        # 1. GOOGLE_APPLICATION_CREDENTIALS_JSON (env var - for Railway/deployment)
+        # 2. GOOGLE_APPLICATION_CREDENTIALS (file path - env var)
+        # 3. credentials.json in project root (local development)
+        # 4. Application Default Credentials (ADC)
+        
+        credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        
+        if credentials_json:
+            # Option 1: JSON from environment variable (Railway/deployment)
+            import json
+            from google.oauth2 import service_account
+            credentials_dict = json.loads(credentials_json)
+            credentials = service_account.Credentials.from_service_account_info(credentials_dict)
+            client = texttospeech.TextToSpeechClient(credentials=credentials)
+        elif credentials_path and os.path.exists(credentials_path):
+            # Option 2: File path from environment variable
+            client = texttospeech.TextToSpeechClient()
+        else:
+            # Option 3: Try credentials.json in project root (local development)
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            local_credentials = os.path.join(project_root, "credentials.json")
+            if os.path.exists(local_credentials):
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = local_credentials
+                logger.info(f"Using credentials.json from project root: {local_credentials}")
+            # Option 4: Use default credentials (ADC or GOOGLE_APPLICATION_CREDENTIALS)
+            client = texttospeech.TextToSpeechClient()
         
         # Configure synthesis
         synthesis_input = texttospeech.SynthesisInput(text=text)

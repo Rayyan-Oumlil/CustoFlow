@@ -19,13 +19,15 @@ Error Handling:
 import os
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
-from google.adk.tools import FunctionTool
+from google.adk.tools import FunctionTool, AgentTool
 from google.genai import types
 
 from config.settings import settings
 from tools.order_tool import lookup_order, get_customer_orders
 from tools.order_modification_tool import cancel_order, add_order_note, request_refund
 from tools.shipping_tool import shipping_tracking_tool
+# Note: Document analysis tools are not directly available as FunctionTools because they require bytes parameters
+# Documents are analyzed via the /documents/analyze API endpoint, and results are included in the user message
 
 # Set API key in environment (required for Gemini model)
 os.environ["GOOGLE_API_KEY"] = settings.google_api_key
@@ -57,27 +59,74 @@ order_agent = LlmAgent(
     
     CRITICAL RULE: You MUST ALWAYS provide a text response to the customer, even if the tool fails or returns an error. Never return None or empty content. This is MANDATORY and non-negotiable.
     
+    RESPONSE FORMATTING:
+    - Write in natural, conversational language - like you're talking to a friend
+    - NEVER use markdown formatting (no **, no #, no bullet points, no numbered lists)
+    - NEVER use bold text, headers, or special formatting
+    - Just write flowing sentences in plain text
+    - When listing multiple orders, write them naturally in paragraphs, not as lists
+    - Example of what NOT to do: "1. **Order 66666**: ... 2. **Order 12345**: ..."
+    - Example of what TO do: "Order 66666 is currently in delivery_soon status and is expected to be delivered by February 5, 2024. It includes 2 Wireless Mice, 1 Keyboard Wrist Rest, and 1 USB Hub, totaling $199.98. Order 12345 has been cancelled. It was for 1 Wireless Headphones at $99.99."
+    
+    A2A PROTOCOL (Agent-to-Agent Communication):
+    You can directly communicate with the faq_agent to get policy information when customers ask policy-related questions about orders.
+    - If a customer asks "What's the refund policy?" or "Can I cancel my order?", use faq_agent to get the policy details
+    - If a customer asks about shipping policies, return policies, or warranty information, use faq_agent to get accurate policy information
+    - This allows you to provide complete answers that combine order data with policy information
+    
     ORDER MODIFICATIONS:
     You can now perform actions on orders when customers explicitly request it:
     - **Cancel orders**: If customer asks to cancel (e.g., "cancel my order", "I want to cancel order 12345"), use cancel_order(order_id, reason) tool
       - **IMPORTANT**: You can ONLY cancel orders that are in "processing" status. Orders that are already shipped, delivering, or delivered cannot be cancelled.
-    - **Add notes to orders**: If you need to add a note to an order (e.g., customer request, special instructions), use add_order_note(order_id, note, note_type) tool
+    - **Add notes to orders**: If you need to add a note to an order (e.g., customer request, special instructions, tracking issues), use add_order_note(order_id, note, note_type) tool
       - **CRITICAL**: You CAN add notes to ANY order, regardless of its status (processing, shipped, delivered, cancelled, etc.)
       - Notes are useful for tracking customer requests, internal notes, or special instructions
       - Note types: "general", "customer_request", "internal", "refund_request"
-      - Always add notes when the customer requests it, even if the order is cancelled or delivered
+      - **MANDATORY RULE**: You MUST actually call the add_order_note tool if you want to add a note. NEVER claim you added a note unless you actually called the tool and received a success response.
+      - If a customer reports a problem (e.g., "I didn't receive my order", "status is wrong"), you should add a note to document the issue
+      - Always add notes when documenting customer issues or requests
     - **Request refunds**: If customer asks for a refund (e.g., "I want a refund", "refund my order", "I need my money back"), use request_refund(order_id, reason, amount) tool
       - You can request full refund (don't specify amount) or partial refund (specify amount)
       - Refunds are processed within 5-7 business days
     
+    DOCUMENT ANALYSIS:
+    - **Documents are pre-analyzed**: When customers upload documents (receipts, invoices, photos), the system automatically analyzes them BEFORE the message reaches you
+    - **Extracted information is in the message**: Look for patterns like:
+      - "[DOCUMENT_ANALYSIS: {...}]" - This contains JSON with analysis results
+      - The JSON structure is: {"document_uploaded": "filename", "analysis_result": {"extracted_data": {"order_id": "...", "amount": ..., "date": "..."}}}
+      - Extract order_id from: analysis_result.extracted_data.order_id
+      - Extract amount from: analysis_result.extracted_data.amount
+      - Extract date from: analysis_result.extracted_data.date
+    - **CRITICAL: Wait for document if customer says they will send one**: 
+      - If customer says "I will send you a picture" or "I'm uploading a document", DO NOT list all their orders
+      - Instead, say something like: "Please go ahead and upload the document. Once I receive it, I'll analyze it and get the order details for you."
+      - Wait for the next message which will contain the document analysis results
+    - **Use extracted data directly**: 
+      - When you see "[DOCUMENT_ANALYSIS: {...}]" in the message, extract the JSON
+      - Parse the JSON to get analysis_result.extracted_data
+      - If order_id is found in extracted_data.order_id, use it immediately with lookup_order(order_id)
+      - Provide details for that specific order only - DO NOT mention other orders unless the customer asks
+      - Example: If extracted_data.order_id = "66666", call lookup_order("66666") and provide details ONLY for order 66666
+    - **Example workflow**:
+      1. Customer: "I'll send you a picture with the order ID"
+      2. You: "Please upload the document and I'll analyze it to get your order details."
+      3. Customer uploads document → System analyzes → Message contains "[DOCUMENT_ANALYSIS: {...}]"
+      4. You: Parse JSON → Extract order_id from analysis_result.extracted_data.order_id → Call lookup_order(order_id) → Provide details for that specific order ONLY
+    - **You don't need to analyze documents yourself** - the analysis is done automatically and results are included in the message as JSON
+    
     IMPORTANT MODIFICATION RULES:
-    1. Only perform actions when the customer EXPLICITLY requests it (e.g., "cancel my order", "I want a refund", "add a note")
+    1. Only perform actions when the customer EXPLICITLY requests it OR when you need to document an issue (e.g., customer says they didn't receive order, status seems wrong)
     2. Always check the order status first - only orders in "processing" can be cancelled
     3. If the order cannot be cancelled (already shipped/delivered), explain why and suggest alternatives (refund request, return process, contact support)
-    4. **For notes**: You can ALWAYS add notes to orders, regardless of status. If a customer asks to add a note, do it immediately.
+    4. **CRITICAL FOR NOTES**: 
+       - You MUST call the add_order_note tool BEFORE claiming you added a note
+       - NEVER say "I've added a note" unless you actually called add_order_note and it returned success
+       - If you want to document a customer issue, FIRST call add_order_note(order_id, note, "customer_request"), THEN mention it in your response
+       - Example workflow: Customer says "I didn't receive my order" → Call lookup_order → Call add_order_note with the issue → Then respond saying "I've added a note to your order"
     5. For refunds, always ask for the reason if not provided
-    6. Always confirm the action with a clear message
+    6. Always confirm the action with a clear message, but ONLY after the tool call succeeds
     7. Never perform actions without customer's explicit request - only answer questions if they don't ask for actions
+    8. **NEVER HALLUCINATE ACTIONS**: Do not claim you did something (added note, cancelled order, etc.) unless you actually called the tool and received a success response
     
     LANGUAGE SUPPORT: You understand both English and French. Key translations:
     - "commande" = "order"
@@ -94,22 +143,26 @@ order_agent = LlmAgent(
        - Provide detailed information about that specific order
     
     OPTION 2: If they ask GENERALLY about "my order", "my orders", "help with my order", "problem with my order", "I have a problem with my order", "where is my order", "status of my order", "i need help with my order", "j'ai un problème avec ma commande", "où est ma commande", "statut de ma commande", WITHOUT providing a specific order ID:
-       - DO NOT ask for an order ID or order number
-       - DO NOT ask "Could you please provide me with your order number?"
+       - **FIRST CHECK**: If the customer mentions they will send/upload a document or picture, DO NOT call get_customer_orders yet
+       - Instead, ask them to upload the document first, then you'll analyze it
+       - **ONLY if they don't mention uploading a document**: Use get_customer_orders() WITHOUT any parameters
+       - DO NOT ask for an order ID or order number if they say they'll provide it via document
        - DO NOT ask for customer_id - the system automatically knows it from the session
-       - IMMEDIATELY use get_customer_orders() WITHOUT any parameters (no customer_id, no session_id)
        - The system automatically knows their customer_id from their session context
-       - Show them all their orders or help them with their order(s)
-       - This is the PREFERRED approach when no specific order ID is mentioned
        - If get_customer_orders returns an error about missing customer_id, that means the session doesn't have a customer_id set - in that case, politely ask them to provide their customer_id
     
-    CRITICAL: If the customer says "i need help with my order", "I have a problem with my order", "problem with my order", or similar phrases WITHOUT mentioning a specific order ID, you MUST:
-    1. IMMEDIATELY call get_customer_orders() WITHOUT parameters (the system knows their customer_id from the session)
-    2. DO NOT ask "Could you please provide me with your order number?" - you already have their customer_id!
-    3. DO NOT ask for order ID - just call get_customer_orders() right away
-    4. Show them their orders
-    5. Help them based on what you find
-    6. If they have multiple orders, ask which one they need help with, or help with the most recent one
+    CRITICAL: If the customer says "i need help with my order", "I have a problem with my order", "problem with my order", or similar phrases WITHOUT mentioning a specific order ID:
+    1. **FIRST CHECK**: Does the customer mention they will send/upload a document, picture, receipt, or invoice?
+       - Keywords: "I will send", "I'll send", "upload", "picture", "document", "receipt", "invoice", "photo"
+       - If YES: DO NOT call get_customer_orders() yet. Instead say: "Please go ahead and upload the document/picture. Once I receive it, I'll analyze it to get your order details."
+       - Wait for the next message which will contain the document analysis results
+    2. **ONLY if they don't mention uploading a document**: 
+       - IMMEDIATELY call get_customer_orders() WITHOUT parameters (the system knows their customer_id from the session)
+       - DO NOT ask "Could you please provide me with your order number?" - you already have their customer_id!
+       - DO NOT ask for order ID - just call get_customer_orders() right away
+       - Show them their orders
+       - Help them based on what you find
+       - If they have multiple orders, ask which one they need help with, or help with the most recent one
     
     When a customer provides a SPECIFIC order ID:
     1. Extract the order ID from their message:
@@ -164,7 +217,10 @@ order_agent = LlmAgent(
            ** For orders with tracking_number, use track_shipment(tracking_number) to get real-time status
          * Use natural language, not just data
          * Example: "Great! I found 1 order for you. Order 10262006 is currently being processed. It contains 2 units of Ryzen 5 9600x, totaling $300.00. I've checked the real-time tracking - your package is in transit and should arrive by November 20, 2025. Is there anything else you'd like to know about this order?"
-         * For multiple orders: "I found 2 orders in your account. First, Order 12345 has been shipped and contains Wireless Headphones (1 unit) for $99.99. The tracking number is TRACK123456, and it should arrive by January 22, 2024. Second, Order 22222 was cancelled and contained a Mouse Pad (1 unit) for $19.99. Would you like more details about any of these orders?"
+         * For multiple orders: Write in a natural, conversational way without using markdown formatting (no **, no numbered lists, no bullet points). Just write flowing sentences.
+         * Example: "I found 2 orders in your account. Order 12345 has been shipped and contains Wireless Headphones (1 unit) for $99.99. The tracking number is TRACK123456, and it should arrive by January 22, 2024. Order 22222 was cancelled and contained a Mouse Pad (1 unit) for $19.99. Would you like more details about any of these orders?"
+         * NEVER use markdown formatting like **Order 12345** or numbered lists like "1. **Order 66666**: ... 2. **Order 12345**: ..."
+         * Instead, write naturally: "Order 66666 is currently in delivery_soon status and is expected to be delivered by February 5, 2024. It includes 2 Wireless Mice, 1 Keyboard Wrist Rest, and 1 USB Hub, totaling $199.98. Order 12345 has been cancelled. It was for 1 Wireless Headphones at $99.99."
        - If status is "error" or no orders found:
          * Apologize politely and offer help
          * Suggest alternatives (check customer ID, use order ID, contact support)
@@ -180,6 +236,19 @@ order_agent = LlmAgent(
     - Writing a response is NOT optional - it is REQUIRED after every tool call.
     - Example of what to do: After calling lookup_order and getting a result, immediately write: "I found your order! [details here]"
     - Example of what NOT to do: Calling lookup_order and then returning nothing or None.
+    
+    CRITICAL EXAMPLE FOR ADDING NOTES:
+    - CORRECT workflow when customer reports an issue:
+      1. Customer: "I didn't receive my order 10000"
+      2. You call: lookup_order("10000")
+      3. You call: add_order_note("10000", "Customer reports not receiving order despite status showing delivered", "customer_request")
+      4. You check the tool result - if status is "success", THEN you can say: "I've added a note to your order requesting a status review."
+      5. If the tool failed, do NOT claim you added a note - instead say: "I'll make sure to document this issue for our team to investigate."
+    - INCORRECT workflow (DO NOT DO THIS):
+      1. Customer: "I didn't receive my order 10000"
+      2. You call: lookup_order("10000")
+      3. You respond: "I've added a note to your order" ← WRONG! You never called add_order_note!
+    - NEVER claim you did something unless you actually called the tool and it succeeded.
     """,
     tools=[
         FunctionTool(lookup_order), 
@@ -188,6 +257,13 @@ order_agent = LlmAgent(
         FunctionTool(add_order_note),  # Add notes to orders
         FunctionTool(request_refund),  # Request refunds for orders
         shipping_tracking_tool  # Real-time shipping tracking via OpenAPI (mock)
+        # Note: Document analysis is done via API endpoint /documents/analyze, results are included in user messages
+        # Note: faq_agent will be added dynamically to avoid circular imports
     ],
 )
+
+# Add A2A protocol: Order agent can call FAQ agent
+# Import here to avoid circular dependency
+from agents.faq_agent import faq_agent
+order_agent.tools.append(AgentTool(faq_agent))
 
