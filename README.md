@@ -125,8 +125,6 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 - ✅ **QA & Compliance System**: Automated quality scoring, compliance keyword detection, and profanity filtering
 - ✅ **A/B Testing Framework**: Statistical A/B testing for agent instruction variants with automatic winner selection
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete documentation.
-
 ## 🏗️ Architecture
 
 ### System Architecture
@@ -396,7 +394,31 @@ print(data["response"])
 - `PUT /refunds/{refund_id}/status` - Update refund status
 - `POST /tickets/{ticket_id}/message` - Send message to customer via ticket
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for complete documentation.
+### Technology Stack
+
+**Core Framework:**
+- Google ADK (Agent Development Kit) - Multi-agent orchestration
+- Gemini 2.5 Flash Lite - LLM for all agents
+- Python 3.10+ - Backend programming language
+
+**Web Framework:**
+- FastAPI - REST API server (deployed on Google Cloud Run)
+- React/Next.js 15 - Frontend web dashboard (deployed on Vercel)
+- TypeScript - Frontend type safety
+
+**Data Storage:**
+- Supabase (PostgreSQL) - Primary database for all persistent data
+  - Messages, sessions, orders, tickets, feedback
+  - Analytics, agent refinements, KB updates
+- FAISS - Vector embeddings for semantic search
+- In-Memory - Session management and caching
+
+**Libraries:**
+- Sentence Transformers - Semantic search embeddings
+- Supabase Client - Database and storage integration
+- Google Cloud Speech - Speech-to-Text and Text-to-Speech
+- APScheduler - Scheduled tasks (agent improvements)
+- scipy/numpy - Statistical analysis for A/B testing
 
 ## 📁 Project Structure
 
@@ -461,7 +483,6 @@ CustoFlow/
 │   ├── SETUP.md                       # ⚙️ Setup guide
 │   ├── TROUBLESHOOTING.md             # 🔧 Troubleshooting
 │   ├── ADVANCED_EXAMPLES.md           # 💡 Advanced examples
-│   └── ARCHITECTURE_DIAGRAMS.md       # 🏗️ Architecture diagrams
 │
 ├── 💼 utils/                           # Utilities
 │   ├── validation.py                 # ✅ Input validation
@@ -732,7 +753,7 @@ This project demonstrates **8 key concepts** from the Kaggle 5-Day AI Agents Int
 
 ## 📚 Documentation
 
-- [Architecture Documentation](docs/ARCHITECTURE.md) - Complete system architecture
+- [Deployment Decision](docs/DEPLOYMENT_DECISION.md) - Why we use Cloud Run
 - [Feature Proposals](docs/FEATURE_PROPOSALS.md) - Implemented and planned features
 - [Database & Learning](docs/DATABASE_AND_LEARNING.md) - Database usage and learning systems
 - [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment instructions

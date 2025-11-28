@@ -28,9 +28,27 @@ CustoFlow uses a multi-agent system where specialized AI agents automatically ha
 
 ## Architecture
 
-Core to CustoFlow is the orchestrator_agent—a prime example of a multi-agent system. It's not a monolithic application but an ecosystem of five specialized agents, each contributing to different aspects of customer support. This modular approach, facilitated by Google's Agent Development Kit, allows for sophisticated routing and robust workflows.
+CustoFlow is built on a **multi-agent architecture** using Google's Agent Development Kit (ADK). The system consists of five specialized agents orchestrated by a central coordinator, each optimized for specific customer support tasks.
+
+### Technology Stack
+- **Framework**: Google ADK (Agent Development Kit) with Gemini 2.5 Flash Lite
+- **Backend**: FastAPI (Python 3.10+) deployed on Google Cloud Run
+- **Frontend**: React/Next.js 15 with TypeScript, deployed on Vercel
+- **Database**: Supabase (PostgreSQL) for all persistent data
+- **Search**: FAISS vector embeddings with Sentence Transformers for semantic FAQ search
+- **Observability**: Comprehensive logging, metrics, tracing, and analytics
+
+### System Architecture
 
 The orchestrator_agent is constructed using the LlmAgent class from Google ADK. It uses Gemini 2.5 Flash Lite for reasoning and defines routing rules that analyze incoming queries to determine the appropriate specialist agent. Crucially, it also defines the tools and sub-agents it can delegate tasks to, enabling complex multi-step workflows.
+
+**Data Flow:**
+1. Customer message → FastAPI Server (validation, rate limiting)
+2. Orchestrator Agent (query analysis and routing)
+3. Specialist Agent (FAQ, Order, Sentiment, or Escalation)
+4. Custom Tools (semantic search, database queries, ticket creation)
+5. Response aggregation → Conversation history storage (Supabase)
+6. Analytics & feedback logging → Response to customer
 
 The real power of CustoFlow lies in its team of specialized agents, each an expert in its domain.
 
@@ -83,6 +101,28 @@ Provides conversation summarization and history retrieval. The summarizer uses L
 ### Long-Running Operations (ticket_tool_lro.py)
 
 Implements the LRO pattern with human-in-the-loop approval. Tickets can be paused for human review before creation, demonstrating the concept of long-running operations in agent workflows.
+
+### Document Analysis (document_analysis_tool.py)
+
+Uses Gemini Vision API to analyze uploaded PDFs and images. Automatically extracts order information from receipts, enabling customers to upload order documents for instant lookup and support.
+
+### Data Persistence
+
+All data is stored in Supabase (PostgreSQL) including:
+- **Sessions**: Conversation sessions with customer_id and user_id tracking
+- **Messages**: Full conversation history with metadata
+- **Orders**: Order details, status, items, tracking information
+- **Tickets**: Support tickets with automatic summarization
+- **Feedback**: User ratings, comments, and agent attribution
+- **Analytics**: Interaction tracking and performance metrics
+
+### Observability & Quality Assurance
+
+- **Logging**: Structured logging with ADK LoggingPlugin
+- **Metrics**: Real-time metrics collection (messages, sessions, response times)
+- **Analytics**: Business analytics dashboard with live data
+- **QA & Compliance**: Automated quality scoring, compliance keyword detection, profanity filtering
+- **A/B Testing**: Statistical framework for optimizing agent instructions
 
 ---
 
