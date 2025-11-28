@@ -1481,14 +1481,8 @@ async def get_history(user_id: str, limit: Optional[int] = 50, session_id: Optio
 @app.get("/sessions/{user_id}")
 async def get_user_sessions(user_id: str, customer_id: Optional[str] = Query(None)):
     """Get all sessions for a user with metadata, optionally filtered by customer_id."""
-    # Use supabase_client directly to ensure Supabase is used when available
-    from utils.supabase_client import SUPABASE_ENABLED, get_user_sessions as supabase_get_user_sessions
-    if SUPABASE_ENABLED:
-        sessions = supabase_get_user_sessions(user_id, customer_id)
-    else:
-        sessions = session_metadata.get_user_sessions(user_id, customer_id)
-    # Return array directly for frontend compatibility
-    return sessions
+    sessions = session_metadata.get_user_sessions(user_id, customer_id)
+    return {"user_id": user_id, "sessions": sessions, "count": len(sessions)}
 
 
 @app.get("/sessions/all/active")

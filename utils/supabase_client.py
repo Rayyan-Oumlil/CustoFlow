@@ -106,47 +106,21 @@ def create_session(session_id: str, user_id: str, name: Optional[str] = None, cu
 
 
 def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[Dict]:
-    """Récupérer toutes les sessions d'un utilisateur avec message_count calculé dynamiquement."""
+    """Récupérer toutes les sessions d'un utilisateur."""
     if not SUPABASE_ENABLED:
         from memory.session_metadata import session_metadata
-        sessions = session_metadata.get_user_sessions(user_id, customer_id)
-        print(f"ℹ️  [SESSIONS] Loaded {len(sessions)} sessions from JSON fallback")
-        return sessions
+        return session_metadata.get_user_sessions(user_id, customer_id)
     
-    # Prioritize Supabase
     try:
-        query = supabase.table("sessions").select("*").eq("user_id", user_id)
-        
-        # Filter by customer_id ONLY if provided
-        # If customer_id is not provided, return ALL sessions for the user
-        if customer_id:
-            query = query.eq("customer_id", customer_id)
-        # If customer_id is None, don't filter - return all sessions for the user
-        
-        result = query.order("updated_at", desc=True).execute()
+        result = supabase.table("sessions").select("*").eq("user_id", user_id).order("updated_at", desc=True).execute()
         sessions = result.data or []
-        
-        # Calculate message_count dynamically from messages table
-        for session in sessions:
-            try:
-                # Use count="exact" without limit to get accurate count
-                msg_result = supabase.table("messages").select("id", count="exact").eq("session_id", session["session_id"]).execute()
-                session["message_count"] = msg_result.count if hasattr(msg_result, 'count') and msg_result.count is not None else 0
-            except Exception as e:
-                print(f"⚠️  [SESSIONS] Error calculating message_count for session {session['session_id']}: {e}")
-                session["message_count"] = 0
-        
         print(f"✅ [SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}")
         return sessions
     except Exception as e:
         print(f"❌ [SUPABASE] Error get_user_sessions: {e}")
-        import traceback
-        traceback.print_exc()
         # Fallback to JSON on error
         from memory.session_metadata import session_metadata
-        sessions = session_metadata.get_user_sessions(user_id, customer_id)
-        print(f"ℹ️  [SESSIONS] Fallback to JSON: {len(sessions)} sessions")
-        return sessions
+        return session_metadata.get_user_sessions(user_id, customer_id)
 
 
 def close_session(session_id: str) -> bool:
