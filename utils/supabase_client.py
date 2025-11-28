@@ -116,23 +116,23 @@ def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[D
         return session_metadata.get_user_sessions(user_id, customer_id)
     
     try:
-        # If customer_id is provided, prioritize filtering by customer_id
+        # If customer_id is provided, IGNORE user_id completely and search only by customer_id
         # This is more reliable than user_id which can change between browsers/sessions
         if customer_id:
             # Get all sessions for this customer_id (case-insensitive)
+            # IGNORE user_id completely - only use customer_id
             customer_id_lower = customer_id.lower()
             result = supabase.table("sessions").select("*").order("updated_at", desc=True).execute()
             sessions = result.data or []
-            # Filter by customer_id case-insensitively and optionally by user_id
+            # Filter ONLY by customer_id (ignore user_id completely)
             filtered_sessions = [
                 s for s in sessions 
                 if s.get("customer_id") and s.get("customer_id").lower() == customer_id_lower
-                and (not user_id or s.get("user_id") == user_id)  # Optionally match user_id if provided
             ]
-            print(f"✅ [SUPABASE] Retrieved {len(filtered_sessions)} sessions from Supabase for customer_id={customer_id} (user_id={user_id})")
+            print(f"✅ [SUPABASE] Retrieved {len(filtered_sessions)} sessions from Supabase for customer_id={customer_id} (user_id IGNORED)")
             return filtered_sessions
         else:
-            # If no customer_id, filter by user_id only
+            # If no customer_id, filter by user_id only (fallback for backward compatibility)
             query = supabase.table("sessions").select("*").eq("user_id", user_id)
             result = query.order("updated_at", desc=True).execute()
             sessions = result.data or []

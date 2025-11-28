@@ -163,9 +163,10 @@ class SessionMetadata:
     def get_user_sessions(self, user_id: str, customer_id: Optional[str] = None) -> list[Dict]:
         """
         Get all sessions for a user, optionally filtered by customer_id.
+        If customer_id is provided, user_id is IGNORED completely.
         
         Args:
-            user_id: User identifier
+            user_id: User identifier (ignored if customer_id is provided)
             customer_id: Optional customer identifier to filter sessions
             
         Returns:
@@ -176,19 +177,29 @@ class SessionMetadata:
             from utils.supabase_client import SUPABASE_ENABLED, get_user_sessions as supabase_get_user_sessions
             if SUPABASE_ENABLED:
                 result = supabase_get_user_sessions(user_id, customer_id)
-                if result:
+                if result is not None:  # Check for None, not just truthy (empty list is valid)
                     return result
         except Exception:
             pass  # Fallback vers JSON
         
         # Fallback vers JSON
         with self._lock:
-            sessions = [
-                metadata.copy()
-                for metadata in self._metadata.values()
-                if metadata.get("user_id") == user_id
-                and (customer_id is None or metadata.get("customer_id") == customer_id)
-            ]
+            if customer_id:
+                # If customer_id is provided, IGNORE user_id completely
+                # Normalize customer_id to lowercase for case-insensitive matching
+                customer_id_lower = customer_id.lower()
+                sessions = [
+                    metadata.copy()
+                    for metadata in self._metadata.values()
+                    if metadata.get("customer_id") and metadata.get("customer_id").lower() == customer_id_lower
+                ]
+            else:
+                # If no customer_id, filter by user_id only
+                sessions = [
+                    metadata.copy()
+                    for metadata in self._metadata.values()
+                    if metadata.get("user_id") == user_id
+                ]
             # Sort by updated_at (most recent first)
             sessions.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
             return sessions

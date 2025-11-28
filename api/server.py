@@ -1484,9 +1484,19 @@ async def get_history(user_id: str, limit: Optional[int] = 50, session_id: Optio
 async def get_user_sessions(user_id: str, customer_id: Optional[str] = Query(None)):
     """Get all sessions for a user with metadata, optionally filtered by customer_id."""
     logger.info(f"Getting sessions for user_id={user_id}, customer_id={customer_id}")
+    # If customer_id is provided, user_id is IGNORED - sessions are found only by customer_id
     sessions = session_metadata.get_user_sessions(user_id, customer_id)
-    logger.info(f"Found {len(sessions)} sessions for user_id={user_id}, customer_id={customer_id}")
+    logger.info(f"Found {len(sessions)} sessions for customer_id={customer_id} (user_id={user_id} was ignored if customer_id provided)")
     # Return sessions array directly for frontend compatibility (also support object format)
+    return sessions
+
+@app.get("/sessions/by-customer/{customer_id}")
+async def get_sessions_by_customer(customer_id: str):
+    """Get all sessions for a customer_id (ignores user_id completely)."""
+    logger.info(f"Getting sessions for customer_id={customer_id} (user_id ignored)")
+    # Use a dummy user_id since it will be ignored when customer_id is provided
+    sessions = session_metadata.get_user_sessions("dummy", customer_id)
+    logger.info(f"Found {len(sessions)} sessions for customer_id={customer_id}")
     return sessions
 
 

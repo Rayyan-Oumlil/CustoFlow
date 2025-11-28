@@ -74,9 +74,11 @@ export default function ChatPage() {
     const fetchConversations = async () => {
       try {
         setLoading(true)
-        // Get sessions for the user, optionally filtered by customer_id on server
-        // Also filter client-side as fallback for case-insensitive matching
-        const url = `/sessions/${userId}${customerId ? `?customer_id=${encodeURIComponent(customerId)}` : ''}`
+        // Get sessions by customer_id only (user_id is ignored when customer_id is provided)
+        // Use the new endpoint that searches only by customer_id
+        const url = customerId 
+          ? `/sessions/by-customer/${encodeURIComponent(customerId)}`
+          : `/sessions/${userId}`
         const data = await apiClient.get(url)
         console.log("Fetched sessions from API for customer_id:", customerId, "data:", data)
         
