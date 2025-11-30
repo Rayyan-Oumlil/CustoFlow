@@ -185,6 +185,22 @@ SUPABASE_URL=your_supabase_url
 SUPABASE_KEY=your_supabase_key
 ```
 
+4. **Set up Google Cloud credentials (for Speech API & Vision API):**
+
+For local development, download your service account credentials from Google Cloud Console and place them in the project root:
+
+```bash
+# Download credentials.json from Google Cloud Console
+# Place it in the project root directory
+credentials.json
+```
+
+**For Google Cloud Run deployment:**
+- Use `GOOGLE_APPLICATION_CREDENTIALS_JSON` environment variable (JSON content as string)
+- Or use Application Default Credentials (ADC) if running on Cloud Run
+
+**Note:** `credentials.json` is already in `.gitignore` - never commit it!
+
 **Optional:** For semantic search, install additional dependencies:
 
 ```bash
@@ -192,7 +208,7 @@ pip install sentence-transformers faiss-cpu
 python -m tools.init_semantic_search
 ```
 
-4. **Run tests to verify setup:**
+5. **Run tests to verify setup:**
 
 ```bash
 python -m pytest tests/
@@ -344,6 +360,10 @@ APP_NAME=CustoFlow
 DEBUG=false
 API_HOST=0.0.0.0
 API_PORT=8000
+
+# Optional: For Google Cloud Speech API & Vision API
+# Local development: Place credentials.json in project root
+# Cloud deployment: Use GOOGLE_APPLICATION_CREDENTIALS_JSON env var
 ```
 
 ## 🚀 Powered by Google Technologies
@@ -360,7 +380,7 @@ This project demonstrates **11 key concepts** from the **Kaggle 5-Day AI Agents 
 
 ## 🔗 Live Demo & Links
 
-- **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app) (or your actual Vercel URL)
+- **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app) 
 - **📦 GitHub Repository**: [https://github.com/Rayyan-Oumlil/CustoFlow](https://github.com/Rayyan-Oumlil/CustoFlow)
 
 ## 📄 License
