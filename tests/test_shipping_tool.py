@@ -35,15 +35,18 @@ def setup_test_order_with_tracking(tracking_number: str, status: str = "shipped"
 def test_track_shipment_success():
     """Test successfully tracking a shipment."""
     tracking_number = "TRACK123456"
-    setup_test_order_with_tracking(tracking_number, status="shipped")
     
-    result = track_shipment(tracking_number, carrier="ups")
-    assert result["status"] == "success"
-    assert result["tracking_number"] == tracking_number
-    assert result["current_status"] == "shipped"
-    assert "carrier" in result
-    assert "current_location" in result
-    assert "estimated_delivery" in result
+    # Mock Supabase to use JSON fallback BEFORE creating order
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order_with_tracking(tracking_number, status="shipped")
+        
+        result = track_shipment(tracking_number, carrier="ups")
+        assert result["status"] == "success"
+        assert result["tracking_number"] == tracking_number
+        assert result["current_status"] == "shipped"
+        assert "carrier" in result
+        assert "current_location" in result
+        assert "estimated_delivery" in result
 
 
 def test_track_shipment_not_found():
@@ -151,8 +154,8 @@ def test_get_order_from_tracking_supabase():
     order = setup_test_order_with_tracking(tracking_number)
     
     # Mock Supabase
-    with patch('tools.shipping_tool.SUPABASE_ENABLED', True):
-        with patch('tools.shipping_tool.create_client') as mock_client:
+    with patch('utils.supabase_client.SUPABASE_ENABLED', True):
+        with patch('supabase.create_client') as mock_client:
             mock_supabase = Mock()
             mock_result = Mock()
             mock_result.data = [order]
@@ -167,10 +170,11 @@ def test_get_order_from_tracking_supabase():
 def test_get_order_from_tracking_json_fallback():
     """Test _get_order_from_tracking with JSON fallback."""
     tracking_number = "TRACK_JSON_FALLBACK"
-    order = setup_test_order_with_tracking(tracking_number)
     
-    # Mock Supabase as disabled
-    with patch('tools.shipping_tool.SUPABASE_ENABLED', False):
+    # Mock Supabase as disabled BEFORE creating order
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        order = setup_test_order_with_tracking(tracking_number)
+        
         result = _get_order_from_tracking(tracking_number)
         # Should fallback to JSON
         assert result is not None
@@ -196,13 +200,15 @@ def test_track_shipment_location_mapping():
         ("cancelled", "Warehouse")
     ]
     
-    for status, expected_location in location_tests:
-        tracking_number = f"TRACK_LOC_{status}"
-        setup_test_order_with_tracking(tracking_number, status=status)
-        
-        result = track_shipment(tracking_number)
-        assert result["status"] == "success"
-        assert result["current_location"] == expected_location
+    # Mock Supabase to use JSON fallback BEFORE creating orders
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        for status, expected_location in location_tests:
+            tracking_number = f"TRACK_LOC_{status}"
+            setup_test_order_with_tracking(tracking_number, status=status)
+            
+            result = track_shipment(tracking_number)
+            assert result["status"] == "success"
+            assert result["current_location"] == expected_location
 
 
 def test_track_shipment_status_description():
@@ -216,11 +222,13 @@ def test_track_shipment_status_description():
         "cancelled": "Order has been cancelled"
     }
     
-    for status, expected_description in status_descriptions.items():
-        tracking_number = f"TRACK_DESC_{status}"
-        setup_test_order_with_tracking(tracking_number, status=status)
-        
-        result = track_shipment(tracking_number)
-        assert result["status"] == "success"
-        assert result["status_description"] == expected_description
+    # Mock Supabase to use JSON fallback BEFORE creating orders
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        for status, expected_description in status_descriptions.items():
+            tracking_number = f"TRACK_DESC_{status}"
+            setup_test_order_with_tracking(tracking_number, status=status)
+            
+            result = track_shipment(tracking_number)
+            assert result["status"] == "success"
+            assert result["status_description"] == expected_description
 

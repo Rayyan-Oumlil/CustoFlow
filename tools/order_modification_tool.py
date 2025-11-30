@@ -104,6 +104,18 @@ def update_order_status(order_id: str, new_status: str, reason: Optional[str] = 
                 "error_message": "Failed to update order status"
             }
         
+        # Invalidate cache for this order (with error handling)
+        try:
+            from utils.cache import order_cache, generate_cache_key
+            cache_key = generate_cache_key("order", order_id)
+            if hasattr(order_cache, 'delete'):
+                order_cache.delete(cache_key)
+            error_cache_key = generate_cache_key("order_error", order_id)
+            if hasattr(order_cache, 'delete'):
+                order_cache.delete(error_cache_key)
+        except Exception:
+            pass  # Cache invalidation is optional
+        
         # Generate user-friendly message
         status_messages = {
             "cancelled": f"Order {order_id} has been cancelled successfully.",
@@ -284,6 +296,18 @@ def update_order_delivery_date(order_id: str, new_delivery_date: str) -> Dict[st
                 "error_message": "Failed to update delivery date"
             }
         
+        # Invalidate cache for this order (with error handling)
+        try:
+            from utils.cache import order_cache, generate_cache_key
+            cache_key = generate_cache_key("order", order_id)
+            if hasattr(order_cache, 'delete'):
+                order_cache.delete(cache_key)
+            error_cache_key = generate_cache_key("order_error", order_id)
+            if hasattr(order_cache, 'delete'):
+                order_cache.delete(error_cache_key)
+        except Exception:
+            pass  # Cache invalidation is optional
+        
         return {
             "status": "success",
             "message": f"Estimated delivery date for order {order_id} has been updated to {new_delivery_date}.",
@@ -366,6 +390,18 @@ def add_order_note(order_id: str, note: str, note_type: str = "general") -> Dict
                 "status": "error",
                 "error_message": "Failed to add note to order"
             }
+        
+        # Invalidate cache for this order (with error handling)
+        try:
+            from utils.cache import order_cache, generate_cache_key
+            cache_key = generate_cache_key("order", order_id)
+            if hasattr(order_cache, 'delete'):
+                order_cache.delete(cache_key)
+            error_cache_key = generate_cache_key("order_error", order_id)
+            if hasattr(order_cache, 'delete'):
+                order_cache.delete(error_cache_key)
+        except Exception:
+            pass  # Cache invalidation is optional
         
         return {
             "status": "success",

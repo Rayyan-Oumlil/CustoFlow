@@ -183,11 +183,25 @@ def _get_order_from_tracking(tracking_number: str) -> Optional[Dict]:
     
     # Fallback: try JSON file
     try:
-        from tools.order_tool import _load_orders
+        from tools.order_tool import _load_orders, _MOCK_ORDERS
+        # Normalize tracking number for comparison (uppercase, strip)
+        tracking_normalized = tracking_number.strip().upper() if tracking_number else ""
+        
+        # Try in-memory dict first (faster, more up-to-date)
+        for order in _MOCK_ORDERS.values():
+            order_tracking = order.get("tracking_number", "")
+            if order_tracking:
+                order_tracking_normalized = str(order_tracking).strip().upper()
+                if order_tracking_normalized == tracking_normalized:
+                    return order
+        # If not found in memory, reload from file
         orders = _load_orders()
         for order in orders.values():
-            if order.get("tracking_number") == tracking_number:
-                return order
+            order_tracking = order.get("tracking_number", "")
+            if order_tracking:
+                order_tracking_normalized = str(order_tracking).strip().upper()
+                if order_tracking_normalized == tracking_normalized:
+                    return order
     except Exception as e:
         print(f"Warning: Could not get order from JSON: {e}")
     

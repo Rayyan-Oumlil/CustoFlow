@@ -60,11 +60,15 @@ def test_json_files_created_automatically():
     
     # Test sessions.json
     from memory.session_metadata import session_metadata
-    session_metadata.create_session("test_session", "test_user", "Test Session")
+    from unittest.mock import patch
     
-    # Verify file was created
-    assert session_metadata.SESSIONS_FILE.exists(), f"sessions.json should be created"
-    print(f"  [PASS] sessions.json created")
+    # Mock Supabase to ensure JSON fallback is used
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        session_metadata.create_session("test_session", "test_user", "Test Session")
+        
+        # Verify file was created
+        assert session_metadata.SESSIONS_FILE.exists(), f"sessions.json should be created"
+        print(f"  [PASS] sessions.json created")
     
     # Test conversation_history.json
     from memory.conversation_history import conversation_history

@@ -56,8 +56,15 @@ def save_tickets(tickets: Dict[str, Dict]):
     """Save tickets to JSON file."""
     try:
         TICKETS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        # Simple write with flush (atomic write not needed for test environment)
         with open(TICKETS_FILE, "w", encoding="utf-8") as f:
             json.dump(tickets, f, indent=2, ensure_ascii=False)
+            f.flush()
+            try:
+                import os
+                os.fsync(f.fileno())  # Force write to disk if available
+            except (AttributeError, OSError):
+                pass  # os.fsync not available on all systems
     except Exception as e:
         print(f"Error saving tickets: {e}")
 
@@ -359,9 +366,20 @@ def get_ticket_status(ticket_id: str) -> Dict[str, any]:
         Dictionary with ticket status information
     """
     try:
+        global _TICKETS
+        import time
+        
         ticket_id = str(ticket_id).strip()
         
-        # Try Supabase first
+        # First check in-memory cache (fastest, most up-to-date)
+        ticket = _TICKETS.get(ticket_id)
+        if ticket:
+            return {
+                "status": "success",
+                "ticket": ticket
+            }
+        
+        # Try Supabase if enabled
         try:
             from utils.supabase_client import SUPABASE_ENABLED, get_tickets
             if SUPABASE_ENABLED:
@@ -369,6 +387,8 @@ def get_ticket_status(ticket_id: str) -> Dict[str, any]:
                 tickets = get_tickets()
                 for ticket in tickets:
                     if ticket.get("ticket_id") == ticket_id:
+                        # Update in-memory cache
+                        _TICKETS[ticket_id] = ticket
                         return {
                             "status": "success",
                             "ticket": ticket
@@ -376,22 +396,29 @@ def get_ticket_status(ticket_id: str) -> Dict[str, any]:
         except Exception as e:
             print(f"Warning: Could not check Supabase for ticket: {e}")
         
-        # Fallback to JSON file
-        global _TICKETS
-        _TICKETS = load_tickets()
+        # Reload from file to get latest (important in parallel test environments)
+        # Try multiple times in case file is being written (common in parallel test environments)
+        max_retries = 5
+        for attempt in range(max_retries):
+            _TICKETS = load_tickets()  # Reload to get latest
+            
+            # Check in-memory cache after reload
+            ticket = _TICKETS.get(ticket_id)
+            if ticket:
+                return {
+                    "status": "success",
+                    "ticket": ticket
+                }
+            
+            # If not found and not last attempt, wait a bit for file to be written
+            if attempt < max_retries - 1:
+                time.sleep(0.05)  # 50ms delay (increased for parallel test environments)
         
-        ticket = _TICKETS.get(ticket_id)
-        
-        if ticket:
-            return {
-                "status": "success",
-                "ticket": ticket
-            }
-        else:
-            return {
-                "status": "error",
-                "error_message": f"Ticket {ticket_id} not found"
-            }
+        # Ticket not found after retries
+        return {
+            "status": "error",
+            "error_message": f"Ticket {ticket_id} not found"
+        }
     
     except Exception as e:
         return {

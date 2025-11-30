@@ -358,58 +358,6 @@ This project demonstrates **11 key concepts** from the **Kaggle 5-Day AI Agents 
 
 ![Course Concepts Implementation Status](assets/course-concepts-status.png)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│              Course Concepts Implementation Status               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ✅ Multi-Agent System                                          │
-│     └─ 5 specialized agents: Orchestrator, FAQ, Order,         │
-│        Sentiment, Escalation                                    │
-│                                                                 │
-│  ✅ Custom Tools                                                 │
-│     └─ 5 FunctionTools (FAQ, Order, Ticket) + 1 LRO tool      │
-│        with human-in-the-loop                                   │
-│                                                                 │
-│  ✅ Sessions & Memory                                           │
-│     └─ InMemorySessionService with automatic context           │
-│        compaction + Conversation History                        │
-│                                                                 │
-│  ✅ Context Engineering                                         │
-│     └─ Context compaction handled automatically by ADK,        │
-│        memory ingestion implemented                            │
-│                                                                 │
-│  ✅ Observability                                               │
-│     └─ LoggingPlugin + structured logging + metrics +         │
-│        tracing + analytics                                      │
-│                                                                 │
-│  ✅ Agent Evaluation                                            │
-│     └─ Comprehensive test suite with 17+ test cases and       │
-│        automated scoring                                        │
-│                                                                 │
-│  ✅ Agent Detection & Attribution                               │
-│     └─ Automatic detection of which agent handled each        │
-│        response, displayed in UI and stored in feedback        │
-│                                                                 │
-│  ✅ A2A Protocol (Agent-to-Agent Communication)                 │
-│     └─ Direct agent communication: FAQ↔Order,                 │
-│        Sentiment→Escalation for context-aware responses        │
-│                                                                 │
-│  ✅ Agent Deployment                                             │
-│     └─ FastAPI production server with health checks,           │
-│        metrics, and analytics                                   │
-│                                                                 │
-│  ✅ Quality Assurance & Compliance                              │
-│     └─ Automated quality scoring, compliance keyword          │
-│        detection, and profanity filtering                      │
-│                                                                 │
-│  ✅ A/B Testing                                                 │
-│     └─ Statistical A/B testing framework for optimizing       │
-│        agent instructions with automatic winner selection       │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
 ## 🔗 Live Demo & Links
 
 - **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app) (or your actual Vercel URL)

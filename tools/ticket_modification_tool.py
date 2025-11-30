@@ -89,8 +89,8 @@ def update_ticket_status(ticket_id: str, new_status: str, note: Optional[str] = 
             pass  # Fallback to JSON
         
         # Fallback to JSON
-        from tools.ticket_tool import get_all_tickets, save_tickets
-        tickets = get_all_tickets()
+        from tools.ticket_tool import get_all_tickets, save_tickets, load_tickets
+        tickets = load_tickets()  # Reload to get latest
         if isinstance(tickets, dict) and ticket_id in tickets:
             tickets[ticket_id]["status"] = new_status.lower()
             tickets[ticket_id]["updated_at"] = datetime.now().isoformat()
@@ -104,28 +104,42 @@ def update_ticket_status(ticket_id: str, new_status: str, note: Optional[str] = 
                 })
             save_tickets(tickets)
             
-            # Close session if ticket is being closed
+            # Update global cache to ensure get_ticket_status can find it
+            import tools.ticket_tool as ticket_module
+            ticket_module._TICKETS = tickets
+            # Also update the specific ticket in cache
+            if ticket_id in tickets:
+                ticket_module._TICKETS[ticket_id] = tickets[ticket_id]
+            
+            # Close session if ticket is being closed (only if Supabase is enabled)
             if new_status.lower() == "closed" and session_id:
                 try:
-                    from utils.supabase_client import close_session, add_message
-                    user_id = existing_ticket.get("user_id")
-                    
-                    # Send automatic thank you message to customer BEFORE closing session
-                    if user_id:
-                        thank_you_message = "Thank you for contacting us! Your ticket has been resolved and closed. If you need any further assistance, please don't hesitate to reach out. Have a great day!"
-                        add_message(
-                            user_id=user_id,
-                            session_id=session_id,
-                            role="assistant",
-                            content=thank_you_message,
-                            metadata={"agent_used": "system", "is_system_message": True, "ticket_closed": True},
-                            is_human_agent=False
-                        )
-                        print(f"[TICKET] Sent thank you message to customer for ticket {ticket_id}")
-                    
-                    # Close session AFTER sending message
-                    close_session(session_id)
-                    print(f"[TICKET] Session {session_id} closed automatically after ticket closure")
+                    from utils.supabase_client import SUPABASE_ENABLED, close_session, add_message
+                    if SUPABASE_ENABLED:
+                        user_id = existing_ticket.get("user_id")
+                        
+                        # Send automatic thank you message to customer BEFORE closing session
+                        if user_id:
+                            thank_you_message = "Thank you for contacting us! Your ticket has been resolved and closed. If you need any further assistance, please don't hesitate to reach out. Have a great day!"
+                            try:
+                                add_message(
+                                    user_id=user_id,
+                                    session_id=session_id,
+                                    role="assistant",
+                                    content=thank_you_message,
+                                    metadata={"agent_used": "system", "is_system_message": True, "ticket_closed": True},
+                                    is_human_agent=False
+                                )
+                                print(f"[TICKET] Sent thank you message to customer for ticket {ticket_id}")
+                            except Exception as msg_error:
+                                print(f"[WARNING] Failed to send message: {msg_error}")
+                        
+                        # Close session AFTER sending message
+                        try:
+                            close_session(session_id)
+                            print(f"[TICKET] Session {session_id} closed automatically after ticket closure")
+                        except Exception as close_error:
+                            print(f"[WARNING] Failed to close session: {close_error}")
                 except Exception as e:
                     print(f"[WARNING] Failed to send message or close session {session_id}: {e}")
             
@@ -331,12 +345,19 @@ def update_ticket_priority(ticket_id: str, new_priority: str) -> Dict[str, any]:
             pass  # Fallback to JSON
         
         # Fallback to JSON
-        from tools.ticket_tool import get_all_tickets, save_tickets
-        tickets = get_all_tickets()
+        from tools.ticket_tool import get_all_tickets, save_tickets, load_tickets
+        tickets = load_tickets()  # Reload to get latest
         if isinstance(tickets, dict) and ticket_id in tickets:
             tickets[ticket_id]["priority"] = new_priority.lower()
             tickets[ticket_id]["updated_at"] = datetime.now().isoformat()
             save_tickets(tickets)
+            
+            # Update global cache to ensure get_ticket_status can find it
+            import tools.ticket_tool as ticket_module
+            ticket_module._TICKETS = tickets
+            # Also update the specific ticket in cache
+            if ticket_id in tickets:
+                ticket_module._TICKETS[ticket_id] = tickets[ticket_id]
             
             return {
                 "status": "success",

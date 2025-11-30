@@ -111,10 +111,11 @@ def test_delete_order_success():
     from unittest.mock import patch
     
     order_id = "TEST_DELETE_001"
-    setup_test_order(order_id)
     
-    # Mock Supabase to use JSON fallback
+    # Mock Supabase to use JSON fallback BEFORE creating order
     with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id)
+        
         # Verify order exists
         result = lookup_order(order_id)
         assert result.get("status") == "success"
@@ -304,22 +305,26 @@ def test_create_order_all_statuses():
 
 def test_delete_order_preserves_other_orders():
     """Test that deleting one order doesn't affect others."""
+    from unittest.mock import patch
+    
     order_id1 = "TEST_DELETE_ISOLATE_001"
     order_id2 = "TEST_DELETE_ISOLATE_002"
     
-    setup_test_order(order_id1)
-    setup_test_order(order_id2)
-    
-    # Verify both exist
-    assert lookup_order(order_id1).get("status") == "success"
-    assert lookup_order(order_id2).get("status") == "success"
-    
-    # Delete one
-    delete_order(order_id1)
-    
-    # Verify other still exists
-    assert lookup_order(order_id1).get("status") == "error"
-    assert lookup_order(order_id2).get("status") == "success"
+    # Mock Supabase to use JSON fallback BEFORE creating orders
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id1)
+        setup_test_order(order_id2)
+        
+        # Verify both exist
+        assert lookup_order(order_id1).get("status") == "success"
+        assert lookup_order(order_id2).get("status") == "success"
+        
+        # Delete one
+        delete_order(order_id1)
+        
+        # Verify other still exists
+        assert lookup_order(order_id1).get("status") == "error"
+        assert lookup_order(order_id2).get("status") == "success"
     
     # Cleanup
     delete_order(order_id2)

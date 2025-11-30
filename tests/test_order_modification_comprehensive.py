@@ -42,10 +42,11 @@ def test_cancel_order_success():
     from unittest.mock import patch
     
     order_id = "TEST_CANCEL_001"
-    setup_test_order(order_id, status="processing")
     
-    # Mock Supabase to use JSON fallback
+    # Mock Supabase to use JSON fallback BEFORE creating order
     with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id, status="processing")
+        
         result = cancel_order(order_id, reason="Customer request")
         assert result["status"] == "success"
         assert "cancelled" in result["message"].lower()
@@ -103,17 +104,22 @@ def test_cancel_order_invalid_id():
 def test_add_order_note_success():
     """Test successfully adding a note to an order."""
     order_id = "TEST_NOTE_001"
-    setup_test_order(order_id)
     
-    # Mock Supabase to use JSON fallback
+    # Mock Supabase to use JSON fallback BEFORE creating order
     with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id)
+        
+        # Verify order exists before adding note
+        order_check = lookup_order(order_id)
+        assert order_check.get("status") == "success", f"Order {order_id} not found before adding note"
+        
         result = add_order_note(order_id, "Test note", "general")
-        assert result["status"] == "success"
+        assert result["status"] == "success", f"Failed to add note. Error: {result.get('error_message', 'Unknown error')}"
         assert "added" in result["message"].lower()
-    
-    # Verify note was added
-    order_result = lookup_order(order_id)
-    assert "notes" in order_result["order"]
+        
+        # Verify note was added
+        order_result = lookup_order(order_id)
+        assert "notes" in order_result["order"]
     assert len(order_result["order"]["notes"]) > 0
 
 
@@ -137,35 +143,44 @@ def test_add_order_note_not_found():
 def test_add_order_note_multiple():
     """Test adding multiple notes to an order."""
     order_id = "TEST_NOTE_003"
-    setup_test_order(order_id)
     
-    for i in range(3):
-        result = add_order_note(order_id, f"Note {i}", "general")
-        assert result["status"] == "success"
-    
-    order_result = lookup_order(order_id)
-    assert len(order_result["order"]["notes"]) == 3
+    # Mock Supabase to use JSON fallback BEFORE creating order
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id)
+        
+        for i in range(3):
+            result = add_order_note(order_id, f"Note {i}", "general")
+            assert result["status"] == "success"
+        
+        order_result = lookup_order(order_id)
+        assert len(order_result["order"]["notes"]) == 3
 
 
 def test_request_refund_success():
     """Test successfully requesting a refund."""
     order_id = "TEST_REFUND_001"
-    setup_test_order(order_id, status="delivered")
     
-    result = request_refund(order_id, "Item damaged", amount=50.0)
-    assert result["status"] == "success"
-    assert "refund request" in result["message"].lower()
-    assert result["refund_amount"] == 50.0
+    # Mock Supabase to use JSON fallback BEFORE creating order
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id, status="delivered")
+        
+        result = request_refund(order_id, "Item damaged", amount=50.0)
+        assert result["status"] == "success"
+        assert "refund request" in result["message"].lower()
+        assert result["refund_amount"] == 50.0
 
 
 def test_request_refund_full():
     """Test requesting full refund (no amount specified)."""
     order_id = "TEST_REFUND_002"
-    order = setup_test_order(order_id, status="delivered")
     
-    result = request_refund(order_id, "Customer request")
-    assert result["status"] == "success"
-    assert result["refund_amount"] == order["total"]
+    # Mock Supabase to use JSON fallback BEFORE creating order
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        order = setup_test_order(order_id, status="delivered")
+        
+        result = request_refund(order_id, "Customer request")
+        assert result["status"] == "success"
+        assert result["refund_amount"] == order["total"]
 
 
 def test_request_refund_empty_reason():
@@ -193,10 +208,11 @@ def test_update_order_status_success():
     from unittest.mock import patch
     
     order_id = "TEST_STATUS_001"
-    setup_test_order(order_id, status="processing")
     
-    # Mock Supabase to use JSON fallback
+    # Mock Supabase to use JSON fallback BEFORE creating order
     with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id, status="processing")
+        
         result = update_order_status(order_id, "shipped", reason="Order shipped")
         assert result["status"] == "success"
         assert result["new_status"] == "shipped"
@@ -229,12 +245,15 @@ def test_update_order_status_delivered():
 def test_update_order_delivery_date_success():
     """Test successfully updating delivery date."""
     order_id = "TEST_DATE_001"
-    setup_test_order(order_id)
     
     new_date = "2025-12-25"
-    result = update_order_delivery_date(order_id, new_date)
-    assert result["status"] == "success"
-    assert result["new_delivery_date"] == new_date
+    # Mock Supabase to use JSON fallback BEFORE creating order
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id)
+        
+        result = update_order_delivery_date(order_id, new_date)
+        assert result["status"] == "success"
+        assert result["new_delivery_date"] == new_date
 
 
 def test_update_order_delivery_date_invalid_format():
@@ -259,11 +278,14 @@ def test_update_order_delivery_date_delivered():
 
 def test_update_order_delivery_date_auto_status():
     """Test that delivery date update auto-adjusts status."""
-    order_id = "TEST_DATE_004"
-    setup_test_order(order_id, status="processing")
+    from unittest.mock import patch
     
-    # Mock Supabase to use JSON fallback
+    order_id = "TEST_DATE_004"
+    
+    # Mock Supabase to use JSON fallback BEFORE creating order
     with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        setup_test_order(order_id, status="processing")
+        
         # Set delivery date in the past
         past_date = "2024-01-01"
         result = update_order_delivery_date(order_id, past_date)
@@ -277,12 +299,16 @@ def test_update_order_delivery_date_auto_status():
 
 def test_add_order_note_all_statuses():
     """Test that notes can be added to orders in any status."""
-    statuses = ["processing", "shipped", "delivering", "delivery_soon", "delivered", "cancelled"]
+    from unittest.mock import patch
     
-    for i, status in enumerate(statuses):
-        order_id = f"TEST_NOTE_STATUS_{i}"
-        setup_test_order(order_id, status=status)
+    # Mock Supabase to use JSON fallback BEFORE creating orders
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        statuses = ["processing", "shipped", "delivering", "delivery_soon", "delivered", "cancelled"]
         
-        result = add_order_note(order_id, f"Note for {status} order", "general")
-        assert result["status"] == "success", f"Failed to add note to {status} order"
+        for i, status in enumerate(statuses):
+            order_id = f"TEST_NOTE_STATUS_{i}"
+            setup_test_order(order_id, status=status)
+            
+            result = add_order_note(order_id, f"Note for {status} order", "general")
+            assert result["status"] == "success", f"Failed to add note to {status} order"
 

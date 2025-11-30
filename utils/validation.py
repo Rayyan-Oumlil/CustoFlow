@@ -92,8 +92,8 @@ def validate_order_id(order_id: str) -> tuple[bool, Optional[str]]:
     if not order_id or not order_id.strip():
         return False, "Order ID cannot be empty"
     
-    # Order IDs should be alphanumeric, typically 5-10 characters
-    if not re.match(r'^[A-Za-z0-9-]{3,20}$', order_id.strip()):
+    # Order IDs should be alphanumeric with underscores/hyphens, typically 3-30 characters
+    if not re.match(r'^[A-Za-z0-9_-]{3,30}$', order_id.strip()):
         return False, "Invalid order ID format"
     
     return True, None

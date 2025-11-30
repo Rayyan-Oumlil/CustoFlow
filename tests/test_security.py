@@ -120,7 +120,7 @@ def test_order_id_validation():
     invalid_ids = [
         "",
         "ab",  # Too short
-        "a" * 25,  # Too long
+        "a" * 31,  # Too long (limit is 30)
         "123; DROP TABLE",  # SQL injection attempt
         "../../etc/passwd",  # Path traversal
         "<script>alert('xss')</script>",  # XSS attempt

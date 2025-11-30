@@ -63,7 +63,7 @@ async def test_handle_api_errors_generic_exception():
         raise ValueError("Something went wrong")
     
     with pytest.raises(APIError) as exc_info:
-        await function_with_api_error()
+        await function_with_generic_error()
     
     assert exc_info.value.status_code == 500
     assert "unexpected error" in exc_info.value.user_message.lower()

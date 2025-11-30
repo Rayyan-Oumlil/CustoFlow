@@ -66,6 +66,12 @@ class TTLCache:
         with self._lock:
             self._cache.clear()
     
+    def delete(self, key: str) -> None:
+        """Delete a specific cache entry."""
+        with self._lock:
+            if key in self._cache:
+                del self._cache[key]
+    
     def size(self) -> int:
         """Get current cache size."""
         with self._lock:

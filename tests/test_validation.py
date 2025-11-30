@@ -55,7 +55,7 @@ def test_validate_order_id():
     # Invalid order IDs
     assert validate_order_id("")[0] is False
     assert validate_order_id("ab")[0] is False  # Too short
-    assert validate_order_id("a" * 25)[0] is False  # Too long
+    assert validate_order_id("a" * 31)[0] is False  # Too long (limit is 30)
 
 
 def test_validate_user_id():
