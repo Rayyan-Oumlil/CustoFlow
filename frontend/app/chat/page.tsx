@@ -1301,8 +1301,8 @@ export default function ChatPage() {
       </div>
 
       <div className="flex-1 overflow-hidden flex">
-        <div className="w-64 border-r border-border flex flex-col">
-            <div className="p-4 border-b border-border bg-muted/50 space-y-3">
+        <div className="w-64 border-r border-border flex flex-col bg-muted/50">
+            <div className="p-4 border-b border-border space-y-3">
               {/* New Conversation Button */}
               <Button
                 onClick={createNewConversation}
@@ -1395,8 +1395,8 @@ export default function ChatPage() {
                         key={conv.session_id}
                         className={`group flex items-center gap-2 rounded text-sm transition-colors cursor-pointer ${
                           sessionId === conv.session_id
-                            ? "bg-muted"
-                            : "hover:bg-muted/50"
+                            ? "bg-background"
+                            : "hover:bg-background/50"
                         }`}
                         onClick={() => setSessionId(conv.session_id)}
                       >
