@@ -19,7 +19,7 @@ allowing the agent to remember:
 
 This enables personalized service and faster resolution of recurring issues.
 """
-from google.adk.memory import InMemoryMemoryService, MemoryService
+from google.adk.memory import InMemoryMemoryService
 from typing import Optional, Dict, Any
 from google.genai import types
 
@@ -47,7 +47,7 @@ class MemoryManager:
         """
         self.memory_service = InMemoryMemoryService()
     
-    def get_service(self) -> MemoryService:
+    def get_service(self) -> InMemoryMemoryService:
         """
         Get the underlying memory service.
         

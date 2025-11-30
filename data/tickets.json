@@ -632,5 +632,95 @@
     "created_at": "2025-11-28T02:17:00.859060",
     "session_id": "test_session_1764314220.859037",
     "user_id": "test_user_1764314220.859042"
+  },
+  "TICKET-47E24DB7": {
+    "ticket_id": "TICKET-47E24DB7",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:27:39.891227",
+    "session_id": "test_session_1764498459.891203",
+    "user_id": "test_user_1764498459.89121"
+  },
+  "TICKET-64A78AD1": {
+    "ticket_id": "TICKET-64A78AD1",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:27:40.842627",
+    "session_id": "test_session_1764498460.842603",
+    "user_id": "test_user_1764498460.84261"
+  },
+  "TICKET-E419EABC": {
+    "ticket_id": "TICKET-E419EABC",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:27:41.592374",
+    "session_id": "test_session_1764498461.592351",
+    "user_id": "test_user_1764498461.592357"
+  },
+  "TICKET-8EE2A1CB": {
+    "ticket_id": "TICKET-8EE2A1CB",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:29:36.131187",
+    "session_id": "test_session_1764498576.131161",
+    "user_id": "test_user_1764498576.131167"
+  },
+  "TICKET-9AE1F0FD": {
+    "ticket_id": "TICKET-9AE1F0FD",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:34:46.913948",
+    "session_id": "test_session_1764498886.913923",
+    "user_id": "test_user_1764498886.91393"
+  },
+  "TICKET-EC47E7A8": {
+    "ticket_id": "TICKET-EC47E7A8",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:34:47.970121",
+    "session_id": "test_session_1764498887.970098",
+    "user_id": "test_user_1764498887.970105"
+  },
+  "TICKET-2CFBB2B1": {
+    "ticket_id": "TICKET-2CFBB2B1",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:34:48.757238",
+    "session_id": "test_session_1764498888.757213",
+    "user_id": "test_user_1764498888.757219"
+  },
+  "TICKET-864D7E22": {
+    "ticket_id": "TICKET-864D7E22",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:36:40.577166",
+    "session_id": "test_session_1764499000.577141",
+    "user_id": "test_user_1764499000.577147"
+  },
+  "TICKET-18C941B9": {
+    "ticket_id": "TICKET-18C941B9",
+    "customer_id": "cust_001",
+    "issue": "Test issue",
+    "priority": "normal",
+    "status": "open",
+    "created_at": "2025-11-30T05:38:31.051929",
+    "session_id": "test_session_1764499111.051899",
+    "user_id": "test_user_1764499111.051905"
   }
 }

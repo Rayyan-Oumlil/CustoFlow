@@ -44,6 +44,7 @@ Thumbs.db
 # Project specific
 *.pyc
 .cache/
+YOUTUBE_SCRIPT.md
 
 # Google Cloud credentials (NEVER commit these!)
 *.json

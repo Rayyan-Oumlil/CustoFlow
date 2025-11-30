@@ -4,7 +4,7 @@ Tests span tracing and metadata logging.
 """
 import pytest
 import logging
-from utils.observability.tracing import trace_span
+from observability.tracing import trace_span
 
 
 def test_trace_span_success(caplog):
@@ -56,7 +56,7 @@ def test_trace_span_duration(caplog):
 def test_trace_span_nested():
     """Test nested trace spans."""
     import logging
-    logger = logging.getLogger("utils.observability.tracing")
+    logger = logging.getLogger("observability.tracing")
     
     with trace_span("outer_operation"):
         with trace_span("inner_operation"):

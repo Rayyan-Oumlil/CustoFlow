@@ -10,16 +10,9 @@
 
 *Intelligent multi-agent customer support system that automates first-line support with smart routing, sentiment analysis, and intelligent escalation.*
 
-Built with Google's Agent Development Kit (ADK) and powered by Gemini 🤖
-
 <div align="center">
-  <img src="assets/custoflow-logo.png" alt="CustoFlow" width="180">
+  <img src="assets/custoflow-logo.png" alt="CustoFlow" width="240">
 </div>
-
-- 🚀 **Automates 80%+ of customer support queries**
-- ⚡ **Reduces response time from 2-4 hours to <30s**
-- 💰 **Cuts operational costs by 60%**
-- 📈 **Handles 1000+ concurrent users**
 
 ## 🎯 Problem Statement
 
@@ -45,173 +38,9 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 - 😊 **Satisfaction**: **40% improvement** in customer satisfaction scores
 - 🎯 **Accuracy**: **95%+ routing accuracy** to correct specialist
 
-## ✨ Key Features
-
-![CustoFlow Features](assets/features-diagram.png)
-
-### Core Capabilities
-
-**🤖 Multi-Agent System**
-- 5 specialized agents (Orchestrator, FAQ, Order, Sentiment, Escalation)
-- Intelligent routing based on query analysis
-- Agent-to-Agent (A2A) communication for context sharing
-- Parallel and sequential agent coordination
-
-**🧠 Intelligent Routing**
-- Automatic query classification
-- Sentiment-first analysis for urgent cases
-- Context-aware routing using customer history
-- Fallback mechanisms for edge cases
-
-**💭 Context & Memory**
-- Full conversation history persistence
-- Session management with customer context
-- Long-term memory for personalization
-- Automatic context compaction
-
-**🎫 Smart Escalation**
-- Automatic ticket creation with summarization
-- Priority detection based on sentiment and urgency
-- Human-in-the-loop approval (LRO pattern)
-- Seamless handoff with full context
-
-### Advanced Features
-
-**📚 Semantic Search**
-- FAISS vector embeddings for 50+ FAQs
-- Sentence Transformers for intelligent matching
-- Automatic fallback mechanisms
-- Cached results for performance
-
-**🎤 Audio Support**
-- Google Cloud Speech-to-Text (STT)
-- Google Cloud Text-to-Speech (TTS)
-- Per-message TTS with auto-stop
-- Multi-language support
-
-**📊 Analytics & Observability**
-- Real-time metrics dashboard
-- Request tracing and correlation
-- Performance monitoring
-- Business analytics (satisfaction, response times, ticket metrics)
-
-**🤖 Self-Improving System**
-- Automatic agent refinement from feedback
-- Daily scheduled improvements
-- Knowledge base update suggestions
-- A/B testing framework for optimization
-
-**✅ Quality Assurance**
-- Automated quality scoring
-- Compliance keyword detection
-- Profanity filtering
-- Response validation
-
-### Enterprise Features
-
-**🖥️ Modern Web Dashboard**
-- React/Next.js 15 with TypeScript
-- Chat interface with real-time updates
-- Orders & Tickets management (CRUD)
-- Analytics dashboard with live metrics
-- Human agent monitoring interface
-
-**🔒 Security & Performance**
-- Input validation and sanitization
-- SQL injection prevention
-- XSS protection
-- Rate limiting (60 req/min)
-- Response caching (1 hour TTL)
-- Adaptive polling (reduces API calls by 70%)
-
-**💾 Data Persistence**
-- Supabase (PostgreSQL) for all data
-- Messages, sessions, orders, tickets, feedback
-- Analytics and agent refinements
-- FAISS indexes in Supabase Storage
-
-**🚀 Production Deployment**
-- Google Cloud Run (FastAPI backend)
-- Vercel (React/Next.js frontend)
-- Auto-scaling infrastructure
-- Health checks and monitoring
-
 ## 🏗️ Architecture
 
-### System Architecture
-
-```mermaid
-graph TB
-    subgraph "Frontend Layer"
-        Frontend[React/Next.js<br/>Vercel]
-    end
-    
-    subgraph "API Layer"
-        API[FastAPI Server<br/>Google Cloud Run]
-    end
-    
-    subgraph "Agent Layer"
-        Orchestrator[Orchestrator Agent<br/>🎯 Routing & Coordination]
-        FAQ[FAQ Agent 📚]
-        Order[Order Agent 📦]
-        Sentiment[Sentiment Agent 😊]
-        Escalation[Escalation Agent 🎫]
-    end
-    
-    subgraph "Tools Layer"
-        FAQTool[FAQ Tool<br/>🔍 Semantic Search]
-        OrderTool[Order Tool<br/>📋 Lookup & History]
-        OrderMod[Order Modification<br/>🔧 Cancel, Notes, Refunds]
-        Shipping[Shipping Tool<br/>📦 OpenAPI Tracking]
-        TicketTool[Ticket Tool<br/>🎫 Creation & Summary]
-        TicketMod[Ticket Modification<br/>🔧 Status & Priority]
-        Conversation[Conversation Tool<br/>💬 Summarization]
-        Document[Document Analysis<br/>📄 Vision API]
-    end
-    
-    subgraph "Data Layer"
-        Supabase[(Supabase<br/>PostgreSQL)]
-        FAISS[(FAISS<br/>Vector Search)]
-    end
-    
-    Frontend -->|HTTP/REST| API
-    API --> Orchestrator
-    Orchestrator --> FAQ
-    Orchestrator --> Order
-    Orchestrator --> Sentiment
-    Orchestrator --> Escalation
-    
-    FAQ --> FAQTool
-    FAQ -.->|A2A| Order
-    Order --> OrderTool
-    Order --> OrderMod
-    Order --> Shipping
-    Order -.->|A2A| FAQ
-    Sentiment -.->|A2A| Escalation
-    Escalation --> TicketTool
-    Escalation --> TicketMod
-    Escalation --> Conversation
-    Order --> Document
-    
-    FAQTool --> FAISS
-    FAQTool --> Supabase
-    OrderTool --> Supabase
-    OrderMod --> Supabase
-    Shipping --> Supabase
-    TicketTool --> Supabase
-    TicketMod --> Supabase
-    Conversation --> Supabase
-    
-    style Orchestrator fill:#4CAF50,stroke:#2E7D32,color:#fff
-    style FAQ fill:#2196F3,stroke:#1565C0,color:#fff
-    style Order fill:#FF9800,stroke:#E65100,color:#fff
-    style Sentiment fill:#9C27B0,stroke:#4A148C,color:#fff
-    style Escalation fill:#F44336,stroke:#B71C1C,color:#fff
-    style Frontend fill:#E3F2FD
-    style API fill:#BBDEFB
-    style Supabase fill:#81C784
-    style FAISS fill:#A5D6A7
-```
+![CustoFlow System Overview](assets/system-overview-diagram.png)
 
 ### Data Flow
 
@@ -313,6 +142,19 @@ graph TB
     style LongTerm fill:#4CAF50,stroke:#2E7D32,color:#fff
     style Analytics fill:#9C27B0,stroke:#4A148C,color:#fff
 ```
+
+## ✨ Key Features
+
+- **🤖 Multi-Agent System**: 5 specialized agents with intelligent routing and A2A communication
+- **🧠 Intelligent Routing**: Automatic query classification with sentiment-first analysis
+- **💭 Context & Memory**: Full conversation history and long-term memory for personalization
+- **🎫 Smart Escalation**: Automatic ticket creation with summarization and LRO pattern
+- **📚 Semantic Search**: FAISS vector embeddings for 50+ FAQs
+- **🎤 Audio Support**: Google Cloud Speech-to-Text and Text-to-Speech
+- **📊 Analytics & Observability**: Real-time metrics dashboard and comprehensive logging
+- **🤖 Self-Improving System**: Automatic agent refinement from feedback and A/B testing
+- **🖥️ Modern Web Dashboard**: React/Next.js with real-time updates and CRUD operations
+- **🔒 Security & Performance**: Input validation, rate limiting, caching, and adaptive polling
 
 ## 🚀 Quick Start
 
@@ -501,10 +343,15 @@ API_HOST=0.0.0.0
 API_PORT=8000
 ```
 
+## 🚀 Powered by Google Technologies
+
+<div align="center">
+  <img src="assets/google-technologies-diagram.png" alt="Google Technologies" width="500">
+</div>
 
 ## 🎓 Course Concepts Demonstrated
 
-This project demonstrates **8 key concepts** from the Kaggle 5-Day AI Agents Intensive Course (exceeds minimum requirement of 3):
+This project demonstrates **8 key concepts** from the **Kaggle 5-Day AI Agents Intensive Course** (organized by Kaggle and Google), built entirely with **Google's Agent Development Kit (ADK)** and **Google Gemini 2.5 Flash Lite**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -558,6 +405,11 @@ This project demonstrates **8 key concepts** from the Kaggle 5-Day AI Agents Int
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## 🔗 Live Demo & Links
+
+- **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app) (or your actual Vercel URL)
+- **📦 GitHub Repository**: [https://github.com/Rayyan-Oumlil/CustoFlow](https://github.com/Rayyan-Oumlil/CustoFlow)
+
 ## 📚 Documentation
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Detailed system architecture and component documentation
@@ -569,4 +421,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-Built for the Kaggle 5-Day AI Agents Intensive Course with Google.
+Built for the **Kaggle 5-Day AI Agents Intensive Course** (Kaggle + Google).
