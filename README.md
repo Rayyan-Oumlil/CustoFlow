@@ -360,7 +360,7 @@ This project demonstrates **11 key concepts** from the **Kaggle 5-Day AI Agents 
 
 ## 🔗 Live Demo & Links
 
-- **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app) (or your actual Vercel URL)
+- **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app)
 - **📦 GitHub Repository**: [https://github.com/Rayyan-Oumlil/CustoFlow](https://github.com/Rayyan-Oumlil/CustoFlow)
 
 ## 📄 License
