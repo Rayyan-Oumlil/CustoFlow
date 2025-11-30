@@ -4,6 +4,7 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Kaggle Capstone](https://img.shields.io/badge/Kaggle-Capstone-orange.svg)](https://www.kaggle.com/competitions/agents-intensive-capstone-project)
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-success.svg)]()
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-blue)](https://custoflow.vercel.app)
 
 **Capstone Project for Kaggle 5-Day AI Agents Intensive Course**
 
@@ -12,23 +13,13 @@
 Built with Google's Agent Development Kit (ADK) and powered by Gemini 🤖
 
 <div align="center">
-  <img src="assets/custoflow-logo.png" alt="CustoFlow Logo" width="120" height="120">
-  <br>
-  <img src="assets/custoflow-thumbnail.png" alt="CustoFlow Thumbnail" width="800">
+  <img src="assets/custoflow-logo.png" alt="CustoFlow" width="180">
 </div>
 
-> **Note**: See [GEMINI_PROMPTS.md](GEMINI_PROMPTS.md) for prompts to generate additional assets (logo, diagrams) with Gemini.
-
-```
-╔═══════════════════════════════════════════════════════════╗
-║                                                           ║
-║     🚀 Automates 80%+ of customer support queries        ║
-║     ⚡ Reduces response time from 2-4 hours to <30s        ║
-║     💰 Cuts operational costs by 60%                     ║
-║     📈 Handles 1000+ concurrent users                     ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝
-```
+- 🚀 **Automates 80%+ of customer support queries**
+- ⚡ **Reduces response time from 2-4 hours to <30s**
+- 💰 **Cuts operational costs by 60%**
+- 📈 **Handles 1000+ concurrent users**
 
 ## 🎯 Problem Statement
 
@@ -145,44 +136,9 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 - Auto-scaling infrastructure
 - Health checks and monitoring
 
-## 🆕 Recent Improvements
-
-### Performance & Optimization
-
-- ✅ **Adaptive Polling**: Reduces API calls by 70% (2s active → 15s inactive)
-- ✅ **In-Memory Caching**: TTL-based caching for all data types
-- ✅ **Optimistic UI Updates**: Immediate message display
-- ✅ **Automatic Retry**: Exponential backoff on network errors
-- ✅ **Clean Console Logs**: Removed debug logs, production-ready
-
-### Enterprise-Ready Enhancements
-
-- ✅ **React/Next.js Frontend**: Modern, responsive web interface replacing Streamlit
-- ✅ **Customer ID Management**: Secure customer authentication and session filtering
-- ✅ **Interactive Feedback UI**: Thumbs up/down buttons after each assistant message with agent attribution
-- ✅ **Automatic Agent Improvement**: Self-improving agents based on user feedback (daily scheduler)
-- ✅ **Semantic Search**: FAISS-based vector search for FAQs with automatic fallback
-- ✅ **Supabase Integration**: Full database persistence for all data (messages, sessions, orders, tickets, feedback)
-- ✅ **Conversation Summarization**: Automatic summaries for tickets with key points and sentiment
-- ✅ **Real-Time Analytics Dashboard**: Live metrics with real data from database (no hardcoded values)
-- ✅ **Orders & Tickets Dashboard**: Full CRUD operations for orders and tickets
-- ✅ **Session Management**: Rename, delete, and filter conversations by customer
-- ✅ **Knowledge Base Suggestions**: System suggests FAQ updates from feedback (manual approval)
-- ✅ **Agent Detection**: Automatic detection and display of which agent handled each response
-- ✅ **Typing Indicators**: Visual feedback when agent is processing
-- ✅ **Input Focus Management**: Auto-focus on input field after sending messages
-- ✅ **Agent Response Capture**: Improved logic to capture responses from specialized agents even when orchestrator returns None
-- ✅ **Audio Input/Output**: Google Cloud Speech-to-Text and Text-to-Speech integration
-- ✅ **Order Notes & Refunds**: Agents can add notes to orders and request refunds
-- ✅ **Ticket Management**: Dedicated tickets page with chat panel integration
-- ✅ **QA & Compliance System**: Automated quality scoring, compliance keyword detection, and profanity filtering
-- ✅ **A/B Testing Framework**: Statistical A/B testing for agent instruction variants with automatic winner selection
-
 ## 🏗️ Architecture
 
 ### System Architecture
-
-![CustoFlow Architecture](assets/architecture-diagram.png)
 
 ```mermaid
 graph TB
@@ -259,8 +215,6 @@ graph TB
 
 ### Data Flow
 
-![CustoFlow Data Flow](assets/data-flow-diagram.png)
-
 ```mermaid
 flowchart TD
     Start[Customer Query] --> Validate[Input Validation 🔒]
@@ -297,11 +251,6 @@ flowchart TD
 ```
 
 ### Agent Coordination
-
-<!-- 
-TODO: Add generated A2A communication diagram
-![A2A Communication](assets/a2a-diagram.png)
--->
 
 ```mermaid
 graph TB
@@ -410,200 +359,23 @@ python -m pytest tests/
 
 ## 💻 Usage
 
-### React Frontend (Recommended)
-
-Start the interactive web dashboard:
-
+**React Frontend (Recommended):**
 ```bash
-# Start the backend API
-python -m api.server
-
-# In another terminal, start the frontend
-cd frontend
-npm install --legacy-peer-deps
-npm run dev
+python -m api.server  # Backend
+cd frontend && npm install --legacy-peer-deps && npm run dev  # Frontend
 ```
+Access at `http://localhost:3000` - Chat, Analytics, Orders & Tickets dashboards.
 
-The frontend will open automatically in your browser at `http://localhost:3000`
-
-**Features:**
-
-- 💬 **Chat Interface** - Interactive conversation with customer ID authentication
-  - Thumbs up/down feedback buttons after each assistant message
-  - Session management (create, rename, delete conversations)
-  - Customer-specific conversation filtering
-- 📊 **Analytics Dashboard** - Real-time statistics and metrics
-  - Total messages, active sessions, interactions
-  - Average satisfaction scores
-  - Tickets created
-- 📦 **Orders & Tickets Dashboard** - Full CRUD operations
-  - View, create, edit, delete orders
-  - Filter by status, customer ID, order ID
-  - Auto-update order status based on delivery dates
-  - View tickets with automatic summaries
-  - Ticket summaries with markdown formatting
-- 🏠 **Home Dashboard** - Overview with key metrics and quick navigation
-
-### Interactive CLI
-
-Start an interactive chat session:
-
+**Interactive CLI:**
 ```bash
 python main.py
 ```
 
-**Example Conversation:**
-
-```
-╔═══════════════════════════════════════════════════════════╗
-║           CustoFlow - Customer Support Agent              ║
-╚═══════════════════════════════════════════════════════════╝
-
-Enter your user ID (or press Enter for 'guest'): user123
-Session started. How can I help you today?
-
-┌───────────────────────────────────────────────────────────┐
-│ You: What is your refund policy?                          │
-└───────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌───────────────────────────────────────────────────────────┐
-│ Agent: We offer a 30-day money-back guarantee. Items     │
-│        must be in original condition with tags attached.  │
-│        Refunds are processed within 5-7 business days    │
-│        after we receive the returned item.               │
-└───────────────────────────────────────────────────────────┘
-
-┌───────────────────────────────────────────────────────────┐
-│ You: Check my order 12345                                 │
-└───────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌───────────────────────────────────────────────────────────┐
-│ Agent: Your order 12345 has been shipped! 📦             │
-│                                                           │
-│        Status: Shipped                                    │
-│        Tracking: TRACK123456                             │
-│        Estimated Delivery: 2024-01-22                    │
-│                                                           │
-│        Items:                                             │
-│        • Wireless Headphones (1x) - $99.99              │
-│                                                           │
-│        Total: $99.99                                      │
-└───────────────────────────────────────────────────────────┘
-```
-
-### API Server
-
-Start the FastAPI server:
-
+**API Server:**
 ```bash
 python -m api.server
 ```
-
-Or using uvicorn directly:
-
-```bash
-uvicorn api.server:app --reload
-```
-
-Then access:
-
-- API: `http://localhost:8000`
-- Health: `http://localhost:8000/health`
-- Metrics: `http://localhost:8000/metrics`
-- Analytics: `http://localhost:8000/analytics`
-- Orders: `http://localhost:8000/orders`
-- Tickets: `http://localhost:8000/tickets`
-- API Docs: `http://localhost:8000/docs` (Swagger UI)
-
-### Example API Request
-
-**Using curl:**
-
-```bash
-curl -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "What is your refund policy?",
-    "user_id": "user123"
-  }'
-```
-
-**Using Python:**
-
-```python
-import requests
-
-response = requests.post(
-    "http://localhost:8000/chat",
-    json={
-        "message": "What is your refund policy?",
-        "user_id": "user123"
-    }
-)
-
-data = response.json()
-print(data["response"])
-```
-
-**API Endpoints:**
-
-- `POST /chat` - Chat with the multi-agent system
-- `GET /orders` - Get all orders (with filters)
-- `POST /orders` - Create new order
-- `GET /orders/{order_id}` - Get specific order
-- `PUT /orders/{order_id}` - Update order
-- `DELETE /orders/{order_id}` - Delete order
-- `GET /tickets` - Get all tickets
-- `GET /tickets/{ticket_id}/summary` - Get ticket summary
-- `GET /sessions/{user_id}` - Get user sessions (with customer_id filter)
-- `POST /sessions/create` - Create new session
-- `PUT /sessions/{session_id}/rename` - Rename session
-- `DELETE /sessions/{session_id}` - Delete session
-- `POST /feedback` - Submit user feedback
-- `GET /analytics` - Get analytics data
-- `POST /improvements/run-now` - Manually trigger agent improvements
-- `GET /agent-refinements/{agent_name}` - Get agent refinements
-- `GET /kb-updates/pending` - Get pending KB update suggestions
-- `GET /qa/check` - Get QA results for recent responses
-- `POST /ab-testing/create` - Create A/B test for an agent
-- `GET /ab-testing/results` - Get A/B test results
-- `POST /speech/transcribe` - Transcribe audio to text
-- `POST /speech/synthesize` - Convert text to speech
-- `GET /refunds` - Get refund requests
-- `PUT /refunds/{refund_id}/status` - Update refund status
-- `POST /tickets/{ticket_id}/message` - Send message to customer via ticket
-
-### Technology Stack
-
-**Core Framework:**
-
-- Google ADK (Agent Development Kit) - Multi-agent orchestration
-- Gemini 2.5 Flash Lite - LLM for all agents
-- Python 3.10+ - Backend programming language
-
-**Web Framework:**
-
-- FastAPI - REST API server (deployed on Google Cloud Run)
-- React/Next.js 15 - Frontend web dashboard (deployed on Vercel)
-- TypeScript - Frontend type safety
-
-**Data Storage:**
-
-- Supabase (PostgreSQL) - Primary database for all persistent data
-  - Messages, sessions, orders, tickets, feedback
-  - Analytics, agent refinements, KB updates
-- FAISS - Vector embeddings for semantic search
-- In-Memory - Session management and caching
-
-**Libraries:**
-
-- Sentence Transformers - Semantic search embeddings
-- Supabase Client - Database and storage integration
-- Google Cloud Speech - Speech-to-Text and Text-to-Speech
-- APScheduler - Scheduled tasks (agent improvements)
-- scipy/numpy - Statistical analysis for A/B testing
+API docs at `http://localhost:8000/docs`
 
 ## 📁 Project Structure
 
@@ -704,134 +476,17 @@ CustoFlow/
 
 ## 🧪 Testing
 
-### Test Suite Overview
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Test Coverage                        │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  ✅ Unit Tests (30+ test files, 140+ test cases)        │
-│     ├─ Validation tests                                │
-│     ├─ Rate limiter tests                              │
-│     ├─ Cache tests                                     │
-│     ├─ Error handler tests                             │
-│     ├─ Multilingual tests                             │
-│     └─ Analytics tests                                 │
-│                                                         │
-│  ✅ Integration Tests                                   │
-│     ├─ Agent workflows                                 │
-│     ├─ End-to-end scenarios                            │
-│     ├─ API integration                                 │
-│     ├─ Shipping tool tests                             │
-│     └─ Order API endpoint tests                        │
-│                                                         │
-│  ✅ Security Tests                                      │
-│     ├─ SQL injection prevention                        │
-│     ├─ XSS prevention                                  │
-│     └─ Input sanitization                              │
-│                                                         │
-│  ✅ Load Tests                                          │
-│     ├─ Concurrent requests                             │
-│     ├─ Performance metrics                             │
-│     └─ Stress testing                                  │
-│                                                         │
-│  ✅ Evaluation Suite                                    │
-│     ├─ 140+ comprehensive test cases                    │
-│     ├─ Automated scoring                               │
-│     └─ Performance benchmarks                          │
-│                                                         │
-│  ✅ Comprehensive Coverage                              │
-│     ├─ Order modification tests                        │
-│     ├─ Ticket modification tests                       │
-│     ├─ Conversation tool tests                         │
-│     ├─ Google Speech API tests                         │
-│     ├─ Tracing tests                                   │
-│     └─ Long-term memory tests                          │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
-
-**Run Tests:**
+The system includes **140+ comprehensive test cases** across **30+ test files** covering unit tests, integration tests, security tests, and load tests.
 
 ```bash
-# Full test suite
+# Run all tests
 python -m pytest tests/
 
-# Specific test category
-pytest tests/test_security.py    # Security tests
-pytest tests/test_load.py         # Load tests
-pytest tests/test_integration.py  # Integration tests
-
-# Evaluation suite
-python notebooks/evaluation.py
-
-# Project verification (check all components)
-python scripts/check_project.py
+# Run specific test category
+pytest tests/test_security.py
+pytest tests/test_integration.py
 ```
 
-## 📊 Evaluation Results
-
-The system has been evaluated on **140+ comprehensive test cases** across **30+ test files** covering:
-
-- FAQ queries (refunds, shipping, policies)
-- Order inquiries (status, tracking, modifications)
-- Sentiment analysis (frustration, urgency)
-- Escalation scenarios (complex issues)
-- Orchestrator routing (multi-agent coordination)
-- Shipping tool (OpenAPI pattern, all carriers)
-- Order API endpoints (create, update, delete)
-- Error handling and validation
-- Multilingual support
-- Analytics and metrics
-- Conversation tools
-- QA & Compliance
-- A/B Testing framework
-
-### Performance Metrics
-
-```
-╔═══════════════════════════════════════════════════════════╗
-║                    Performance Dashboard                   ║
-╠═══════════════════════════════════════════════════════════╣
-║                                                           ║
-║  📊 Routing Accuracy:     95%+  ████████████████  ✅    ║
-║                                                           ║
-║  ⚡ Response Time:                                        ║
-║     • FAQ Queries:        <2s   ████████████  ✅         ║
-║     • Order Queries:       <5s   ████████████████  ✅    ║
-║                                                           ║
-║  🧪 Test Coverage:         90%+  ███████████████  ✅      ║
-║                                                           ║
-║  🤖 Query Resolution:      80%+  ████████████  ✅         ║
-║                                                           ║
-║  😊 Sentiment Detection:   90%+  ███████████████  ✅      ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝
-```
-
-### Test Results Summary
-
-```
-╔═══════════════════════════════════════════════════════════╗
-║                  Test Results Dashboard                    ║
-╠═══════════════════════════════════════════════════════════╣
-║                                                           ║
-║  ✅ 17+ Test Cases          ████████████████████  100%   ║
-║  ✅ 5 Agent Types           ████████████████████  100%   ║
-║  ✅ 3 Routing Scenarios     ████████████████████  100%   ║
-║  ✅ Error Handling          ████████████████████  100%   ║
-║  ✅ Security Tests          ████████████████████  100%   ║
-║  ✅ Load Tests              ████████████████████  100%   ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝
-```
-
-See `notebooks/evaluation.py` for detailed evaluation metrics:
-
-```bash
-python notebooks/evaluation.py
-```
 
 ## 🔧 Configuration
 
@@ -846,46 +501,6 @@ API_HOST=0.0.0.0
 API_PORT=8000
 ```
 
-## ✨ New Features & Improvements
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│              🆕 Latest Features & Improvements              │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  🔒 Security & Validation                                   │
-│     ├─ ✅ Input Validation (length, format)                │
-│     ├─ ✅ Sanitization (injection prevention)              │
-│     └─ ✅ Rate Limiting (60 req/min per user)             │
-│                                                             │
-│  ⚡ Performance Optimizations                              │
-│     ├─ ✅ Response Caching (1 hour TTL)                    │
-│     ├─ ✅ Timeout Protection (30s)                        │
-│     └─ ✅ Error Handling (user-friendly messages)         │
-│                                                             │
-│  🚀 Enhanced Functionality                                  │
-│     ├─ ✅ React/Next.js Frontend (modern UI)               │
-│     ├─ ✅ Supabase Database (full persistence)            │
-│     ├─ ✅ Semantic Search (FAISS + Sentence Transformers) │
-│     ├─ ✅ Customer ID Authentication                       │
-│     ├─ ✅ Interactive Feedback UI (thumbs up/down)        │
-│     ├─ ✅ Automatic Agent Improvement (daily scheduler)   │
-│     ├─ ✅ Conversation Summarization                     │
-│     ├─ ✅ Orders & Tickets CRUD                           │
-│     ├─ ✅ Real-time Analytics Dashboard                   │
-│     ├─ ✅ Audio Input/Output (Google Cloud)               │
-│     ├─ ✅ Order Notes & Refunds Management                │
-│     ├─ ✅ QA & Compliance System                          │
-│     └─ ✅ A/B Testing Framework                           │
-│                                                             │
-│  🧪 Testing                                                 │
-│     ├─ ✅ Unit Tests (validation, rate limiting, cache)   │
-│     ├─ ✅ Integration Tests (end-to-end workflows)        │
-│     ├─ ✅ Security Tests (injection prevention)           │
-│     └─ ✅ Load Tests (performance under load)             │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
 
 ## 🎓 Course Concepts Demonstrated
 
