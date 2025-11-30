@@ -56,22 +56,22 @@ flowchart TD
     Route -->|Order| OrderAgent[Order Agent 📦]
     Route -->|Sentiment| SentimentAgent[Sentiment Agent 😊]
     Route -->|Escalation| EscalationAgent[Escalation Agent 🎫]
-    
+  
     FAQAgent --> FAQTool[FAQ Tool<br/>Semantic Search]
     OrderAgent --> OrderTools[Order Tools<br/>Lookup, Modify, Track]
     SentimentAgent --> EscalationAgent
     EscalationAgent --> TicketTool[Ticket Tool<br/>Create & Summarize]
-    
+  
     FAQTool --> Database[(Supabase Database)]
     OrderTools --> Database
     TicketTool --> Database
-    
+  
     Database --> Response[Generate Response]
     CacheResponse --> User[Customer Response ✅]
     Response --> Store[Store in Cache 💾]
     Store --> Analytics[Update Analytics 📊]
     Analytics --> User
-    
+  
     style Start fill:#E3F2FD
     style CacheResponse fill:#81C784
     style User fill:#4CAF50
@@ -87,16 +87,16 @@ graph TB
     Analysis --> Sentiment[Sentiment Agent 😊<br/>Detects: Frustration, High Urgency]
     Analysis --> Order[Order Agent 📦<br/>Retrieves Order Details]
     Analysis --> Escalation[Escalation Agent 🎫<br/>Creates Urgent Ticket]
-    
+  
     Sentiment -.->|A2A Protocol| Escalation
     Order -.->|A2A Protocol| FAQ[FAQ Agent 📚<br/>Gets Refund Policy]
     FAQ -.->|A2A Protocol| Order
-    
+  
     Sentiment --> SentimentData[Sentiment Analysis<br/>Emotion: Frustrated<br/>Urgency: High]
     Order --> OrderData[Order Details<br/>Status, Items, Tracking]
     Escalation --> TicketData[Ticket Created<br/>Priority: Urgent<br/>Summary Generated]
     FAQ --> PolicyData[Refund Policy<br/>30-day guarantee]
-    
+  
     SentimentData --> Response[Combined Response<br/>Empathetic + Order Info + Ticket]
     OrderData --> Response
     TicketData --> Response
@@ -110,7 +110,6 @@ graph TB
     style FAQ fill:#2196F3,stroke:#1565C0,color:#fff
 ```
 
-
 ### Memory Architecture
 
 ```mermaid
@@ -118,17 +117,17 @@ graph TB
     subgraph "Session Layer"
         Session[Session Memory 💭<br/>InMemorySessionService<br/>Active conversation context]
     end
-    
+  
     subgraph "Persistence Layer"
         History[Conversation History 📝<br/>Supabase Messages Table<br/>Full message history]
         Metadata[Session Metadata<br/>Customer ID, User ID<br/>Session status]
     end
-    
+  
     subgraph "Long-Term Memory"
         LongTerm[Long-Term Memory 🧠<br/>Customer Knowledge<br/>Preferences, History]
         Analytics[Analytics Data 📊<br/>Interaction patterns<br/>Satisfaction scores]
     end
-    
+  
     Session -->|Store Messages| History
     Session -->|Store Context| Metadata
     History -->|Aggregate| LongTerm
@@ -202,21 +201,26 @@ python -m pytest tests/
 ## 💻 Usage
 
 **React Frontend (Recommended):**
+
 ```bash
 python -m api.server  # Backend
 cd frontend && npm install --legacy-peer-deps && npm run dev  # Frontend
 ```
+
 Access at `http://localhost:3000` - Chat, Analytics, Orders & Tickets dashboards.
 
 **Interactive CLI:**
+
 ```bash
 python main.py
 ```
 
 **API Server:**
+
 ```bash
 python -m api.server
 ```
+
 API docs at `http://localhost:8000/docs`
 
 ## 📁 Project Structure
@@ -329,7 +333,6 @@ pytest tests/test_security.py
 pytest tests/test_integration.py
 ```
 
-
 ## 🔧 Configuration
 
 Configuration is managed via environment variables in `.env`:
@@ -351,7 +354,9 @@ API_PORT=8000
 
 ## 🎓 Course Concepts Demonstrated
 
-This project demonstrates **8 key concepts** from the **Kaggle 5-Day AI Agents Intensive Course** (organized by Kaggle and Google), built entirely with **Google's Agent Development Kit (ADK)** and **Google Gemini 2.5 Flash Lite**:
+This project demonstrates **11 key concepts** from the **Kaggle 5-Day AI Agents Intensive Course** (organized by Kaggle and Google), built entirely with **Google's Agent Development Kit (ADK)** and **Google Gemini 2.5 Flash Lite**:
+
+![Course Concepts Implementation Status](assets/course-concepts-status.png)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -409,11 +414,6 @@ This project demonstrates **8 key concepts** from the **Kaggle 5-Day AI Agents I
 
 - **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app) (or your actual Vercel URL)
 - **📦 GitHub Repository**: [https://github.com/Rayyan-Oumlil/CustoFlow](https://github.com/Rayyan-Oumlil/CustoFlow)
-
-## 📚 Documentation
-
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Detailed system architecture and component documentation
-- **[CAPSTONE_WRITEUP.md](CAPSTONE_WRITEUP.md)** - Complete project writeup for capstone submission
 
 ## 📄 License
 

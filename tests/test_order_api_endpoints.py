@@ -108,20 +108,24 @@ def test_create_order_duplicate():
 
 def test_delete_order_success():
     """Test successfully deleting an order."""
+    from unittest.mock import patch
+    
     order_id = "TEST_DELETE_001"
     setup_test_order(order_id)
     
-    # Verify order exists
-    result = lookup_order(order_id)
-    assert result.get("status") == "success"
-    
-    # Delete order
-    success = delete_order(order_id)
-    assert success is True
-    
-    # Verify order is gone
-    result = lookup_order(order_id)
-    assert result.get("status") == "error"
+    # Mock Supabase to use JSON fallback
+    with patch('utils.supabase_client.SUPABASE_ENABLED', False):
+        # Verify order exists
+        result = lookup_order(order_id)
+        assert result.get("status") == "success"
+        
+        # Delete order
+        success = delete_order(order_id)
+        assert success is True
+        
+        # Verify order is gone
+        result = lookup_order(order_id)
+        assert result.get("status") == "error"
 
 
 def test_delete_order_not_found():
