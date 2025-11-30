@@ -21,6 +21,17 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useToast } from "@/components/ui/use-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface Refund {
   refund_id: string
@@ -63,25 +74,36 @@ function formatSummary(summary: string): string[] {
     .filter(p => p.length > 0)
 }
 
+interface Customer {
+  customer_id: string
+  name?: string
+}
+
 export default function OrdersPage() {
   const { initFromStorage } = useStore()
+  const { toast } = useToast()
   const [orders, setOrders] = useState<Order[]>([])
   const [refunds, setRefunds] = useState<Refund[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [isRefundStatusDialogOpen, setIsRefundStatusDialogOpen] = useState(false)
   const [selectedRefund, setSelectedRefund] = useState<Refund | null>(null)
   const [newRefundStatus, setNewRefundStatus] = useState<string>("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isCreateCustomerDialogOpen, setIsCreateCustomerDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null)
+  const [newCustomerId, setNewCustomerId] = useState("")
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null)
   const [filters, setFilters] = useState({
     status: "all",
     customer_id: "",
     order_id: "",
   })
   const [newOrder, setNewOrder] = useState({
-    order_id: "",
-    customer_id: "",
+    order_id: "", // Will be auto-generated if empty
+    customer_id: "", // Will be selected from dropdown or auto-generated
     status: "processing" as const,
     items: [{ name: "", quantity: 1, price: 0 }],
     total: 0,
@@ -97,19 +119,23 @@ export default function OrdersPage() {
     const fetchData = async () => {
       try {
         setLoading(true)
-        const [ordersResponse, refundsResponse] = await Promise.all([
+        const [ordersResponse, refundsResponse, customersResponse] = await Promise.all([
           apiClient.get<any>("/orders").catch(() => ({ orders: [] })),
           apiClient.get<Refund[]>("/refunds").catch(() => []),
+          apiClient.get<{ customers: Customer[] }>("/customers").catch(() => ({ customers: [] })),
         ])
         const ordersList = Array.isArray(ordersResponse?.orders) ? ordersResponse.orders : []
         const refundsList = Array.isArray(refundsResponse) ? refundsResponse : []
+        const customersList = Array.isArray(customersResponse?.customers) ? customersResponse.customers : []
         
         setOrders(ordersList)
         setRefunds(refundsList)
+        setCustomers(customersList)
       } catch (error) {
         console.error("Failed to fetch data:", error)
         setOrders([])
         setRefunds([])
+        setCustomers([])
       } finally {
         setLoading(false)
       }
@@ -172,17 +198,30 @@ export default function OrdersPage() {
     }
   }
 
-  const handleDeleteOrder = async (orderId: string) => {
-    if (!confirm(`Are you sure you want to delete order ${orderId}?`)) {
-      return
-    }
+  const handleDeleteOrder = (orderId: string) => {
+    setOrderToDelete(orderId)
+    setDeleteConfirmOpen(true)
+  }
+
+  const confirmDeleteOrder = async () => {
+    if (!orderToDelete) return
     
     try {
-      await apiClient.delete(`/orders/${orderId}`)
+      await apiClient.delete(`/orders/${orderToDelete}`)
+      toast({
+        title: "Order deleted",
+        description: `Order ${orderToDelete} has been deleted successfully.`,
+      })
       await fetchData()
-    } catch (error) {
-      console.error("Failed to delete order:", error)
-      alert("Failed to delete order. Please try again.")
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete order. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setDeleteConfirmOpen(false)
+      setOrderToDelete(null)
     }
   }
 
@@ -195,12 +234,19 @@ export default function OrdersPage() {
         tracking_number: editingOrder.tracking_number || null,
         estimated_delivery: editingOrder.estimated_delivery || null,
       })
+      toast({
+        title: "Order updated",
+        description: `Order ${editingOrder.order_id} has been updated successfully.`,
+      })
       setIsEditDialogOpen(false)
       setEditingOrder(null)
       await fetchData()
-    } catch (error) {
-      console.error("Failed to update order:", error)
-      alert("Failed to update order. Please try again.")
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update order. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -229,19 +275,51 @@ export default function OrdersPage() {
     return null
   }
 
+  const handleCreateCustomer = async () => {
+    try {
+      const customerData: any = {}
+      if (newCustomerId.trim()) {
+        customerData.customer_id = newCustomerId.trim()
+      }
+      // If empty, backend will auto-generate
+      
+      const response = await apiClient.post<{ status: string; customer_id: string; message: string }>("/customers", customerData)
+      setIsCreateCustomerDialogOpen(false)
+      setNewCustomerId("")
+      await fetchData() // Refresh customers list
+      // Auto-select the newly created customer
+      setNewOrder({ ...newOrder, customer_id: response.customer_id })
+      toast({
+        title: "Customer created",
+        description: `Customer ${response.customer_id} has been created successfully.`,
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create customer. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleCreateOrder = async () => {
-    // Validate Order ID
-    const orderIdError = validateOrderId(newOrder.order_id)
-    if (orderIdError) {
-      alert(orderIdError)
-      return
+    // Order ID and Customer ID are now optional - backend will auto-generate if empty
+    // But if provided, validate them
+    
+    if (newOrder.order_id.trim()) {
+      const orderIdError = validateOrderId(newOrder.order_id)
+      if (orderIdError) {
+        alert(orderIdError)
+        return
+      }
     }
 
-    // Validate Customer ID
-    const customerIdError = validateCustomerId(newOrder.customer_id)
-    if (customerIdError) {
-      alert(customerIdError)
-      return
+    if (newOrder.customer_id.trim()) {
+      const customerIdError = validateCustomerId(newOrder.customer_id)
+      if (customerIdError) {
+        alert(customerIdError)
+        return
+      }
     }
 
     // Validate items
@@ -254,13 +332,26 @@ export default function OrdersPage() {
       // Calculate total from items
       const total = newOrder.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
       
-      const orderData = {
+      const orderData: any = {
         ...newOrder,
         total,
         created_at: newOrder.order_date,
       }
       
-      await apiClient.post("/orders", orderData)
+      // Remove empty IDs - backend will generate them
+      if (!orderData.order_id || !orderData.order_id.trim()) {
+        delete orderData.order_id
+      }
+      if (!orderData.customer_id || !orderData.customer_id.trim()) {
+        delete orderData.customer_id
+      }
+      
+      const response = await apiClient.post<{ status: string; message: string; order: any }>("/orders", orderData)
+      const createdOrderId = response.order?.order_id || orderData.order_id || "order"
+      toast({
+        title: "Order created",
+        description: `Order ${createdOrderId} has been created successfully.`,
+      })
       setIsCreateDialogOpen(false)
       setNewOrder({
         order_id: "",
@@ -274,8 +365,11 @@ export default function OrdersPage() {
       })
       await fetchData()
     } catch (error: any) {
-      console.error("Failed to create order:", error)
-      alert(error.message || "Failed to create order. Please try again.")
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create order. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -308,39 +402,59 @@ export default function OrdersPage() {
                   <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="order_id">Order ID *</Label>
+                        <Label htmlFor="order_id">Order ID (Auto-generated if empty)</Label>
                         <Input
                           id="order_id"
                           value={newOrder.order_id}
                           onChange={(e) => setNewOrder({ ...newOrder, order_id: e.target.value })}
-                          placeholder="12345"
-                          className={validateOrderId(newOrder.order_id) ? "border-destructive" : ""}
+                          placeholder="Leave empty for auto-generation"
+                          className={newOrder.order_id && validateOrderId(newOrder.order_id) ? "border-destructive" : ""}
                         />
-                        {validateOrderId(newOrder.order_id) && (
+                        {newOrder.order_id && validateOrderId(newOrder.order_id) && (
                           <p className="text-xs text-destructive mt-1">
                             {validateOrderId(newOrder.order_id)}
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
-                          Format: 3-20 chars, alphanumeric + hyphens (e.g., 12345, ORDER-123)
+                          Leave empty to auto-generate (order_001, order_002, ...) or enter custom ID
                         </p>
                       </div>
                       <div>
-                        <Label htmlFor="customer_id">Customer ID *</Label>
-                        <Input
-                          id="customer_id"
+                        <div className="flex items-center justify-between mb-2">
+                          <Label htmlFor="customer_id">Customer *</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsCreateCustomerDialogOpen(true)}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            New Customer
+                          </Button>
+                        </div>
+                        <Select
                           value={newOrder.customer_id}
-                          onChange={(e) => setNewOrder({ ...newOrder, customer_id: e.target.value })}
-                          placeholder="cust_001"
-                          className={validateCustomerId(newOrder.customer_id) ? "border-destructive" : ""}
-                        />
-                        {validateCustomerId(newOrder.customer_id) && (
+                          onValueChange={(value) => setNewOrder({ ...newOrder, customer_id: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select customer or leave empty for auto-generation" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Auto-generate new customer</SelectItem>
+                            {customers.map((customer) => (
+                              <SelectItem key={customer.customer_id} value={customer.customer_id}>
+                                {customer.name || customer.customer_id}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {newOrder.customer_id && validateCustomerId(newOrder.customer_id) && (
                           <p className="text-xs text-destructive mt-1">
                             {validateCustomerId(newOrder.customer_id)}
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
-                          Format: 1-50 chars, alphanumeric + underscores/hyphens (e.g., cust_001, CUST-123)
+                          Select existing customer or leave empty to auto-generate (cust_001, cust_002, ...)
                         </p>
                       </div>
                     </div>
@@ -435,15 +549,51 @@ export default function OrdersPage() {
                     <Button 
                       onClick={handleCreateOrder}
                       disabled={
-                        !newOrder.order_id.trim() || 
-                        !newOrder.customer_id.trim() ||
-                        !!validateOrderId(newOrder.order_id) ||
-                        !!validateCustomerId(newOrder.customer_id) ||
+                        (newOrder.order_id.trim() && !!validateOrderId(newOrder.order_id)) ||
+                        (newOrder.customer_id.trim() && !!validateCustomerId(newOrder.customer_id)) ||
                         newOrder.items.length === 0 ||
                         newOrder.items.some(item => !item.name.trim() || item.quantity <= 0 || item.price <= 0)
                       }
                     >
                       Create Order
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Create Customer Dialog */}
+              <Dialog open={isCreateCustomerDialogOpen} onOpenChange={setIsCreateCustomerDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Customer</DialogTitle>
+                    <DialogDescription>Create a new customer for testing. Customer ID will be auto-generated if left empty.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div>
+                      <Label htmlFor="new_customer_id">Customer ID (Optional)</Label>
+                      <Input
+                        id="new_customer_id"
+                        value={newCustomerId}
+                        onChange={(e) => setNewCustomerId(e.target.value)}
+                        placeholder="Leave empty for auto-generation (cust_001, cust_002, ...)"
+                      />
+                      {newCustomerId && validateCustomerId(newCustomerId) && (
+                        <p className="text-xs text-destructive mt-1">
+                          {validateCustomerId(newCustomerId)}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Leave empty to auto-generate or enter custom ID (e.g., cust_001, CUST-123)
+                      </p>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsCreateCustomerDialogOpen(false)}>Cancel</Button>
+                    <Button 
+                      onClick={handleCreateCustomer}
+                      disabled={newCustomerId.trim() && !!validateCustomerId(newCustomerId)}
+                    >
+                      Create Customer
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -882,6 +1032,24 @@ export default function OrdersPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Order</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete order <strong>{orderToDelete}</strong>? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDeleteOrder} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   )

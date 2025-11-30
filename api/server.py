@@ -473,12 +473,14 @@ async def chat(request: ChatRequest, http_request: Request):
                                     try:
                                         result = part.function_response.result
                                         last_tool_result = result  # Store for fallback
+                                        logger.info(f"🔧 Function response received: type={type(result).__name__}, keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}")
                                         
                                         # Check for agent info in function response
                                         if isinstance(result, dict):
                                             # Store the full dict for later processing
                                             tool_results.append(result)
                                             last_tool_result = result
+                                            logger.info(f"✅ Added dict result to tool_results (total: {len(tool_results)})")
                                             
                                             # Try to detect agent from response content
                                             # Look for patterns that indicate which agent responded
@@ -565,14 +567,18 @@ async def chat(request: ChatRequest, http_request: Request):
                 
                 # Fallback: Generate response from tool results if no text response
                 if not response_text and tool_results:
+                    logger.info(f"🔧 No text response, trying to construct from {len(tool_results)} tool results")
                     # Try to construct a response from tool results
-                    for result in tool_results:
+                    for i, result in enumerate(tool_results):
+                        logger.info(f"🔧 Processing tool result {i+1}/{len(tool_results)}: type={type(result).__name__}, keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}")
                         if isinstance(result, str) and len(result) > 20:
                             response_text = result
+                            logger.info(f"✅ Using string result as response (length: {len(result)})")
                             break
                         elif isinstance(result, dict):
                             # Extract useful information from dict results
                             if "orders" in result and result.get("status") == "success":
+                                logger.info(f"✅ Found orders in result: {len(result.get('orders', []))} orders")
                                 orders = result.get("orders", [])
                                 if orders:
                                     order_info = []
@@ -1855,6 +1861,124 @@ async def delete_order(order_id: str):
     }
 
 
+@app.get("/customers")
+async def get_customers():
+    """
+    Get all customers (for testing/admin purposes).
+    """
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED
+        if SUPABASE_ENABLED:
+            from supabase import create_client
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                # Get unique customer_ids from orders
+                result = supabase.table("orders").select("customer_id").execute()
+                customer_ids = list(set([o.get("customer_id") for o in (result.data or []) if o.get("customer_id")]))
+                # Also get from sessions
+                session_result = supabase.table("sessions").select("customer_id").execute()
+                session_customer_ids = list(set([s.get("customer_id") for s in (session_result.data or []) if s.get("customer_id")]))
+                # Combine and deduplicate
+                all_customer_ids = list(set(customer_ids + session_customer_ids))
+                customers = [{"customer_id": cid, "name": f"Customer {cid}"} for cid in sorted(all_customer_ids)]
+                return {"customers": customers}
+        
+        # Fallback: extract from orders JSON
+        from tools.order_tool import _MOCK_ORDERS
+        customer_ids = list(set([o.get("customer_id") for o in _MOCK_ORDERS.values() if o.get("customer_id")]))
+        customers = [{"customer_id": cid, "name": f"Customer {cid}"} for cid in sorted(customer_ids)]
+        return {"customers": customers}
+    except Exception as e:
+        logger.error(f"Error getting customers: {e}")
+        return {"customers": []}
+
+
+@app.post("/customers")
+async def create_customer(customer_data: dict):
+    """
+    Create a new customer (for testing purposes).
+    Generates customer_id automatically if not provided.
+    """
+    try:
+        # Generate customer_id if not provided
+        if "customer_id" not in customer_data or not customer_data["customer_id"]:
+            # Get existing customers to find next number
+            existing = await get_customers()
+            existing_ids = [c["customer_id"].lower() for c in existing.get("customers", [])]
+            
+            # Find next available number
+            next_num = 1
+            while f"cust_{next_num:03d}" in existing_ids:
+                next_num += 1
+            
+            customer_data["customer_id"] = f"cust_{next_num:03d}"
+        
+        customer_id = customer_data["customer_id"].lower()  # Normalize to lowercase
+        
+        # Validate customer_id format
+        is_valid, error_msg = validate_customer_id(customer_id)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=f"Invalid customer_id: {error_msg}")
+        
+        # Customer is created implicitly when first order/session is created
+        # Just return success with the customer_id
+        return {
+            "status": "success",
+            "customer_id": customer_id,
+            "message": f"Customer {customer_id} is ready to use"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating customer: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def generate_order_id() -> str:
+    """
+    Generate a unique order_id in format: order_XXX where XXX is a 3-digit number.
+    """
+    import time
+    try:
+        from tools.order_tool import _MOCK_ORDERS
+        # Get all existing order IDs
+        existing_ids = set(_MOCK_ORDERS.keys())
+        
+        # Also check Supabase if enabled
+        from utils.supabase_client import SUPABASE_ENABLED
+        if SUPABASE_ENABLED:
+            try:
+                from supabase import create_client
+                import os
+                from dotenv import load_dotenv
+                load_dotenv()
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_KEY")
+                if supabase_url and supabase_key:
+                    supabase = create_client(supabase_url, supabase_key)
+                    result = supabase.table("orders").select("order_id").execute()
+                    supabase_ids = [o.get("order_id") for o in (result.data or []) if o.get("order_id")]
+                    existing_ids.update(supabase_ids)
+            except:
+                pass
+        
+        # Find next available number
+        next_num = 1
+        while f"order_{next_num:03d}" in existing_ids:
+            next_num += 1
+        
+        return f"order_{next_num:03d}"
+    except Exception as e:
+        logger.error(f"Error generating order_id: {e}")
+        # Fallback: use timestamp
+        return f"order_{int(time.time())}"
+
+
 @app.post("/orders")
 async def create_order(order_data: dict):
     """
@@ -1880,17 +2004,59 @@ async def create_order(order_data: dict):
     """
     from tools.order_tool import _MOCK_ORDERS
     
-    # Validate required fields
-    required_fields = ["order_id", "customer_id", "status", "items", "total", "order_date"]
-    for field in required_fields:
-        if field not in order_data:
-            raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+    # Generate order_id automatically if not provided
+    if "order_id" not in order_data or not order_data["order_id"]:
+        order_data["order_id"] = generate_order_id()
+        logger.info(f"Generated order_id: {order_data['order_id']}")
     
     order_id = order_data["order_id"]
     
-    # Check if order already exists
+    # Check if order already exists (check both JSON and Supabase)
     if order_id in _MOCK_ORDERS:
         raise HTTPException(status_code=409, detail=f"Order {order_id} already exists")
+    
+    # Also check Supabase if enabled
+    from utils.supabase_client import SUPABASE_ENABLED
+    if SUPABASE_ENABLED:
+        try:
+            from supabase import create_client
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                existing = supabase.table("orders").select("order_id").eq("order_id", order_id).execute()
+                if existing.data and len(existing.data) > 0:
+                    raise HTTPException(status_code=409, detail=f"Order {order_id} already exists in Supabase")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not check Supabase for existing order: {e}")
+    
+    # Generate customer_id automatically if not provided
+    if "customer_id" not in order_data or not order_data["customer_id"]:
+        # Get existing customers to find next number
+        existing = await get_customers()
+        existing_ids = [c["customer_id"].lower() for c in existing.get("customers", [])]
+        
+        # Find next available number
+        next_num = 1
+        while f"cust_{next_num:03d}" in existing_ids:
+            next_num += 1
+        
+        order_data["customer_id"] = f"cust_{next_num:03d}"
+        logger.info(f"Generated customer_id: {order_data['customer_id']}")
+    
+    # Normalize customer_id to lowercase
+    order_data["customer_id"] = order_data["customer_id"].lower()
+    
+    # Validate required fields (after auto-generation)
+    required_fields = ["status", "items", "total", "order_date"]
+    for field in required_fields:
+        if field not in order_data:
+            raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
     
     # Validate status
     valid_statuses = ["processing", "shipped", "delivery_soon", "delivered", "cancelled"]

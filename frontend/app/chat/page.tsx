@@ -55,6 +55,7 @@ export default function ChatPage() {
   const [documentAnalysisResult, setDocumentAnalysisResult] = useState<any>(null)
   const [isSessionClosed, setIsSessionClosed] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const sendingStateRef = useRef(false) // Track sending state to prevent polling interference
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -101,7 +102,7 @@ export default function ChatPage() {
           ? `/sessions/by-customer/${encodeURIComponent(customerId)}`
           : `/sessions/${userId}`
         const data = await apiClient.get(url)
-        console.log("Fetched sessions from API for customer_id:", customerId, "data:", data)
+        // Fetched sessions from API
         
         // Handle both array and object response formats
         let sessionsArray: any[] = []
@@ -115,7 +116,7 @@ export default function ChatPage() {
             sessionsArray = data
           }
         }
-        console.log("Extracted sessions array:", sessionsArray.length, "sessions")
+        // Extracted sessions array
         
         // Client-side filter: show sessions that match customer_id OR have null/undefined customer_id
         // This handles cases where sessions might not have customer_id set
@@ -134,7 +135,7 @@ export default function ChatPage() {
               created_at: s.created_at,
               is_active: s.is_active !== false, // Default to true if not specified
             }))
-        console.log("Mapped conversations for customer_id:", customerId, "conversations:", convos)
+        // Mapped conversations
         setConversations(convos)
         
         // Cache conversations (30 second TTL)
@@ -255,7 +256,7 @@ export default function ChatPage() {
         const data = await apiClient.get(`/history/${userId}?session_id=${sessionId}`)
         if (!isMounted) return // Check again after async operation
         
-        console.log("Fetched messages from API:", data)
+        // Fetched messages from API
         
         // Handle both array and object response formats
         let messagesArray: any[] = []
@@ -392,6 +393,8 @@ export default function ChatPage() {
         if (!isMounted || !userId || !sessionId) return
         // Don't poll if tab is hidden
         if (document.hidden) return
+        // Don't poll if we're currently sending a message (prevents interference)
+        if (sendingStateRef.current) return
         
         fetchMessages(true) // Merge with local messages
         
@@ -551,7 +554,7 @@ export default function ChatPage() {
           })
           
           const audioBuffer = await audioContext.decodeAudioData(reader.result as ArrayBuffer)
-          console.log(`Decoded audio: ${audioBuffer.duration.toFixed(2)}s, ${audioBuffer.sampleRate}Hz, ${audioBuffer.numberOfChannels} channels`)
+          // Audio decoded successfully
           
           // Check if audio is long enough
           if (audioBuffer.duration < 0.3) {
@@ -577,7 +580,7 @@ export default function ChatPage() {
             
             source.start()
             processedBuffer = await offlineContext.startRendering()
-            console.log(`Processed audio: ${processedBuffer.duration.toFixed(2)}s, ${processedBuffer.sampleRate}Hz, ${processedBuffer.numberOfChannels} channels`)
+            // Audio processed successfully
           }
           
           // Convert to WAV
@@ -687,11 +690,11 @@ export default function ChatPage() {
         }
         
         try {
-          console.log(`Converting audio: ${audioBlob.size} bytes, type: ${audioBlob.type}`)
+          // Converting audio to WAV format
           
           // Convert WebM to WAV using Web Audio API
           const wavBlob = await convertWebMToWAV(audioBlob)
-          console.log(`Converted to WAV: ${wavBlob.size} bytes`)
+          // Audio converted to WAV
           
           if (wavBlob.size < 1000) {
             alert("Converted audio too small. Please try recording again.")
@@ -700,11 +703,11 @@ export default function ChatPage() {
           
           const audioFile = new File([wavBlob], 'recording.wav', { type: 'audio/wav' })
           
-          console.log("Sending audio to server for transcription...")
+          // Sending audio for transcription
           const result = await apiClient.transcribeAudio(audioFile)
           
           if (result.transcript && result.transcript.trim()) {
-            console.log("Transcription successful:", result.transcript)
+            // Transcription successful
             setInput(result.transcript)
             inputRef.current?.focus()
           } else {
@@ -863,6 +866,10 @@ export default function ChatPage() {
       userMessage = `${userMessage}\n\n[DOCUMENT_ANALYSIS: ${analysisJson}]`
     }
     
+    // Save input value before clearing
+    const messageContent = input.trim()
+    
+    // Clear input IMMEDIATELY and keep it clear (no flickering)
     setInput("")
     setUploadedFile(null)
     setDocumentAnalysisResult(null)
@@ -873,22 +880,27 @@ export default function ChatPage() {
     const isContinuingWithHuman = lastAssistantMsg?.agent_used === "human_agent"
     
     // Add user message IMMEDIATELY for better UX (optimistic update)
-    // It will be replaced by server message when fetched (same content, proper ID)
-    // Display only the user's input text (not the analysis details)
-    const displayMessage = input.trim() || "Uploaded document" // Show user's input or simple message
+    // Use a stable ID that won't conflict with server messages
+    const userMsgId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const displayMessage = messageContent || "Uploaded document"
     const userMsg: Message = {
-        id: `user_${Date.now()}`, // Temporary ID, will be replaced by server ID
+        id: userMsgId,
         role: "user",
-        content: displayMessage, // Show only user's input, not analysis details
+        content: displayMessage,
         timestamp: new Date().toISOString(),
     }
+    
+    // Add user message immediately - this is the source of truth
     setMessages((prev) => [...prev, userMsg])
     
-    // Keep focus on input field after sending
+    // Keep focus on input field after sending (input is already cleared)
     setTimeout(() => {
       inputRef.current?.focus()
     }, 0)
 
+    // Mark that we're sending (prevents polling interference)
+    sendingStateRef.current = true
+    
     try {
       let response: {
         response: string
@@ -937,62 +949,44 @@ export default function ChatPage() {
       // Hide typing indicator
       setSending(false)
       
-      // DON'T add assistant response locally - wait for server to save it
-      // Server saves the message, polling will retrieve it
-      // This prevents duplicates
-      
-      // Audio is now handled per-message with individual buttons
-      // No automatic audio playback
-      
-      // Trigger immediate fetch to get the saved messages from server
-      // This ensures user message and assistant response appear quickly
-      if (userId && currentSessionId) {
-        setTimeout(async () => {
-          try {
-            const data = await apiClient.get(`/history/${userId}?session_id=${currentSessionId}`)
-            let messagesArray: any[] = []
-            if (Array.isArray(data)) {
-              messagesArray = data
-            } else if (data && typeof data === 'object' && 'history' in data) {
-              messagesArray = Array.isArray((data as any).history) ? (data as any).history : []
+      // Add assistant response IMMEDIATELY from the API response
+      // This ensures strict flow: user message → agent response (no waiting, no polling interference)
+      if (response.response) {
+        const assistantMsg: Message = {
+          id: `assistant_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          role: "assistant",
+          content: response.response,
+          agent_used: response.agent_used,
+          response_time: response.response_time,
+          timestamp: new Date().toISOString(),
+        }
+        
+        // Add assistant message immediately after user message
+        // Replace user message with server version if available, then add assistant response
+        setMessages((prev) => {
+          // Find and replace the optimistic user message with server version (if different)
+          const updated = prev.map(msg => {
+            // If this is our optimistic user message, keep it (will be replaced by polling later)
+            if (msg.id === userMsgId) {
+              return msg
             }
-            
-            const serverMsgs = messagesArray.map((m: any, index: number) => {
-              const isHumanAgent = m.metadata?.is_human_agent === true || 
-                                   m.metadata?.agent_used === "human_agent" ||
-                                   m.agent_used === "human_agent"
-              
-              return {
-                id: m.id || `msg_${m.timestamp || Date.now()}_${index}`,
-                role: m.role,
-                content: m.content,
-                agent_used: isHumanAgent ? "human_agent" : (m.metadata?.agent || m.agent_used),
-                response_time: m.metadata?.response_time || m.response_time,
-                timestamp: m.timestamp || m.created_at,
-              }
-            })
-            
-            // Set messages from server (single source of truth)
-            setMessages(serverMsgs)
-          } catch (error) {
-            console.error("Failed to fetch messages after send:", error)
-          }
-        }, 500) // Small delay to ensure server has saved
+            return msg
+          })
+          
+          // Add assistant response
+          return [...updated, assistantMsg]
+        })
       }
       
-      // Restore focus to input field after agent responds
+      // Restore focus to input field immediately
       setTimeout(() => {
         inputRef.current?.focus()
-      }, 100)
+      }, 50)
       
-      // Restore focus to input field after agent responds
+      // Re-enable polling after a short delay (ensures server has saved)
       setTimeout(() => {
-        inputRef.current?.focus()
-      }, 100)
-
-      // Don't reload messages immediately - the polling (every 5 seconds) will handle it
-      // This prevents duplicate messages from being created
-      // The polling will merge server messages with local ones automatically
+        sendingStateRef.current = false
+      }, 1000)
     } catch (error: any) {
       console.error("Failed to send message:", error)
       const errorMsg: Message = {
@@ -1011,6 +1005,7 @@ export default function ChatPage() {
     } finally {
       // Ensure sending is false even if there's an error
       setSending(false)
+      sendingStateRef.current = false // Re-enable polling
       // Keep focus on input field after sending (double-check)
       setTimeout(() => {
         inputRef.current?.focus()

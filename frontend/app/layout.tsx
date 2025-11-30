@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { SidebarNav } from "@/components/sidebar-nav"
+import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -39,6 +40,7 @@ export default function RootLayout({
           <SidebarNav />
           <div className="flex-1 overflow-hidden">{children}</div>
         </div>
+        <Toaster />
         <Analytics />
       </body>
     </html>

@@ -49,8 +49,7 @@ export default function AnalyticsPage() {
           apiClient.get<any>("/metrics").catch(() => null),
         ])
 
-        console.log("Analytics data:", analyticsData)
-        console.log("Metrics data:", metricsData)
+        // Analytics and metrics data loaded
 
         if (analyticsData && typeof analyticsData === 'object') {
           // Check if analyticsData has the expected structure

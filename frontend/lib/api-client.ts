@@ -1,28 +1,64 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
-// Debug: Log the API URL (only in browser)
-if (typeof window !== "undefined") {
+// API URL configuration (only log in development)
+if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
   console.log("🔗 API_BASE_URL:", API_BASE_URL)
-  console.log("🔗 NEXT_PUBLIC_API_URL env:", process.env.NEXT_PUBLIC_API_URL)
 }
 
-async function safeFetch<T>(fetchFn: () => Promise<Response>): Promise<T> {
-  try {
-    const response = await fetchFn()
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => response.statusText)
-      throw new Error(`API error (${response.status}): ${errorText}`)
+async function safeFetch<T>(
+  fetchFn: () => Promise<Response>,
+  retries: number = 3,
+  delay: number = 1000
+): Promise<T> {
+  let lastError: Error | null = null
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetchFn()
+      if (!response.ok) {
+        // Don't retry on client errors (4xx) except 429 (rate limit)
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          const errorText = await response.text().catch(() => response.statusText)
+          throw new Error(`API error (${response.status}): ${errorText}`)
+        }
+        // Retry on server errors (5xx) and rate limits (429)
+        if (attempt < retries) {
+          const waitTime = delay * Math.pow(2, attempt) // Exponential backoff
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+          continue
+        }
+        const errorText = await response.text().catch(() => response.statusText)
+        throw new Error(`API error (${response.status}): ${errorText}`)
+      }
+      return response.json()
+    } catch (error) {
+      lastError = error as Error
+      
+      // Network errors - retry with exponential backoff
+      if (error instanceof TypeError && error.message === "Failed to fetch") {
+        if (attempt < retries) {
+          const waitTime = delay * Math.pow(2, attempt) // Exponential backoff
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+          continue
+        }
+        throw new Error(
+          `Cannot connect to backend at ${API_BASE_URL} after ${retries + 1} attempts. ` +
+          `Make sure the backend is running: python -m api.server`
+        )
+      }
+      
+      // If it's the last attempt, throw the error
+      if (attempt === retries) {
+        throw error
+      }
+      
+      // Wait before retrying
+      const waitTime = delay * Math.pow(2, attempt)
+      await new Promise(resolve => setTimeout(resolve, waitTime))
     }
-    return response.json()
-  } catch (error) {
-    if (error instanceof TypeError && error.message === "Failed to fetch") {
-      throw new Error(
-        `Cannot connect to backend at ${API_BASE_URL}. ` +
-        `Make sure the backend is running: python -m api.server`
-      )
-    }
-    throw error
   }
+  
+  throw lastError || new Error("Unknown error occurred")
 }
 
 export const apiClient = {

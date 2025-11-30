@@ -11,6 +11,14 @@
 
 Built with Google's Agent Development Kit (ADK) and powered by Gemini 🤖
 
+<div align="center">
+  <img src="assets/custoflow-logo.png" alt="CustoFlow Logo" width="120" height="120">
+  <br>
+  <img src="assets/custoflow-thumbnail.png" alt="CustoFlow Thumbnail" width="800">
+</div>
+
+> **Note**: See [GEMINI_PROMPTS.md](GEMINI_PROMPTS.md) for prompts to generate additional assets (logo, diagrams) with Gemini.
+
 ```
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
@@ -27,6 +35,7 @@ Built with Google's Agent Development Kit (ADK) and powered by Gemini 🤖
 Companies receive **thousands of repetitive customer support queries daily** (order status, refunds, shipping, FAQs). Human agents get overloaded, response times slow to **2-4 hours**, and conversations lack continuity. This leads to:
 
 ### The Challenge
+
 - **High operational costs**: $15-25 per ticket for human agents
 - **Slow response times**: 2-4 hours average, up to 24 hours during peak
 - **Inconsistent service quality**: Varies by agent experience
@@ -34,9 +43,11 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 - **Scalability issues**: Cannot handle traffic spikes without hiring
 
 ### The Solution
+
 **CustoFlow** automates **80%+ of common queries** with intelligent routing, freeing human agents for complex issues while maintaining high-quality, context-aware responses.
 
 ### Impact & Value
+
 - ⚡ **Response time**: 2-4 hours → **<30 seconds** (99% reduction)
 - 💰 **Cost reduction**: **60% lower** operational costs
 - 📈 **Scalability**: Handle **1000+ concurrent users** vs 50-100 with humans
@@ -45,65 +56,107 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 
 ## ✨ Key Features
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    🎯 CustoFlow Features                    │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  🤖 Multi-Agent System                                      │
-│     └─ 5 specialized agents working in harmony             │
-│                                                             │
-│  🧠 Intelligent Routing                                     │
-│     └─ Automatically routes to the right specialist        │
-│                                                             │
-│  😊 Sentiment Analysis                                      │
-│     └─ Detects customer emotion and urgency                │
-│                                                             │
-│  💭 Context-Aware                                           │
-│     └─ Maintains conversation context across turns          │
-│                                                             │
-│  🎫 Smart Escalation                                        │
-│     └─ Creates tickets for complex issues                 │
-│                                                             │
-│  🚀 Production-Ready                                        │
-│     └─ FastAPI server with full observability             │
-│                                                             │
-│  🔒 Security & Performance                                  │
-│     └─ Validation, rate limiting, caching                  │
-│                                                             │
-│  📊 Analytics & Feedback                                    │
-│     └─ Real-time analytics + interactive feedback UI      │
-│                                                             │
-│  🖥️ Modern Web Dashboard                                    │
-│     └─ React/Next.js with Chat, Orders, Tickets, Analytics │
-│                                                             │
-│  📚 Semantic Search Knowledge Base                          │
-│     └─ 50+ FAQs with vector embeddings (FAISS)            │
-│                                                             │
-│  💾 Full Database Persistence                               │
-│     └─ Supabase (PostgreSQL) for all data                  │
-│                                                             │
-│  🤖 Self-Improving Agents                                   │
-│     └─ Automatic agent refinement from feedback            │
-│                                                             │
-│  🎫 Smart Ticket Management                                 │
-│     └─ Auto-summarization with key points & sentiment     │
-│                                                             │
-│  🎤 Audio Support                                            │
-│     └─ Speech-to-Text and Text-to-Speech (Google Cloud)   │
-│                                                             │
-│  ✅ QA & Compliance                                          │
-│     └─ Automated quality scoring and compliance checks     │
-│                                                             │
-│  📊 A/B Testing                                             │
-│     └─ Statistical testing for agent instruction variants │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+![CustoFlow Features](assets/features-diagram.png)
+
+### Core Capabilities
+
+**🤖 Multi-Agent System**
+- 5 specialized agents (Orchestrator, FAQ, Order, Sentiment, Escalation)
+- Intelligent routing based on query analysis
+- Agent-to-Agent (A2A) communication for context sharing
+- Parallel and sequential agent coordination
+
+**🧠 Intelligent Routing**
+- Automatic query classification
+- Sentiment-first analysis for urgent cases
+- Context-aware routing using customer history
+- Fallback mechanisms for edge cases
+
+**💭 Context & Memory**
+- Full conversation history persistence
+- Session management with customer context
+- Long-term memory for personalization
+- Automatic context compaction
+
+**🎫 Smart Escalation**
+- Automatic ticket creation with summarization
+- Priority detection based on sentiment and urgency
+- Human-in-the-loop approval (LRO pattern)
+- Seamless handoff with full context
+
+### Advanced Features
+
+**📚 Semantic Search**
+- FAISS vector embeddings for 50+ FAQs
+- Sentence Transformers for intelligent matching
+- Automatic fallback mechanisms
+- Cached results for performance
+
+**🎤 Audio Support**
+- Google Cloud Speech-to-Text (STT)
+- Google Cloud Text-to-Speech (TTS)
+- Per-message TTS with auto-stop
+- Multi-language support
+
+**📊 Analytics & Observability**
+- Real-time metrics dashboard
+- Request tracing and correlation
+- Performance monitoring
+- Business analytics (satisfaction, response times, ticket metrics)
+
+**🤖 Self-Improving System**
+- Automatic agent refinement from feedback
+- Daily scheduled improvements
+- Knowledge base update suggestions
+- A/B testing framework for optimization
+
+**✅ Quality Assurance**
+- Automated quality scoring
+- Compliance keyword detection
+- Profanity filtering
+- Response validation
+
+### Enterprise Features
+
+**🖥️ Modern Web Dashboard**
+- React/Next.js 15 with TypeScript
+- Chat interface with real-time updates
+- Orders & Tickets management (CRUD)
+- Analytics dashboard with live metrics
+- Human agent monitoring interface
+
+**🔒 Security & Performance**
+- Input validation and sanitization
+- SQL injection prevention
+- XSS protection
+- Rate limiting (60 req/min)
+- Response caching (1 hour TTL)
+- Adaptive polling (reduces API calls by 70%)
+
+**💾 Data Persistence**
+- Supabase (PostgreSQL) for all data
+- Messages, sessions, orders, tickets, feedback
+- Analytics and agent refinements
+- FAISS indexes in Supabase Storage
+
+**🚀 Production Deployment**
+- Google Cloud Run (FastAPI backend)
+- Vercel (React/Next.js frontend)
+- Auto-scaling infrastructure
+- Health checks and monitoring
 
 ## 🆕 Recent Improvements
 
+### Performance & Optimization
+
+- ✅ **Adaptive Polling**: Reduces API calls by 70% (2s active → 15s inactive)
+- ✅ **In-Memory Caching**: TTL-based caching for all data types
+- ✅ **Optimistic UI Updates**: Immediate message display
+- ✅ **Automatic Retry**: Exponential backoff on network errors
+- ✅ **Clean Console Logs**: Removed debug logs, production-ready
+
 ### Enterprise-Ready Enhancements
+
 - ✅ **React/Next.js Frontend**: Modern, responsive web interface replacing Streamlit
 - ✅ **Customer ID Management**: Secure customer authentication and session filtering
 - ✅ **Interactive Feedback UI**: Thumbs up/down buttons after each assistant message with agent attribution
@@ -129,70 +182,187 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 
 ### System Architecture
 
+![CustoFlow Architecture](assets/architecture-diagram.png)
+
 ```mermaid
 graph TB
-    Customer[Customer Query] --> Orchestrator[CustoFlow Orchestrator]
-    Orchestrator --> FAQ[FAQ Agent 📚]
-    Orchestrator --> Order[Order Agent 📦]
-    Orchestrator --> Sentiment[Sentiment Agent 😊]
-    Orchestrator --> Escalation[Escalation Agent 🎫]
-    FAQ --> FAQTool[FAQ Tool 🔍]
-    Order --> OrderTool[Order Tool 📋]
-    Escalation --> TicketTool[Ticket Tool 🎫]
+    subgraph "Frontend Layer"
+        Frontend[React/Next.js<br/>Vercel]
+    end
+    
+    subgraph "API Layer"
+        API[FastAPI Server<br/>Google Cloud Run]
+    end
+    
+    subgraph "Agent Layer"
+        Orchestrator[Orchestrator Agent<br/>🎯 Routing & Coordination]
+        FAQ[FAQ Agent 📚]
+        Order[Order Agent 📦]
+        Sentiment[Sentiment Agent 😊]
+        Escalation[Escalation Agent 🎫]
+    end
+    
+    subgraph "Tools Layer"
+        FAQTool[FAQ Tool<br/>🔍 Semantic Search]
+        OrderTool[Order Tool<br/>📋 Lookup & History]
+        OrderMod[Order Modification<br/>🔧 Cancel, Notes, Refunds]
+        Shipping[Shipping Tool<br/>📦 OpenAPI Tracking]
+        TicketTool[Ticket Tool<br/>🎫 Creation & Summary]
+        TicketMod[Ticket Modification<br/>🔧 Status & Priority]
+        Conversation[Conversation Tool<br/>💬 Summarization]
+        Document[Document Analysis<br/>📄 Vision API]
+    end
+    
+    subgraph "Data Layer"
+        Supabase[(Supabase<br/>PostgreSQL)]
+        FAISS[(FAISS<br/>Vector Search)]
+    end
+    
+    Frontend -->|HTTP/REST| API
+    API --> Orchestrator
+    Orchestrator --> FAQ
+    Orchestrator --> Order
+    Orchestrator --> Sentiment
+    Orchestrator --> Escalation
+    
+    FAQ --> FAQTool
+    FAQ -.->|A2A| Order
+    Order --> OrderTool
+    Order --> OrderMod
+    Order --> Shipping
+    Order -.->|A2A| FAQ
+    Sentiment -.->|A2A| Escalation
+    Escalation --> TicketTool
+    Escalation --> TicketMod
+    Escalation --> Conversation
+    Order --> Document
+    
+    FAQTool --> FAISS
+    FAQTool --> Supabase
+    OrderTool --> Supabase
+    OrderMod --> Supabase
+    Shipping --> Supabase
+    TicketTool --> Supabase
+    TicketMod --> Supabase
+    Conversation --> Supabase
     
     style Orchestrator fill:#4CAF50,stroke:#2E7D32,color:#fff
     style FAQ fill:#2196F3,stroke:#1565C0,color:#fff
     style Order fill:#FF9800,stroke:#E65100,color:#fff
     style Sentiment fill:#9C27B0,stroke:#4A148C,color:#fff
     style Escalation fill:#F44336,stroke:#B71C1C,color:#fff
+    style Frontend fill:#E3F2FD
+    style API fill:#BBDEFB
+    style Supabase fill:#81C784
+    style FAISS fill:#A5D6A7
 ```
 
 ### Data Flow
 
+![CustoFlow Data Flow](assets/data-flow-diagram.png)
+
 ```mermaid
-flowchart LR
-    A[User Request] --> B[Validation 🔒]
-    B --> C[Rate Limiting ⏱️]
-    C --> D{Cache Check 💾}
-    D -->|Hit| E[Return Cached ✅]
-    D -->|Miss| F[Orchestrator 🎯]
-    F --> G[Agent 🤖]
-    G --> H[Tool 🛠️]
-    H --> I[Cache Store 💾]
-    I --> J[Analytics 📊]
-    J --> K[Response ✅]
+flowchart TD
+    Start[Customer Query] --> Validate[Input Validation 🔒]
+    Validate --> RateLimit[Rate Limiting ⏱️<br/>60 req/min]
+    RateLimit --> Cache{Cache Check 💾}
+    Cache -->|Hit| CacheResponse[Return Cached Response ✅]
+    Cache -->|Miss| Orchestrator[Orchestrator Analysis 🎯]
+    Orchestrator --> Route{Route Decision}
+    Route -->|FAQ| FAQAgent[FAQ Agent 📚]
+    Route -->|Order| OrderAgent[Order Agent 📦]
+    Route -->|Sentiment| SentimentAgent[Sentiment Agent 😊]
+    Route -->|Escalation| EscalationAgent[Escalation Agent 🎫]
     
-    style A fill:#E3F2FD
-    style E fill:#81C784
-    style K fill:#4CAF50
+    FAQAgent --> FAQTool[FAQ Tool<br/>Semantic Search]
+    OrderAgent --> OrderTools[Order Tools<br/>Lookup, Modify, Track]
+    SentimentAgent --> EscalationAgent
+    EscalationAgent --> TicketTool[Ticket Tool<br/>Create & Summarize]
+    
+    FAQTool --> Database[(Supabase Database)]
+    OrderTools --> Database
+    TicketTool --> Database
+    
+    Database --> Response[Generate Response]
+    CacheResponse --> User[Customer Response ✅]
+    Response --> Store[Store in Cache 💾]
+    Store --> Analytics[Update Analytics 📊]
+    Analytics --> User
+    
+    style Start fill:#E3F2FD
+    style CacheResponse fill:#81C784
+    style User fill:#4CAF50
+    style Orchestrator fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style Database fill:#A5D6A7
 ```
 
 ### Agent Coordination
 
+<!-- 
+TODO: Add generated A2A communication diagram
+![A2A Communication](assets/a2a-diagram.png)
+-->
+
 ```mermaid
 graph TB
-    Query[Customer: I'm frustrated with order 12345!] --> Analysis[Orchestrator Analysis]
-    Analysis --> Sentiment[Sentiment Agent 😊]
-    Analysis --> Order[Order Agent 📦]
-    Analysis --> Escalation[Escalation Agent 🎫]
-    Sentiment --> Response[Combined Response]
-    Order --> Response
-    Escalation --> Response
+    Query["Customer: I'm frustrated with order 12345!"] --> Analysis[Orchestrator Analysis]
+    Analysis --> Sentiment[Sentiment Agent 😊<br/>Detects: Frustration, High Urgency]
+    Analysis --> Order[Order Agent 📦<br/>Retrieves Order Details]
+    Analysis --> Escalation[Escalation Agent 🎫<br/>Creates Urgent Ticket]
     
-    style Analysis fill:#4CAF50,color:#fff
-    style Response fill:#81C784,color:#fff
+    Sentiment -.->|A2A Protocol| Escalation
+    Order -.->|A2A Protocol| FAQ[FAQ Agent 📚<br/>Gets Refund Policy]
+    FAQ -.->|A2A Protocol| Order
+    
+    Sentiment --> SentimentData[Sentiment Analysis<br/>Emotion: Frustrated<br/>Urgency: High]
+    Order --> OrderData[Order Details<br/>Status, Items, Tracking]
+    Escalation --> TicketData[Ticket Created<br/>Priority: Urgent<br/>Summary Generated]
+    FAQ --> PolicyData[Refund Policy<br/>30-day guarantee]
+    
+    SentimentData --> Response[Combined Response<br/>Empathetic + Order Info + Ticket]
+    OrderData --> Response
+    TicketData --> Response
+    PolicyData --> Response
+  
+    style Analysis fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style Response fill:#81C784,stroke:#4CAF50,color:#fff
+    style Sentiment fill:#9C27B0,stroke:#4A148C,color:#fff
+    style Order fill:#FF9800,stroke:#E65100,color:#fff
+    style Escalation fill:#F44336,stroke:#B71C1C,color:#fff
+    style FAQ fill:#2196F3,stroke:#1565C0,color:#fff
 ```
+
 
 ### Memory Architecture
 
 ```mermaid
 graph TB
-    Session[Session Memory 💭<br/>Current conversation] --> History[Conversation History 📝<br/>Persistent storage]
-    History --> LongTerm[Long-Term Memory 🧠<br/>Customer knowledge]
+    subgraph "Session Layer"
+        Session[Session Memory 💭<br/>InMemorySessionService<br/>Active conversation context]
+    end
     
-    style Session fill:#2196F3,color:#fff
-    style History fill:#FF9800,color:#fff
-    style LongTerm fill:#4CAF50,color:#fff
+    subgraph "Persistence Layer"
+        History[Conversation History 📝<br/>Supabase Messages Table<br/>Full message history]
+        Metadata[Session Metadata<br/>Customer ID, User ID<br/>Session status]
+    end
+    
+    subgraph "Long-Term Memory"
+        LongTerm[Long-Term Memory 🧠<br/>Customer Knowledge<br/>Preferences, History]
+        Analytics[Analytics Data 📊<br/>Interaction patterns<br/>Satisfaction scores]
+    end
+    
+    Session -->|Store Messages| History
+    Session -->|Store Context| Metadata
+    History -->|Aggregate| LongTerm
+    Metadata -->|Track| Analytics
+    LongTerm -->|Personalize| Session
+    Analytics -->|Improve| Session
+  
+    style Session fill:#2196F3,stroke:#1565C0,color:#fff
+    style History fill:#FF9800,stroke:#E65100,color:#fff
+    style Metadata fill:#FFB74D,stroke:#E65100,color:#000
+    style LongTerm fill:#4CAF50,stroke:#2E7D32,color:#fff
+    style Analytics fill:#9C27B0,stroke:#4A148C,color:#fff
 ```
 
 ## 🚀 Quick Start
@@ -205,17 +375,20 @@ graph TB
 ### Installation
 
 1. **Clone the repository:**
+
 ```bash
 git clone https://github.com/Rayyan-Oumlil/CustoFlow.git
 cd CustoFlow
 ```
 
 2. **Install dependencies:**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 3. **Create `.env` file:**
+
 ```bash
 GOOGLE_API_KEY=your_api_key_here
 SUPABASE_URL=your_supabase_url
@@ -223,12 +396,14 @@ SUPABASE_KEY=your_supabase_key
 ```
 
 **Optional:** For semantic search, install additional dependencies:
+
 ```bash
 pip install sentence-transformers faiss-cpu
 python -m tools.init_semantic_search
 ```
 
 4. **Run tests to verify setup:**
+
 ```bash
 python -m pytest tests/
 ```
@@ -252,6 +427,7 @@ npm run dev
 The frontend will open automatically in your browser at `http://localhost:3000`
 
 **Features:**
+
 - 💬 **Chat Interface** - Interactive conversation with customer ID authentication
   - Thumbs up/down feedback buttons after each assistant message
   - Session management (create, rename, delete conversations)
@@ -277,6 +453,7 @@ python main.py
 ```
 
 **Example Conversation:**
+
 ```
 ╔═══════════════════════════════════════════════════════════╗
 ║           CustoFlow - Customer Support Agent              ║
@@ -331,6 +508,7 @@ uvicorn api.server:app --reload
 ```
 
 Then access:
+
 - API: `http://localhost:8000`
 - Health: `http://localhost:8000/health`
 - Metrics: `http://localhost:8000/metrics`
@@ -342,6 +520,7 @@ Then access:
 ### Example API Request
 
 **Using curl:**
+
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
@@ -352,6 +531,7 @@ curl -X POST http://localhost:8000/chat \
 ```
 
 **Using Python:**
+
 ```python
 import requests
 
@@ -368,6 +548,7 @@ print(data["response"])
 ```
 
 **API Endpoints:**
+
 - `POST /chat` - Chat with the multi-agent system
 - `GET /orders` - Get all orders (with filters)
 - `POST /orders` - Create new order
@@ -397,16 +578,19 @@ print(data["response"])
 ### Technology Stack
 
 **Core Framework:**
+
 - Google ADK (Agent Development Kit) - Multi-agent orchestration
 - Gemini 2.5 Flash Lite - LLM for all agents
 - Python 3.10+ - Backend programming language
 
 **Web Framework:**
+
 - FastAPI - REST API server (deployed on Google Cloud Run)
 - React/Next.js 15 - Frontend web dashboard (deployed on Vercel)
 - TypeScript - Frontend type safety
 
 **Data Storage:**
+
 - Supabase (PostgreSQL) - Primary database for all persistent data
   - Messages, sessions, orders, tickets, feedback
   - Analytics, agent refinements, KB updates
@@ -414,6 +598,7 @@ print(data["response"])
 - In-Memory - Session management and caching
 
 **Libraries:**
+
 - Sentence Transformers - Semantic search embeddings
 - Supabase Client - Database and storage integration
 - Google Cloud Speech - Speech-to-Text and Text-to-Speech
@@ -430,14 +615,18 @@ CustoFlow/
 │   ├── faq_agent.py                   # 📚 FAQ specialist
 │   ├── order_agent.py                 # 📦 Order inquiry specialist
 │   ├── sentiment_agent.py             # 😊 Sentiment analysis
-│   ├── escalation_agent.py            # 🎫 Ticket creation
-│   └── escalation_agent.py            # 🎫 Ticket creation agent
+│   └── escalation_agent.py            # 🎫 Ticket creation
 │
-├── 🛠️ tools/                           # Custom Tools (5 tools)
+├── 🛠️ tools/                           # Custom Tools (8 tools)
 │   ├── faq_tool.py                    # 🔍 FAQ search + cache
 │   ├── order_tool.py                  # 📋 Order lookup + cache
+│   ├── order_modification_tool.py     # 🔧 Order modifications
+│   ├── shipping_tool.py               # 📦 Shipping tracking (OpenAPI)
 │   ├── ticket_tool.py                 # 🎫 Ticket creation
-│   └── ticket_tool_lro.py             # ⏸️ LRO with human approval
+│   ├── ticket_modification_tool.py   # 🔧 Ticket modifications
+│   ├── ticket_tool_lro.py             # ⏸️ LRO with human approval
+│   ├── conversation_tool.py          # 💬 Conversation tools
+│   └── document_analysis_tool.py     # 📄 Document analysis
 │
 ├── 💾 memory/                          # Session & Memory
 │   ├── session_store.py               # 💭 Session management
@@ -564,6 +753,7 @@ CustoFlow/
 ```
 
 **Run Tests:**
+
 ```bash
 # Full test suite
 python -m pytest tests/
@@ -583,6 +773,7 @@ python scripts/check_project.py
 ## 📊 Evaluation Results
 
 The system has been evaluated on **140+ comprehensive test cases** across **30+ test files** covering:
+
 - FAQ queries (refunds, shipping, policies)
 - Order inquiries (status, tracking, modifications)
 - Sentiment analysis (frustration, urgency)
@@ -637,6 +828,7 @@ The system has been evaluated on **140+ comprehensive test cases** across **30+ 
 ```
 
 See `notebooks/evaluation.py` for detailed evaluation metrics:
+
 ```bash
 python notebooks/evaluation.py
 ```
@@ -753,10 +945,8 @@ This project demonstrates **8 key concepts** from the Kaggle 5-Day AI Agents Int
 
 ## 📚 Documentation
 
-- [Deployment Decision](docs/DEPLOYMENT_DECISION.md) - Why we use Cloud Run
-- [Feature Proposals](docs/FEATURE_PROPOSALS.md) - Implemented and planned features
-- [Database & Learning](docs/DATABASE_AND_LEARNING.md) - Database usage and learning systems
-- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment instructions
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Detailed system architecture and component documentation
+- **[CAPSTONE_WRITEUP.md](CAPSTONE_WRITEUP.md)** - Complete project writeup for capstone submission
 
 ## 📄 License
 
@@ -765,4 +955,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🙏 Acknowledgments
 
 Built for the Kaggle 5-Day AI Agents Intensive Course with Google.
-
