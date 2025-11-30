@@ -32,7 +32,7 @@ Companies receive **thousands of repetitive customer support queries daily** (or
 
 ### Impact & Value
 
-- ⚡ **Response time**: 2-4 hours → **<30 seconds** (99% reduction)
+- ⚡ **Response time**: 2-4 hours → **<10 seconds** (99% reduction)
 - 💰 **Cost reduction**: **60% lower** operational costs
 - 📈 **Scalability**: Handle **1000+ concurrent users** vs 50-100 with humans
 - 😊 **Satisfaction**: **40% improvement** in customer satisfaction scores
@@ -380,11 +380,8 @@ This project demonstrates **11 key concepts** from the **Kaggle 5-Day AI Agents 
 
 ## 🔗 Live Demo & Links
 
-<<<<<<< HEAD
-- **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app) 
-=======
 - **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app)
->>>>>>> 682b524112c37b51e69cd24555c74b5c2a10a74c
+- **☁️ API Backend (Cloud Run)**: [https://custoflow-api-mbokr3f3ka-uc.a.run.app](https://custoflow-api-mbokr3f3ka-uc.a.run.app)
 - **📦 GitHub Repository**: [https://github.com/Rayyan-Oumlil/CustoFlow](https://github.com/Rayyan-Oumlil/CustoFlow)
 
 ## 📄 License

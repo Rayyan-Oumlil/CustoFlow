@@ -188,10 +188,10 @@ export default function ChatPage() {
       // Normalize content (remove extra spaces, lowercase)
       const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ')
       
-      // Create signature with more lenient timestamp matching (5 second window)
+      // Create signature with more lenient timestamp matching (10 second window for better matching)
       // This handles cases where local and server timestamps differ slightly
       const timestamp = new Date(msg.timestamp).getTime()
-      const roundedTime = Math.floor(timestamp / 5000) * 5000 // Round to nearest 5 seconds
+      const roundedTime = Math.floor(timestamp / 10000) * 10000 // Round to nearest 10 seconds
       const signature = `${msg.role}:${normalizedContent}:${roundedTime}`
       
       if (!seen.has(signature)) {
@@ -223,12 +223,67 @@ export default function ChatPage() {
           const currentIsNumeric = msg.id && /^\d+$/.test(String(msg.id))
           if (currentIsNumeric && !existingIsNumeric) {
             seen.set(signature, msg) // Prefer numeric ID
+          } else if (!existingIsNumeric && !currentIsNumeric) {
+            // Both are non-numeric - prefer the one with more recent timestamp
+            const existingTime = new Date(existing.timestamp).getTime()
+            const currentTime = new Date(msg.timestamp).getTime()
+            if (currentTime > existingTime) {
+              seen.set(signature, msg) // Prefer more recent
+            }
           }
         }
       }
     }
     
-    return Array.from(seen.values()).sort((a, b) => 
+    // Final pass: also check for exact content matches regardless of timestamp (within 30 seconds)
+    const finalMessages: Message[] = []
+    const contentMap = new Map<string, Message>()
+    
+    for (const msg of Array.from(seen.values()).sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    )) {
+      const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+      const contentKey = `${msg.role}:${normalizedContent}`
+      
+      const existing = contentMap.get(contentKey)
+      if (existing) {
+        // Check if timestamps are close (within 30 seconds)
+        const timeDiff = Math.abs(
+          new Date(msg.timestamp).getTime() - new Date(existing.timestamp).getTime()
+        )
+        if (timeDiff < 30000) {
+          // They're duplicates - prefer server message
+          const existingIsLocal = existing.id && (
+            existing.id.startsWith('user_') || 
+            existing.id.startsWith('assistant_') || 
+            existing.id.startsWith('error_') ||
+            existing.id.startsWith('agent_')
+          )
+          const currentIsLocal = msg.id && (
+            msg.id.startsWith('user_') || 
+            msg.id.startsWith('assistant_') || 
+            msg.id.startsWith('error_') ||
+            msg.id.startsWith('agent_')
+          )
+          
+          if (existingIsLocal && !currentIsLocal) {
+            // Replace with server message
+            const index = finalMessages.findIndex(m => m.id === existing.id)
+            if (index !== -1) {
+              finalMessages[index] = msg
+            }
+            contentMap.set(contentKey, msg)
+          }
+          // Skip adding duplicate
+          continue
+        }
+      }
+      
+      finalMessages.push(msg)
+      contentMap.set(contentKey, msg)
+    }
+    
+    return finalMessages.sort((a, b) => 
       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     )
   }
@@ -287,46 +342,64 @@ export default function ChatPage() {
           // Local user messages (temp IDs) will be replaced by server messages (proper IDs)
           // This prevents duplicates while keeping optimistic updates
           setMessages((prev) => {
-            // Create a map of server messages by content+role+timestamp for quick lookup
+            // Create a map of server messages by content+role for quick lookup (more lenient matching)
             const serverMap = new Map<string, Message>()
             for (const msg of serverMsgs) {
-              const timestamp = new Date(msg.timestamp).getTime()
-              const roundedTime = Math.floor(timestamp / 5000) * 5000
               const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-              const signature = `${msg.role}:${normalizedContent}:${roundedTime}`
-              serverMap.set(signature, msg)
+              const contentKey = `${msg.role}:${normalizedContent}`
+              // Store the most recent server message for each content+role
+              const existing = serverMap.get(contentKey)
+              if (!existing || new Date(msg.timestamp).getTime() > new Date(existing.timestamp).getTime()) {
+                serverMap.set(contentKey, msg)
+              }
             }
             
-            // Replace local messages with server versions if they match
+            // Replace local messages with server versions if they match (by content, within 30 seconds)
             const updated = prev.map(localMsg => {
-              const timestamp = new Date(localMsg.timestamp).getTime()
-              const roundedTime = Math.floor(timestamp / 5000) * 5000
               const normalizedContent = localMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-              const signature = `${localMsg.role}:${normalizedContent}:${roundedTime}`
+              const contentKey = `${localMsg.role}:${normalizedContent}`
               
-              // If server has a matching message, use server version (has proper ID)
-              if (serverMap.has(signature)) {
-                return serverMap.get(signature)!
+              const serverMsg = serverMap.get(contentKey)
+              if (serverMsg) {
+                // Check if timestamps are close (within 30 seconds) - they're likely the same message
+                const timeDiff = Math.abs(
+                  new Date(serverMsg.timestamp).getTime() - new Date(localMsg.timestamp).getTime()
+                )
+                if (timeDiff < 30000) {
+                  // They're the same message - prefer server version (has proper ID)
+                  return serverMsg
+                }
               }
               return localMsg // Keep local message if no server match (not saved yet)
             })
             
             // Add any server messages that don't have local matches (new messages)
-            const localSignatures = new Set(
+            const localContentKeys = new Set(
               prev.map(m => {
-                const t = new Date(m.timestamp).getTime()
-                const rt = Math.floor(t / 5000) * 5000
                 const nc = m.content.trim().toLowerCase().replace(/\s+/g, ' ')
-                return `${m.role}:${nc}:${rt}`
+                return `${m.role}:${nc}`
               })
             )
             
             for (const serverMsg of serverMsgs) {
-              const t = new Date(serverMsg.timestamp).getTime()
-              const rt = Math.floor(t / 5000) * 5000
               const nc = serverMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-              const sig = `${serverMsg.role}:${nc}:${rt}`
-              if (!localSignatures.has(sig)) {
+              const contentKey = `${serverMsg.role}:${nc}`
+              
+              // Check if we have a local message with same content
+              const hasLocalMatch = prev.some(localMsg => {
+                const localNC = localMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+                const localKey = `${localMsg.role}:${localNC}`
+                if (localKey === contentKey) {
+                  // Check if timestamps are close
+                  const timeDiff = Math.abs(
+                    new Date(serverMsg.timestamp).getTime() - new Date(localMsg.timestamp).getTime()
+                  )
+                  return timeDiff < 30000
+                }
+                return false
+              })
+              
+              if (!hasLocalMatch) {
                 updated.push(serverMsg)
               }
             }
@@ -962,19 +1035,31 @@ export default function ChatPage() {
         }
         
         // Add assistant message immediately after user message
-        // Replace user message with server version if available, then add assistant response
+        // Use deduplication to prevent duplicates
         setMessages((prev) => {
-          // Find and replace the optimistic user message with server version (if different)
-          const updated = prev.map(msg => {
-            // If this is our optimistic user message, keep it (will be replaced by polling later)
-            if (msg.id === userMsgId) {
-              return msg
+          // Check if we already have this assistant message (by content)
+          const normalizedContent = assistantMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+          const hasDuplicate = prev.some(msg => {
+            if (msg.role === "assistant") {
+              const msgContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+              if (msgContent === normalizedContent) {
+                // Check if timestamps are close (within 5 seconds)
+                const timeDiff = Math.abs(
+                  new Date(assistantMsg.timestamp).getTime() - new Date(msg.timestamp).getTime()
+                )
+                return timeDiff < 5000
+              }
             }
-            return msg
+            return false
           })
           
-          // Add assistant response
-          return [...updated, assistantMsg]
+          if (hasDuplicate) {
+            // Don't add duplicate
+            return prev
+          }
+          
+          // Add assistant response and deduplicate
+          return deduplicateMessages([...prev, assistantMsg])
         })
       }
       
@@ -1215,200 +1300,149 @@ export default function ChatPage() {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-hidden flex flex-col">
-        <div className="border-b border-border p-4">
-          <Select
-            value={sessionId || "new"}
-            onValueChange={(value) => {
-              if (value === "new") {
-                createNewConversation()
-              } else {
-                setSessionId(value)
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select conversation">
-                {sessionId 
-                  ? (conversations.find(c => c.session_id === sessionId)?.name || `Session ${sessionId.slice(-8)}`)
-                  : "New Conversation"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="new">
-                <div className="flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  <span>New Conversation</span>
-                </div>
-              </SelectItem>
-              {conversations.map((conv) => (
-                <SelectItem key={conv.session_id} value={conv.session_id}>
-                  <div className="flex flex-col">
-                    <span>{conv.name}</span>
-                    <span className="text-xs text-muted-foreground">{conv.message_count} messages</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
       <div className="flex-1 overflow-hidden flex">
         <div className="w-64 border-r border-border flex flex-col">
-            <div className="p-4 border-b border-border bg-muted/50">
-              <p className="text-xs font-medium text-muted-foreground mb-1">Current Conversation:</p>
-              {sessionId && editingName === sessionId ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        renameConversation(sessionId, newName)
-                      } else if (e.key === "Escape") {
-                        setEditingName(null)
-                        setNewName("")
-                      }
-                    }}
-                    className="h-8 text-sm"
-                    autoFocus
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => renameConversation(sessionId, newName)}
-                    className="h-8 px-2"
-                  >
-                    ✓
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditingName(null)
-                      setNewName("")
-                    }}
-                    className="h-8 px-2"
-                  >
-                    ✕
-            </Button>
-          </div>
-              ) : (
-                <div className="flex items-center gap-2 group">
-                  <p className="text-sm font-semibold truncate flex-1">
-                    {sessionId 
-                      ? (conversations.find(c => c.session_id === sessionId)?.name || `Session ${sessionId.slice(-8)}`)
-                      : "None selected"}
-                  </p>
-                  {sessionId && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        const currentName = conversations.find(c => c.session_id === sessionId)?.name || `Session ${sessionId.slice(-8)}`
-                        setNewName(currentName)
-                        setEditingName(sessionId)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
-                      title="Rename conversation"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </Button>
+            <div className="p-4 border-b border-border bg-muted/50 space-y-3">
+              {/* New Conversation Button */}
+              <Button
+                onClick={createNewConversation}
+                className="w-full"
+                variant="default"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Conversation
+              </Button>
+
+              {/* Current Conversation Name */}
+              {sessionId && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Current Conversation:</p>
+                  {editingName === sessionId ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            renameConversation(sessionId, newName)
+                          } else if (e.key === "Escape") {
+                            setEditingName(null)
+                            setNewName("")
+                          }
+                        }}
+                        className="h-8 text-sm"
+                        autoFocus
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => renameConversation(sessionId, newName)}
+                        className="h-8 px-2"
+                      >
+                        ✓
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditingName(null)
+                          setNewName("")
+                        }}
+                        className="h-8 px-2"
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 group">
+                      <p className="text-sm font-semibold truncate flex-1">
+                        {conversations.find(c => c.session_id === sessionId)?.name || `Session ${sessionId.slice(-8)}`}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          const currentName = conversations.find(c => c.session_id === sessionId)?.name || `Session ${sessionId.slice(-8)}`
+                          setNewName(currentName)
+                          setEditingName(sessionId)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
+                        title="Rename conversation"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => deleteConversation(sessionId)}
+                        className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0 text-destructive hover:text-destructive"
+                        title="Delete conversation"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}
-            </div>
-          <ScrollArea className="flex-1">
-            <div className="space-y-2 p-4">
-              {conversations.map((conv) => (
-                  <div
-                    key={conv.session_id}
-                    className={`group flex items-center gap-2 rounded text-sm transition-colors ${
-                      sessionId === conv.session_id
-                        ? "bg-muted"
-                        : "hover:bg-muted"
-                    }`}
-                  >
-                    {editingName === conv.session_id ? (
-                      <div className="flex-1 flex items-center gap-2 px-3 py-2">
-                        <Input
-                          value={newName}
-                          onChange={(e) => setNewName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              renameConversation(conv.session_id, newName)
-                            } else if (e.key === "Escape") {
-                              setEditingName(null)
-                              setNewName("")
-                            }
-                          }}
-                          className="h-8 text-sm"
-                          autoFocus
-                        />
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => renameConversation(conv.session_id, newName)}
-                          className="h-8 px-2"
-                        >
-                          ✓
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setEditingName(null)
-                            setNewName("")
-                          }}
-                          className="h-8 px-2"
-                        >
-                          ✕
-                        </Button>
+
+              {/* Conversations List */}
+              {conversations.length > 0 && (
+                <div className="flex-1 overflow-y-auto border-t border-border mt-4">
+                  <p className="text-xs font-medium text-muted-foreground px-4 pt-4 pb-2">All Conversations:</p>
+                  <div className="space-y-1 px-2 pb-2">
+                    {conversations.map((conv) => (
+                      <div
+                        key={conv.session_id}
+                        className={`group flex items-center gap-2 rounded text-sm transition-colors cursor-pointer ${
+                          sessionId === conv.session_id
+                            ? "bg-muted"
+                            : "hover:bg-muted/50"
+                        }`}
+                        onClick={() => setSessionId(conv.session_id)}
+                      >
+                        <div className="flex-1 px-3 py-2 rounded transition-colors">
+                          <p className={`truncate ${sessionId === conv.session_id ? "font-medium" : ""}`}>
+                            {conv.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{conv.message_count} messages</p>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const currentName = conv.name
+                              setNewName(currentName)
+                              setEditingName(conv.session_id)
+                            }}
+                            title="Rename conversation"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteConversation(conv.session_id)
+                            }}
+                            title="Delete conversation"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </div>
-                    ) : (
-                      <>
-                <button
-                  onClick={() => setSessionId(conv.session_id)}
-                          className={`flex-1 text-left px-3 py-2 rounded transition-colors ${
-                    sessionId === conv.session_id
-                              ? "text-foreground font-medium"
-                              : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <p className="truncate">{conv.name}</p>
-                  <p className="text-xs mt-1">{conv.message_count} messages</p>
-                </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            const currentName = conv.name
-                            setNewName(currentName)
-                            setEditingName(conv.session_id)
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-2 text-muted-foreground hover:text-primary transition-opacity"
-                          title="Rename conversation"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            deleteConversation(conv.session_id)
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-2 text-muted-foreground hover:text-destructive transition-opacity"
-                          title="Delete session"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
+                    ))}
                   </div>
-              ))}
+                </div>
+              )}
             </div>
-          </ScrollArea>
         </div>
 
-          <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto">
             <div className="p-6 space-y-4">
               {messages.length === 0 ? (
@@ -1698,12 +1732,11 @@ export default function ChatPage() {
                 <ArrowUp className="w-4 h-4" />
               </Button>
             </form>
-            </div>
-            </div>
           </div>
         </div>
+      </div>
 
-        {/* Feedback Dialog */}
+      {/* Feedback Dialog */}
         <Dialog open={isFeedbackDialogOpen} onOpenChange={setIsFeedbackDialogOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
