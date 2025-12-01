@@ -2432,6 +2432,33 @@ async def get_ticket_summary(ticket_id: str):
 # Agent Improvement & KB Update Endpoints
 # ============================================================================
 
+@app.get("/auto-learning/insights")
+async def get_all_auto_learning_insights():
+    """Get all auto-learning insights (all agents, all types)."""
+    try:
+        from utils.supabase_client import SUPABASE_ENABLED, get_auto_learning
+        
+        if not SUPABASE_ENABLED:
+            return {"insights": [], "refinements": [], "kb_updates": []}
+        
+        # Get all insights (all agents)
+        all_insights = get_auto_learning(learning_type="insight", status="active")
+        all_refinements = get_auto_learning(learning_type="refinement", status="pending")
+        all_kb_updates = get_auto_learning(learning_type="kb_update", status="pending")
+        
+        return {
+            "insights": all_insights[:10],  # Last 10 insights
+            "refinements": all_refinements[:10],  # Last 10 refinements
+            "kb_updates": all_kb_updates[:10],  # Last 10 KB updates
+            "total_insights": len(all_insights),
+            "total_refinements": len(all_refinements),
+            "total_kb_updates": len(all_kb_updates)
+        }
+    except Exception as e:
+        logger.error(f"Error getting auto-learning insights: {e}")
+        return {"insights": [], "refinements": [], "kb_updates": [], "error": str(e)}
+
+
 @app.get("/agent-refinements/{agent_name}")
 async def get_agent_refinements_endpoint(agent_name: str):
     """Get pending refinements for an agent."""

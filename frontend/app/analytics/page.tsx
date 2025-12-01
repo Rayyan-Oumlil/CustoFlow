@@ -128,14 +128,26 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const fetchInsights = async () => {
       try {
-        const [refinements, kbUpdates, qaCheck] = await Promise.all([
+        const [allInsights, orderRefinements, faqRefinements, kbUpdates, qaCheck] = await Promise.all([
+          apiClient.get<any>("/auto-learning/insights").catch(() => null),
           apiClient.get<any>("/agent-refinements/order_agent").catch(() => null),
+          apiClient.get<any>("/agent-refinements/faq_agent").catch(() => null),
           apiClient.get<any>("/kb-updates/pending").catch(() => null),
           apiClient.get<any>("/qa/check").catch(() => null),
         ])
         
+        // Combine insights from all agents
+        const combinedRefinements = [
+          ...(orderRefinements?.pending_refinements || []),
+          ...(faqRefinements?.pending_refinements || [])
+        ]
+        
         setInsights({
-          refinements: refinements || { pending_refinements: [], summary: {} },
+          allInsights: allInsights || { insights: [], refinements: [], kb_updates: [] },
+          refinements: { 
+            pending_refinements: combinedRefinements,
+            summary: orderRefinements?.summary || {}
+          },
           kbUpdates: kbUpdates?.updates || kbUpdates || [],
           qaCheck: qaCheck || { recent_checks: [] }
         })
@@ -291,12 +303,34 @@ export default function AnalyticsPage() {
             <span className="text-lg">🤖</span>
             Auto-Learning Insights (Real-Time)
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Feedback Insights */}
+            <div className="border rounded-lg p-4">
+              <p className="text-sm font-medium text-muted-foreground mb-2">Feedback Insights</p>
+              <p className="text-2xl font-bold">
+                {insights?.allInsights?.total_insights || insights?.allInsights?.insights?.length || 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Active insights</p>
+              {insights?.allInsights?.insights?.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {insights.allInsights.insights.slice(0, 2).map((insight: any, idx: number) => {
+                    const data = typeof insight.data === 'string' ? JSON.parse(insight.data) : insight.data;
+                    const agent = insight.agent_name || 'unknown';
+                    return (
+                      <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
+                        <p className="font-medium truncate">{agent}: {data?.description || data?.insight_type || "Insight"}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* Agent Refinements */}
             <div className="border rounded-lg p-4">
               <p className="text-sm font-medium text-muted-foreground mb-2">Agent Refinements</p>
               <p className="text-2xl font-bold">
-                {insights?.refinements?.pending_refinements?.length || 0}
+                {insights?.allInsights?.total_refinements || insights?.refinements?.pending_refinements?.length || 0}
               </p>
               <p className="text-xs text-muted-foreground mt-1">Pending improvements</p>
               {insights?.refinements?.pending_refinements?.length > 0 && (
