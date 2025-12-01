@@ -1201,11 +1201,13 @@ async def get_daily_analytics():
                     start_of_day = datetime.combine(target_date, datetime.min.time())
                     end_of_day = datetime.combine(target_date, datetime.max.time())
                     
-                    result = supabase.table("messages").select("id", count="exact").gte("created_at", start_of_day.isoformat()).lte("created_at", end_of_day.isoformat()).limit(1).execute()
+                    # Use 'timestamp' column for messages table (not 'created_at')
+                    result = supabase.table("messages").select("id", count="exact").gte("timestamp", start_of_day.isoformat()).lte("timestamp", end_of_day.isoformat()).limit(1).execute()
                     message_count = result.count if hasattr(result, 'count') and result.count is not None else 0
                     interactions = message_count // 2  # Each interaction = user + assistant
                     
                     # Get average satisfaction for this day
+                    # Note: feedback table uses 'created_at'
                     feedback_result = supabase.table("feedback").select("rating").gte("created_at", start_of_day.isoformat()).lte("created_at", end_of_day.isoformat()).execute()
                     ratings = [f.get("rating") for f in feedback_result.data if f.get("rating") is not None]
                     avg_satisfaction = sum(ratings) / len(ratings) if ratings else 0.0
