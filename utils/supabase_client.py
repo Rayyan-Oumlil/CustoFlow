@@ -332,6 +332,21 @@ def create_ticket(
         return create_ticket_json(issue, customer_id, priority, session_id, user_id)
     
     try:
+        # Check if an active ticket already exists for this session (prevent duplicates)
+        if session_id:
+            existing_tickets = get_tickets(session_id=session_id)
+            # Filter for active tickets (not closed/resolved)
+            active_tickets = [t for t in existing_tickets if t.get("status", "").lower() not in ["closed", "resolved"]]
+            if active_tickets:
+                # Return existing ticket instead of creating duplicate
+                existing_ticket = active_tickets[0]  # Get most recent
+                return {
+                    "status": "success",
+                    "ticket_id": existing_ticket.get("ticket_id"),
+                    "message": f"Ticket {existing_ticket.get('ticket_id')} already exists for this session.",
+                    "existing": True
+                }
+        
         import uuid
         ticket_id = f"TICKET-{uuid.uuid4().hex[:8].upper()}"
         

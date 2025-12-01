@@ -268,9 +268,10 @@ async def chat(request: ChatRequest, http_request: Request):
             )
         
         # Check if there's an active ticket for this session
-        # If a ticket exists (not closed), human agent is handling - don't process with AI
-        # If no ticket, allow AI to continue even after human agent intervention
+        # Allow simple questions (FAQ, order lookup) even with active ticket
+        # Only block complex/escalation requests when ticket is active
         has_active_ticket = False
+        active_ticket_id = None
         try:
             from tools.ticket_tool import get_all_tickets
             all_tickets = get_all_tickets()
@@ -281,7 +282,8 @@ async def chat(request: ChatRequest, http_request: Request):
                         ticket_status = ticket.get("status", "").lower()
                         if ticket_status not in ["closed", "resolved"]:
                             has_active_ticket = True
-                            logger.info(f"Active ticket found for session {session_id}: {ticket.get('ticket_id')}")
+                            active_ticket_id = ticket.get("ticket_id")
+                            logger.info(f"Active ticket found for session {session_id}: {active_ticket_id}")
                             break
             elif isinstance(all_tickets, list):
                 # Check if any ticket exists for this session that is not closed
@@ -290,30 +292,44 @@ async def chat(request: ChatRequest, http_request: Request):
                         ticket_status = ticket.get("status", "").lower()
                         if ticket_status not in ["closed", "resolved"]:
                             has_active_ticket = True
-                            logger.info(f"Active ticket found for session {session_id}: {ticket.get('ticket_id')}")
+                            active_ticket_id = ticket.get("ticket_id")
+                            logger.info(f"Active ticket found for session {session_id}: {active_ticket_id}")
                             break
         except Exception as e:
             logger.warning(f"Could not check for active tickets: {e}")
         
-        # Only block AI if there's an active ticket (ticket phase)
-        # If no ticket, allow AI to continue responding even after human agent intervention
+        # Only block AI for complex/escalation requests if there's an active ticket
+        # Allow simple questions (FAQ, order lookup) even with active ticket
         if has_active_ticket:
-            logger.info(f"Active ticket exists for session {session_id}, skipping AI agent response (ticket phase)")
-            # Store user message but don't process with AI
-            conversation_history.add_message(
-                user_id=request.user_id,
-                session_id=session_id,
-                role="user",
-                content=sanitized_message
-            )
-            # Return a message indicating human agent is handling
-            return ChatResponse(
-                response="Your message has been received. A human agent is handling your request and will respond shortly.",
-                session_id=session_id,
-                agent_used="human_agent",
-                response_time=0.1,
-                metrics=metrics.get_counts()
-            )
+            # Check if this is a simple question that can still be answered by AI
+            message_lower = sanitized_message.lower()
+            simple_question_keywords = [
+                "what", "where", "when", "how", "can i", "is", "are", "do you", "does",
+                "refund policy", "shipping", "delivery", "order status", "track", "my order",
+                "cancel order", "return policy", "faq", "help with", "information about"
+            ]
+            is_simple_question = any(keyword in message_lower for keyword in simple_question_keywords)
+            
+            # Block only if it's NOT a simple question (complex/escalation request)
+            if not is_simple_question:
+                logger.info(f"Active ticket exists for session {session_id}, blocking complex request (ticket phase)")
+                # Store user message but don't process with AI
+                conversation_history.add_message(
+                    user_id=request.user_id,
+                    session_id=session_id,
+                    role="user",
+                    content=sanitized_message
+                )
+                # Return a message indicating human agent is handling
+                return ChatResponse(
+                    response=f"Your message has been received. A human agent is handling your request (Ticket {active_ticket_id}) and will respond shortly. For simple questions about orders or policies, I can still help you.",
+                    session_id=session_id,
+                    agent_used="human_agent",
+                    response_time=0.1,
+                    metrics=metrics.get_counts()
+                )
+            else:
+                logger.info(f"Active ticket exists but allowing simple question: {sanitized_message[:50]}...")
         
         # Update message count in metadata
         session_metadata.increment_message_count(session_id)

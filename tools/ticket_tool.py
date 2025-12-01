@@ -104,6 +104,27 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
                 "error_message": "Issue description cannot be empty"
             }
         
+        # Check if an active ticket already exists for this session (prevent duplicates)
+        if session_id:
+            _TICKETS = load_tickets()  # Reload to get latest state
+            existing_tickets = []
+            if isinstance(_TICKETS, dict):
+                existing_tickets = [t for t in _TICKETS.values() if t.get("session_id") == session_id]
+            elif isinstance(_TICKETS, list):
+                existing_tickets = [t for t in _TICKETS if t.get("session_id") == session_id]
+            
+            # Check for active tickets (not closed/resolved)
+            active_tickets = [t for t in existing_tickets if t.get("status", "").lower() not in ["closed", "resolved"]]
+            if active_tickets:
+                # Return existing ticket instead of creating duplicate
+                existing_ticket = active_tickets[0]  # Get most recent
+                return {
+                    "status": "success",
+                    "ticket_id": existing_ticket.get("ticket_id"),
+                    "message": f"Ticket {existing_ticket.get('ticket_id')} already exists for this session.",
+                    "existing": True
+                }
+        
         # Validate priority
         valid_priorities = ["low", "normal", "high", "urgent"]
         if priority.lower() not in valid_priorities:
