@@ -162,21 +162,7 @@ export default function AnalyticsPage() {
     return () => clearInterval(interval)
   }, [])
 
-  const [statusData, setStatusData] = useState<any[]>([])
-
-  // Fetch ticket status data
-  useEffect(() => {
-    const fetchTicketStatus = async () => {
-      try {
-        const data = await apiClient.get<any>("/analytics/ticket-status")
-        setStatusData(data || [])
-      } catch (error) {
-        console.error("Failed to fetch ticket status:", error)
-        setStatusData([])
-      }
-    }
-    fetchTicketStatus()
-  }, [])
+  // Tickets removed from analytics - only manageable via tickets page
 
   // Ensure all fields have default values
   const safeData: Analytics = analytics ? {
@@ -185,9 +171,7 @@ export default function AnalyticsPage() {
     closed_sessions: analytics.closed_sessions ?? 0,
     interactions: analytics.interactions ?? 0,
     avg_satisfaction: analytics.avg_satisfaction ?? 0,
-    tickets_created: analytics.tickets_created ?? 0,
-    open_tickets: analytics.open_tickets ?? 0,
-    resolved_tickets: analytics.resolved_tickets ?? 0,
+    // Tickets removed from analytics - only manageable via tickets page
     resolution_rate: analytics.resolution_rate ?? 0,
     avg_response_time: analytics.avg_response_time ?? 0,
   } : {
@@ -196,9 +180,7 @@ export default function AnalyticsPage() {
     closed_sessions: 0,
     interactions: 0,
     avg_satisfaction: 0,
-    tickets_created: 0,
-    open_tickets: 0,
-    resolved_tickets: 0,
+    // Tickets removed from analytics
     resolution_rate: 0,
     avg_response_time: 0,
   }
@@ -219,25 +201,6 @@ export default function AnalyticsPage() {
             )}
           </Card>
 
-          <Card className="p-6">
-            <p className="text-sm font-medium text-muted-foreground">Open Tickets</p>
-            <p className="text-3xl font-bold mt-2">{loading ? "-" : safeData.open_tickets}</p>
-            {safeData.resolved_tickets !== undefined && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {safeData.resolved_tickets} resolved
-              </p>
-            )}
-          </Card>
-
-          <Card className="p-6">
-            <p className="text-sm font-medium text-muted-foreground">Resolution Rate</p>
-            <p className="text-3xl font-bold mt-2">
-              {loading ? "-" : `${safeData.resolution_rate?.toFixed(1) ?? 0}%`}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {safeData.tickets_created} total
-            </p>
-          </Card>
 
           <Card className="p-6">
             <p className="text-sm font-medium text-muted-foreground">Avg Satisfaction</p>
@@ -256,7 +219,7 @@ export default function AnalyticsPage() {
           </Card>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           <Card className="p-6">
             <h3 className="font-semibold mb-4">Daily Interactions & Satisfaction</h3>
             <ResponsiveContainer width="100%" height={300}>
@@ -273,28 +236,6 @@ export default function AnalyticsPage() {
             </ResponsiveContainer>
           </Card>
 
-          <Card className="p-6">
-            <h3 className="font-semibold mb-4">Ticket Status Distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </Card>
         </div>
 
         {/* Auto-Learning Insights Section */}

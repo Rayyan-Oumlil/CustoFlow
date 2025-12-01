@@ -332,18 +332,19 @@ def create_ticket(
         return create_ticket_json(issue, customer_id, priority, session_id, user_id)
     
     try:
-        # Check if an active ticket already exists for this session (prevent duplicates)
+        # Check if an active ticket already exists for this session (max 1 active ticket per session)
+        # Multiple tickets allowed only if previous ones are closed/resolved
         if session_id:
             existing_tickets = get_tickets(session_id=session_id)
             # Filter for active tickets (not closed/resolved)
             active_tickets = [t for t in existing_tickets if t.get("status", "").lower() not in ["closed", "resolved"]]
             if active_tickets:
-                # Return existing ticket instead of creating duplicate
+                # Return existing ticket instead of creating duplicate (max 1 active ticket per session)
                 existing_ticket = active_tickets[0]  # Get most recent
                 return {
                     "status": "success",
                     "ticket_id": existing_ticket.get("ticket_id"),
-                    "message": f"Ticket {existing_ticket.get('ticket_id')} already exists for this session.",
+                    "message": f"Ticket {existing_ticket.get('ticket_id')} already exists for this session. Only one active ticket per session is allowed.",
                     "existing": True
                 }
         

@@ -104,7 +104,8 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
                 "error_message": "Issue description cannot be empty"
             }
         
-        # Check if an active ticket already exists for this session (prevent duplicates)
+        # Check if an active ticket already exists for this session (max 1 active ticket per session)
+        # Multiple tickets allowed only if previous ones are closed/resolved
         if session_id:
             _TICKETS = load_tickets()  # Reload to get latest state
             existing_tickets = []
@@ -116,12 +117,12 @@ def create_ticket(issue: str, customer_id: Optional[str] = None, priority: str =
             # Check for active tickets (not closed/resolved)
             active_tickets = [t for t in existing_tickets if t.get("status", "").lower() not in ["closed", "resolved"]]
             if active_tickets:
-                # Return existing ticket instead of creating duplicate
+                # Return existing ticket instead of creating duplicate (max 1 active ticket per session)
                 existing_ticket = active_tickets[0]  # Get most recent
                 return {
                     "status": "success",
                     "ticket_id": existing_ticket.get("ticket_id"),
-                    "message": f"Ticket {existing_ticket.get('ticket_id')} already exists for this session.",
+                    "message": f"Ticket {existing_ticket.get('ticket_id')} already exists for this session. Only one active ticket per session is allowed.",
                     "existing": True
                 }
         
@@ -456,18 +457,17 @@ def get_all_tickets() -> Dict[str, Dict]:
         try:
             from utils.supabase_client import get_tickets as supabase_get_tickets
             tickets_list = supabase_get_tickets()
-            if tickets_list:
-                print(f"✅ [TICKET] Loaded {len(tickets_list)} tickets from Supabase")
-                # Convertir en dict pour compatibilité
-                return {t["ticket_id"]: t for t in tickets_list}
-            else:
-                print(f"ℹ️  [TICKET] Supabase returned empty list, using JSON fallback")
+            # Even if empty, stay with Supabase (don't use JSON fallback)
+            print(f"✅ [TICKET] Loaded {len(tickets_list)} tickets from Supabase")
+            # Convertir en dict pour compatibilité
+            return {t["ticket_id"]: t for t in tickets_list}
         except Exception as e:
             print(f"⚠️  [TICKET] Supabase error (will use JSON fallback): {e}")
             import traceback
             traceback.print_exc()
+            # Only fallback to JSON on error, not on empty list
     
-    # Fallback vers JSON (only if Supabase is disabled or failed)
+    # Fallback vers JSON (only if Supabase is disabled or failed with error)
     global _TICKETS
     _TICKETS = load_tickets()
     if _TICKETS:

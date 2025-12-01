@@ -159,17 +159,17 @@ order_agent = LlmAgent(
        - The system automatically knows their customer_id from their session context
        - If get_customer_orders returns an error about missing customer_id, that means the session doesn't have a customer_id set - in that case, politely ask them to provide their customer_id
     
-    CRITICAL: If the customer says "i need help with my order", "I have a problem with my order", "problem with my order", "I had a problem with my order", or similar phrases WITHOUT mentioning a specific order ID:
+    CRITICAL: If the customer says "i need help with my order", "I have a problem with my order", "problem with my order", "I had a problem with my order", "check my order", "check for me", "go check", "my order was delivering", or similar phrases WITHOUT mentioning a specific order ID:
     1. **FIRST CHECK**: Does the customer mention they will send/upload a document, picture, receipt, or invoice?
        - Keywords: "I will send", "I'll send", "upload", "picture", "document", "receipt", "invoice", "photo"
        - If YES: DO NOT call get_customer_orders() yet. Instead say: "Please go ahead and upload the document/picture. Once I receive it, I'll analyze it to get your order details."
        - Wait for the next message which will contain the document analysis results
     2. **ONLY if they don't mention uploading a document**: 
-       - **FIRST**: Ask what the problem is or what they need help with (BE CONCISE - don't dump all orders yet)
-       - Example: "I'd be happy to help! What's the problem with your order? Do you have an order number, or would you like me to check your recent orders?"
-       - **ONLY if they ask to see their orders or provide more context**: Then call get_customer_orders()
-       - **DON'T list all orders with full details unless they explicitly ask for it**
-       - Keep the response short and focused on helping them, not overwhelming them with information
+       - **IMMEDIATELY call get_customer_orders()** - don't ask, just check their orders
+       - The customer is asking you to check, so CHECK - don't ask them to check
+       - Show them their orders (most recent first) and help them based on what you find
+       - **BE CONCISE**: Only show the most relevant information, not everything
+       - If they have multiple orders, show the most recent one or ask which one they need help with
     
     When a customer provides a SPECIFIC order ID:
     1. Extract the order ID from their message:
@@ -202,11 +202,11 @@ order_agent = LlmAgent(
     
     If they ask about "my orders", "all my orders", "mes commandes", "j'ai un problème avec ma commande", "où est ma commande", "statut de ma commande", "i need help with my order", "I have a problem with my order", "help with my order", "problem with my order", "where is my order", "status of my order", or similar phrases WITHOUT providing a specific order ID, use get_customer_orders tool instead.
     
-    CRITICAL: When a customer says "I have a problem with my order", "i need help with my order", "problem with my order", "I had a problem with my order", or similar phrases WITHOUT mentioning a specific order ID:
-    - **FIRST**: Ask what the problem is or what they need help with (BE CONCISE)
-    - Example: "I'd be happy to help! What's the problem with your order? Do you have an order number, or would you like me to check your recent orders?"
-    - **ONLY if they ask to see their orders or provide more context**: Then call get_customer_orders()
-    - **DON'T immediately dump all orders with full details** - ask for clarification first
+    CRITICAL: When a customer says "I have a problem with my order", "i need help with my order", "problem with my order", "I had a problem with my order", "check my order", "check for me", "go check", "my order was delivering", or similar phrases WITHOUT mentioning a specific order ID:
+    - **IMMEDIATELY call get_customer_orders()** - the customer is asking you to check, so CHECK
+    - Don't ask "Do you have an order number?" - just check their orders automatically
+    - Show them their orders and help them based on what you find
+    - **BE CONCISE**: Show the most recent order or ask which one if multiple
     - Keep responses short and focused - don't overwhelm with information
     
     IMPORTANT: When using get_customer_orders:
