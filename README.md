@@ -380,8 +380,9 @@ This project demonstrates **11 key concepts** from the **Kaggle 5-Day AI Agents 
 
 ## 🔗 Live Demo & Links
 
+- **🎥 YouTube Video**: [Watch the Capstone Project Demo](https://www.youtube.com/watch?v=7a5Hf1wC0zk)
 - **🌐 Live Website**: [https://custoflow.vercel.app](https://custoflow.vercel.app)
-- **☁️ API Backend (Cloud Run)**: [https://custoflow-api-mbokr3f3ka-uc.a.run.app](https://custoflow-api-mbokr3f3ka-uc.a.run.app)
+- **☁️ API Backend (Cloud Run)**: [https://custoflow-api-171629812602.us-central1.run.app](https://custoflow-api-171629812602.us-central1.run.app)
 - **📦 GitHub Repository**: [https://github.com/Rayyan-Oumlil/CustoFlow](https://github.com/Rayyan-Oumlil/CustoFlow)
 
 ## 📄 License

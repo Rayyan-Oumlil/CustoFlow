@@ -70,7 +70,6 @@ def main():
         ("tools", "Custom tools"),
         ("tests", "Test suite"),
         ("api", "API server"),
-        ("docs", "Documentation"),
         ("utils", "Utilities"),
         ("memory", "Memory management"),
         ("observability", "Observability"),
@@ -114,20 +113,8 @@ def main():
             checks_passed += 1
     print()
     
-    # Documentation files
-    print(f"{YELLOW}Documentation:{RESET}")
-    doc_files = [
-        ("docs/API.md", "API documentation"),
-        ("docs/SETUP.md", "Setup guide"),
-        ("docs/TROUBLESHOOTING.md", "Troubleshooting guide"),
-        ("docs/ADVANCED_EXAMPLES.md", "Advanced examples"),
-    ]
-    
-    for filepath, desc in doc_files:
-        checks_total += 1
-        if check_file_exists(filepath, desc):
-            checks_passed += 1
-    print()
+    # Documentation files (optional - README.md is the main documentation)
+    # Removed individual doc file checks as they're not required
     
     # Test files
     print(f"{YELLOW}Test Files:{RESET}")

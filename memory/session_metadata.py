@@ -316,9 +316,17 @@ class SessionMetadata:
                     
                     # 6. Finally delete session
                     # NOTE: Tickets are NOT deleted - they are closed but persist for support history
-                    result = supabase.table("sessions").delete().eq("session_id", session_id).execute()
-                    if result.data or result.count > 0:
-                        print(f"✅ Session {session_id} deleted. Associated tickets were closed but preserved.")
+                    # First check if session exists
+                    check_result = supabase.table("sessions").select("session_id").eq("session_id", session_id).limit(1).execute()
+                    if check_result.data and len(check_result.data) > 0:
+                        # Session exists, delete it
+                        result = supabase.table("sessions").delete().eq("session_id", session_id).execute()
+                        print(f"✅ Session {session_id} deleted from Supabase. Associated tickets were closed but preserved.")
+                        return True
+                    else:
+                        # Session doesn't exist in Supabase, but we still cleaned up related data
+                        # This is idempotent - return True even if session was already deleted
+                        print(f"ℹ️  Session {session_id} not found in Supabase (may have been already deleted). Related data cleaned up.")
                         return True
         except Exception as e:
             print(f"Error deleting session from Supabase: {e}")
@@ -420,8 +428,13 @@ class SessionMetadata:
                 del self._metadata[session_id]
                 # Save to file after deletion
                 self._save_sessions()
+                print(f"✅ Session {session_id} deleted from JSON. Associated tickets were closed but preserved.")
                 return True
-            return False
+            else:
+                # Session doesn't exist in JSON, but we still cleaned up related data
+                # This is idempotent - return True even if session was already deleted
+                print(f"ℹ️  Session {session_id} not found in JSON (may have been already deleted). Related data cleaned up.")
+                return True
 
 
 # Global session metadata instance
