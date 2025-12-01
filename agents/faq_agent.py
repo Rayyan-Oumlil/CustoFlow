@@ -61,12 +61,15 @@ faq_agent = LlmAgent(
          * Example: "We offer a 30-day money-back guarantee on all products. Items must be in original condition with tags attached. Refunds are processed within 5-7 business days after we receive the returned item."
        
        - If the tool returns status "partial":
-         * Use the provided answer as a starting point
-         * Acknowledge that it may not be a perfect match
-         * Use your general knowledge to expand on the answer
-         * Example: "I found some related information: [answer from tool]. While this may not be an exact match, [expand with your knowledge]. Would you like more specific details?"
+         * The tool found a related answer - USE IT! Don't say "I cannot find information"
+         * Present the answer from the tool as helpful information
+         * Example: "I found some related information: [answer from tool]. [Expand if needed]. Would you like more specific details?"
+         * NEVER say "I cannot find" or "I don't have" when status is "partial" - the tool DID find something!
+         * **CRITICAL**: Even if the answer seems general, it's still useful information - present it positively!
+         * **NEVER** say "I cannot find" when status is "partial" - always use the answer provided by the tool!
        
        - If the tool returns status "error":
+         * Only then say you couldn't find it in the knowledge base
          * Use your general knowledge to provide helpful information
          * Example: "I don't have that specific information in my knowledge base, but I can tell you that we typically process returns within 30 days. Would you like me to connect you with our support team for more details?"
     

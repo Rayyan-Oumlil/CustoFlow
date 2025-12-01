@@ -338,74 +338,36 @@ export default function ChatPage() {
         })
         
         if (mergeWithLocal) {
-          // Merge with local messages: replace local messages with server versions
-          // Local user messages (temp IDs) will be replaced by server messages (proper IDs)
-          // This prevents duplicates while keeping optimistic updates
+          // When merging, use server messages as single source of truth
+          // This prevents duplicates - server always has the correct, final version
           setMessages((prev) => {
-            // Create a map of server messages by content+role for quick lookup (more lenient matching)
-            const serverMap = new Map<string, Message>()
-            for (const msg of serverMsgs) {
-              const normalizedContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-              const contentKey = `${msg.role}:${normalizedContent}`
-              // Store the most recent server message for each content+role
-              const existing = serverMap.get(contentKey)
-              if (!existing || new Date(msg.timestamp).getTime() > new Date(existing.timestamp).getTime()) {
-                serverMap.set(contentKey, msg)
+            // Only keep local messages that are very recent (less than 2 seconds old)
+            // and don't have a server match yet (optimistic updates)
+            const now = Date.now()
+            const recentLocal = prev.filter(localMsg => {
+              const localTime = new Date(localMsg.timestamp).getTime()
+              const age = now - localTime
+              // Only keep very recent local messages (optimistic updates)
+              if (age < 2000) {
+                // Check if server has this message
+                const normalizedContent = localMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+                const hasServerMatch = serverMsgs.some(serverMsg => {
+                  const serverContent = serverMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
+                  if (serverContent === normalizedContent && serverMsg.role === localMsg.role) {
+                    const timeDiff = Math.abs(
+                      new Date(serverMsg.timestamp).getTime() - localTime
+                    )
+                    return timeDiff < 5000
+                  }
+                  return false
+                })
+                return !hasServerMatch // Keep if no server match yet
               }
-            }
-            
-            // Replace local messages with server versions if they match (by content, within 30 seconds)
-            const updated = prev.map(localMsg => {
-              const normalizedContent = localMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-              const contentKey = `${localMsg.role}:${normalizedContent}`
-              
-              const serverMsg = serverMap.get(contentKey)
-              if (serverMsg) {
-                // Check if timestamps are close (within 30 seconds) - they're likely the same message
-                const timeDiff = Math.abs(
-                  new Date(serverMsg.timestamp).getTime() - new Date(localMsg.timestamp).getTime()
-                )
-                if (timeDiff < 30000) {
-                  // They're the same message - prefer server version (has proper ID)
-                  return serverMsg
-                }
-              }
-              return localMsg // Keep local message if no server match (not saved yet)
+              return false // Remove old local messages
             })
             
-            // Add any server messages that don't have local matches (new messages)
-            const localContentKeys = new Set(
-              prev.map(m => {
-                const nc = m.content.trim().toLowerCase().replace(/\s+/g, ' ')
-                return `${m.role}:${nc}`
-              })
-            )
-            
-            for (const serverMsg of serverMsgs) {
-              const nc = serverMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-              const contentKey = `${serverMsg.role}:${nc}`
-              
-              // Check if we have a local message with same content
-              const hasLocalMatch = prev.some(localMsg => {
-                const localNC = localMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-                const localKey = `${localMsg.role}:${localNC}`
-                if (localKey === contentKey) {
-                  // Check if timestamps are close
-                  const timeDiff = Math.abs(
-                    new Date(serverMsg.timestamp).getTime() - new Date(localMsg.timestamp).getTime()
-                  )
-                  return timeDiff < 30000
-                }
-                return false
-              })
-              
-              if (!hasLocalMatch) {
-                updated.push(serverMsg)
-              }
-            }
-            
-            // Sort by timestamp and deduplicate
-            return deduplicateMessages(updated.sort((a, b) => 
+            // Combine recent local messages with server messages, then deduplicate
+            return deduplicateMessages([...recentLocal, ...serverMsgs].sort((a, b) => 
               new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             ))
           })
@@ -529,23 +491,29 @@ export default function ChatPage() {
   }, [userId, sessionId, conversations])
 
   useEffect(() => {
-    // Auto-scroll to bottom only if user is already at bottom (don't force scroll when scrolling up)
+    // Only auto-scroll when sending (user expects to see new message)
+    // Don't force scroll on every message change - let user scroll freely
+    if (sending) {
+      // When sending, user expects to see the response, so scroll to bottom
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+      }, 100)
+      return
+    }
+    
+    // Only auto-scroll if user is already at the bottom (they want to see new messages)
     const messagesContainer = document.querySelector('.flex-1.overflow-y-auto') as HTMLElement
-    if (messagesContainer) {
-      const isNearBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 100
-      // Only auto-scroll if user is already near the bottom
-      if (isNearBottom) {
+    if (messagesContainer && messages.length > 0) {
+      // Check if user is at the bottom (within 50px)
+      const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50
+      // Only scroll if user is already at bottom (they want to see new messages)
+      if (isAtBottom) {
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
         }, 100)
       }
-    } else {
-      // Fallback: if container not found, scroll anyway (initial load)
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-      }, 100)
     }
-  }, [messages, sending])
+  }, [sending]) // Only trigger on sending state change, not on every message change
 
   const createNewConversation = async () => {
     if (!userId || !customerId) return
@@ -1019,59 +987,102 @@ export default function ChatPage() {
         })
       }
 
-      // Hide typing indicator
-      setSending(false)
-      
-      // Add assistant response IMMEDIATELY from the API response
-      // This ensures strict flow: user message → agent response (no waiting, no polling interference)
-      if (response.response) {
-        const assistantMsg: Message = {
-          id: `assistant_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          role: "assistant",
-          content: response.response,
-          agent_used: response.agent_used,
-          response_time: response.response_time,
-          timestamp: new Date().toISOString(),
-        }
-        
-        // Add assistant message immediately after user message
-        // Use deduplication to prevent duplicates
-        setMessages((prev) => {
-          // Check if we already have this assistant message (by content)
-          const normalizedContent = assistantMsg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-          const hasDuplicate = prev.some(msg => {
-            if (msg.role === "assistant") {
-              const msgContent = msg.content.trim().toLowerCase().replace(/\s+/g, ' ')
-              if (msgContent === normalizedContent) {
-                // Check if timestamps are close (within 5 seconds)
-                const timeDiff = Math.abs(
-                  new Date(assistantMsg.timestamp).getTime() - new Date(msg.timestamp).getTime()
-                )
-                return timeDiff < 5000
-              }
-            }
-            return false
-          })
-          
-          if (hasDuplicate) {
-            // Don't add duplicate
-            return prev
-          }
-          
-          // Add assistant response and deduplicate
-          return deduplicateMessages([...prev, assistantMsg])
-        })
-      }
+      // Keep typing indicator ON until we actually receive and display the message
+      // DON'T hide it yet - we'll hide it after fetching the message from server
       
       // Restore focus to input field immediately
       setTimeout(() => {
         inputRef.current?.focus()
       }, 50)
       
-      // Re-enable polling after a short delay (ensures server has saved)
+      // Wait for server to process, then fetch and display the response
+      // Keep typing indicator visible during this time
       setTimeout(() => {
         sendingStateRef.current = false
-      }, 1000)
+        // Force a fetch to get the new assistant response
+        if (userId && currentSessionId) {
+          const fetchMessages = async () => {
+            try {
+              const data = await apiClient.get(`/history/${userId}?session_id=${currentSessionId}`)
+              let messagesArray: any[] = []
+              if (Array.isArray(data)) {
+                messagesArray = data
+              } else if (data && typeof data === 'object' && 'history' in data) {
+                messagesArray = Array.isArray((data as any).history) ? (data as any).history : []
+              }
+              
+              const serverMsgs = messagesArray.map((m: any, index: number) => {
+                const isHumanAgent = m.metadata?.is_human_agent === true || 
+                                     m.metadata?.agent_used === "human_agent" ||
+                                     m.agent_used === "human_agent"
+                
+                return {
+                  id: m.id || `msg_${m.timestamp || Date.now()}_${index}`,
+                  role: m.role,
+                  content: m.content,
+                  agent_used: isHumanAgent ? "human_agent" : (m.metadata?.agent || m.agent_used),
+                  response_time: m.metadata?.response_time || m.response_time,
+                  timestamp: m.timestamp || m.created_at,
+                }
+              })
+              
+              setMessages((prev) => {
+                // Replace all messages with server versions (single source of truth)
+                // This ensures we only show one version of each message
+                const newMessages = deduplicateMessages(serverMsgs)
+                
+                // Check if we now have an assistant response (new message from server)
+                const newAssistantMsg = serverMsgs.find(serverMsg => 
+                  serverMsg.role === "assistant" && 
+                  !prev.some(prevMsg => 
+                    prevMsg.role === "assistant" && 
+                    prevMsg.content.trim().toLowerCase() === serverMsg.content.trim().toLowerCase()
+                  )
+                )
+                
+                // Only hide typing indicator if we have the assistant response
+                // Wait for React to render, then check if message is in DOM before hiding
+                if (newAssistantMsg) {
+                  // Wait for React to render the message
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                      // Double check that message is actually in DOM
+                      const checkMessageInDOM = () => {
+                        const messageElements = document.querySelectorAll('[data-message-id]')
+                        const messageExists = Array.from(messageElements).some(el => {
+                          const msgId = el.getAttribute('data-message-id')
+                          return msgId && (msgId === newAssistantMsg.id || msgId.includes('assistant'))
+                        })
+                        
+                        if (messageExists) {
+                          // Message is in DOM, hide indicator
+                          setSending(false)
+                        } else {
+                          // Message not yet in DOM, check again
+                          setTimeout(checkMessageInDOM, 100)
+                        }
+                      }
+                      
+                      // Start checking after a short delay
+                      setTimeout(checkMessageInDOM, 200)
+                    })
+                  })
+                }
+                
+                return newMessages
+              })
+            } catch (error) {
+              console.error("Failed to fetch messages after send:", error)
+              // Hide typing indicator on error
+              setSending(false)
+            }
+          }
+          fetchMessages()
+        } else {
+          // If no session, hide typing indicator
+          setSending(false)
+        }
+      }, 2000) // Wait 2 seconds for server to process
     } catch (error: any) {
       console.error("Failed to send message:", error)
       const errorMsg: Message = {
@@ -1442,17 +1453,22 @@ export default function ChatPage() {
             </div>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto" style={{ scrollBehavior: 'smooth' }}>
             <div className="p-6 space-y-4">
               {messages.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  Start a conversation by typing a message
+                <div className="flex flex-col items-center justify-center h-full text-center px-4">
+                  <div className="max-w-md space-y-4">
+                    <h3 className="text-xl font-semibold text-foreground">Start a conversation</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Type your message in the input below to begin chatting with our support agent
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
                 {messages.map((msg) => (
-                  <div key={msg.id} className={`group flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
+                  <div key={msg.id} data-message-id={msg.id} className={`group flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
                     <div
                       className={`max-w-xs px-4 py-3 rounded-lg ${
                         msg.role === "user" 

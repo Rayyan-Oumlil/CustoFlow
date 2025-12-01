@@ -130,7 +130,7 @@ def transcribe_audio(audio_data: bytes, language_code: str = "en-US") -> Optiona
                             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
                             sample_rate_hertz=sample_rate,
                             language_code=language_code,
-                            model="long",  # Use 'long' model for better accuracy
+                            # Note: model parameter removed - using default model
                             enable_automatic_punctuation=True,
                         )
                         
@@ -156,7 +156,7 @@ def transcribe_audio(audio_data: bytes, language_code: str = "en-US") -> Optiona
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.ENCODING_UNSPECIFIED,  # Auto-detect format
                 language_code=language_code,
-                model="long",  # Use 'long' model for better accuracy (if available)
+                # Note: model parameter removed - using default model
                 enable_automatic_punctuation=True,
             )
             

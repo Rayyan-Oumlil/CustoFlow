@@ -660,7 +660,7 @@ def get_feedback(session_id: Optional[str] = None, user_id: Optional[str] = None
     if not SUPABASE_ENABLED:
         from utils.feedback_manager import FeedbackManager
         feedback_mgr = FeedbackManager()
-        feedbacks = feedback_mgr.get_all_feedback()
+        feedbacks = feedback_mgr.get_feedback_list(limit=None)  # Get all feedback
         if session_id:
             feedbacks = [f for f in feedbacks if f.get("session_id") == session_id]
         if user_id:
@@ -725,47 +725,138 @@ def get_feedback_stats() -> Dict:
 
 
 # ============================================================================
-# Agent Refinements
+# Auto-Learning (Unified table for insights, refinements, KB updates)
 # ============================================================================
 
-def save_agent_refinement(
-    refinement_key: str,
-    agent_name: str,
-    refinement_type: str,
-    changes: Dict,
-    feedback_sources: Optional[List[str]] = None,
-    status: str = "pending"
+def save_auto_learning(
+    learning_id: str,
+    learning_type: str,  # "insight", "refinement", "kb_update"
+    agent_name: Optional[str] = None,
+    feedback_id: Optional[str] = None,
+    data: Optional[Dict] = None,
+    status: str = "pending",
+    user_input: Optional[str] = None,  # Original user question
+    agent_response: Optional[str] = None,  # Agent's response
+    learning_reason: Optional[str] = None,  # Why the agent should learn (e.g., "incorrect", "missing_info")
+    session_id: Optional[str] = None  # Session ID for context
 ) -> bool:
-    """Save an agent refinement to Supabase."""
+    """Save auto-learning data to unified table with context."""
     if not SUPABASE_ENABLED:
-        return False
+        # Fallback to JSON file
+        try:
+            from pathlib import Path
+            import json
+            import os
+            
+            data_dir = Path(__file__).parent.parent / "data"
+            data_dir.mkdir(exist_ok=True)
+            auto_learning_file = data_dir / "auto_learning.json"
+            
+            # Load existing data
+            auto_learning_data = {}
+            if auto_learning_file.exists():
+                try:
+                    with open(auto_learning_file, "r", encoding="utf-8") as f:
+                        auto_learning_data = json.load(f)
+                except Exception:
+                    auto_learning_data = {}
+            
+            # Create or update entry
+            learning_data = {
+                "learning_id": learning_id,
+                "learning_type": learning_type,
+                "agent_name": agent_name,
+                "feedback_id": feedback_id,
+                "data": data or {},
+                "status": status,
+                "user_input": user_input,
+                "agent_response": agent_response,
+                "learning_reason": learning_reason,
+                "session_id": session_id,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            auto_learning_data[learning_id] = learning_data
+            
+            # Save to file
+            with open(auto_learning_file, "w", encoding="utf-8") as f:
+                json.dump(auto_learning_data, f, indent=2, ensure_ascii=False)
+            
+            return True
+        except Exception as e:
+            print(f"Erreur JSON save_auto_learning: {e}")
+            return False
     
     try:
-        refinement_data = {
-            "refinement_key": refinement_key,
+        learning_data = {
+            "learning_id": learning_id,
+            "learning_type": learning_type,
             "agent_name": agent_name,
-            "refinement_type": refinement_type,
-            "changes": changes,
-            "feedback_sources": feedback_sources or [],
+            "feedback_id": feedback_id,
+            "data": data or {},
             "status": status,
+            "user_input": user_input,
+            "agent_response": agent_response,
+            "learning_reason": learning_reason,
+            "session_id": session_id,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
         }
         
-        result = supabase.table("agent_refinements").upsert(refinement_data).execute()
+        result = supabase.table("auto_learning").upsert(learning_data).execute()
         return True
     except Exception as e:
-        print(f"Erreur Supabase save_agent_refinement: {e}")
+        print(f"Erreur Supabase save_auto_learning: {e}")
         return False
 
 
-def get_agent_refinements(agent_name: Optional[str] = None, status: Optional[str] = None) -> List[Dict]:
-    """Get agent refinements from Supabase."""
+def get_auto_learning(
+    learning_type: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    status: Optional[str] = None
+) -> List[Dict]:
+    """Get auto-learning data from unified table."""
     if not SUPABASE_ENABLED:
-        return []
+        # Fallback to JSON file
+        try:
+            from pathlib import Path
+            import json
+            
+            data_dir = Path(__file__).parent.parent / "data"
+            auto_learning_file = data_dir / "auto_learning.json"
+            
+            if not auto_learning_file.exists():
+                return []
+            
+            # Load data
+            with open(auto_learning_file, "r", encoding="utf-8") as f:
+                auto_learning_data = json.load(f)
+            
+            # Convert dict to list
+            entries = list(auto_learning_data.values())
+            
+            # Apply filters
+            if learning_type:
+                entries = [e for e in entries if e.get("learning_type") == learning_type]
+            if agent_name:
+                entries = [e for e in entries if e.get("agent_name") == agent_name]
+            if status:
+                entries = [e for e in entries if e.get("status") == status]
+            
+            # Sort by created_at descending
+            entries.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            
+            return entries
+        except Exception as e:
+            print(f"Erreur JSON get_auto_learning: {e}")
+            return []
     
     try:
-        query = supabase.table("agent_refinements").select("*")
+        query = supabase.table("auto_learning").select("*")
+        
+        if learning_type:
+            query = query.eq("learning_type", learning_type)
         
         if agent_name:
             query = query.eq("agent_name", agent_name)
@@ -776,29 +867,114 @@ def get_agent_refinements(agent_name: Optional[str] = None, status: Optional[str
         result = query.order("created_at", desc=True).execute()
         return result.data or []
     except Exception as e:
-        print(f"Erreur Supabase get_agent_refinements: {e}")
+        print(f"Erreur Supabase get_auto_learning: {e}")
         return []
 
 
-def update_agent_refinement_status(refinement_key: str, status: str) -> bool:
-    """Update the status of an agent refinement."""
+def update_auto_learning_status(learning_id: str, status: str) -> bool:
+    """Update the status of an auto-learning entry."""
     if not SUPABASE_ENABLED:
-        return False
+        # Fallback to JSON file
+        try:
+            from pathlib import Path
+            import json
+            
+            data_dir = Path(__file__).parent.parent / "data"
+            auto_learning_file = data_dir / "auto_learning.json"
+            
+            if not auto_learning_file.exists():
+                return False
+            
+            # Load data
+            with open(auto_learning_file, "r", encoding="utf-8") as f:
+                auto_learning_data = json.load(f)
+            
+            # Update entry
+            if learning_id in auto_learning_data:
+                auto_learning_data[learning_id]["status"] = status
+                auto_learning_data[learning_id]["updated_at"] = datetime.now().isoformat()
+                
+                # Save to file
+                with open(auto_learning_file, "w", encoding="utf-8") as f:
+                    json.dump(auto_learning_data, f, indent=2, ensure_ascii=False)
+                
+                return True
+            
+            return False
+        except Exception as e:
+            print(f"Erreur JSON update_auto_learning_status: {e}")
+            return False
     
     try:
-        supabase.table("agent_refinements").update({
+        supabase.table("auto_learning").update({
             "status": status,
             "updated_at": datetime.now().isoformat()
-        }).eq("refinement_key", refinement_key).execute()
+        }).eq("learning_id", learning_id).execute()
         return True
     except Exception as e:
-        print(f"Erreur Supabase update_agent_refinement_status: {e}")
+        print(f"Erreur Supabase update_auto_learning_status: {e}")
         return False
 
 
 # ============================================================================
-# Feedback Insights
+# Legacy functions (for backward compatibility - now use auto_learning)
 # ============================================================================
+
+def save_agent_refinement(
+    refinement_key: str,
+    agent_name: str,
+    refinement_type: str,
+    changes: Dict,
+    feedback_sources: Optional[List[str]] = None,
+    status: str = "pending",
+    user_input: Optional[str] = None,
+    agent_response: Optional[str] = None,
+    learning_reason: Optional[str] = None,
+    session_id: Optional[str] = None
+) -> bool:
+    """Save an agent refinement (uses auto_learning table)."""
+    return save_auto_learning(
+        learning_id=refinement_key,
+        learning_type="refinement",
+        agent_name=agent_name,
+        feedback_id=feedback_sources[0] if feedback_sources else None,
+        data={
+            "refinement_type": refinement_type,
+            "changes": changes,
+            "feedback_sources": feedback_sources or []
+        },
+        status=status,
+        user_input=user_input,
+        agent_response=agent_response,
+        learning_reason=learning_reason,
+        session_id=session_id
+    )
+
+
+def get_agent_refinements(agent_name: Optional[str] = None, status: Optional[str] = None) -> List[Dict]:
+    """Get agent refinements (from auto_learning table)."""
+    results = get_auto_learning(learning_type="refinement", agent_name=agent_name, status=status)
+    # Convert to old format for compatibility
+    refinements = []
+    for r in results:
+        data = r.get("data", {})
+        refinements.append({
+            "refinement_key": r.get("learning_id"),
+            "agent_name": r.get("agent_name"),
+            "refinement_type": data.get("refinement_type"),
+            "changes": data.get("changes", {}),
+            "feedback_sources": data.get("feedback_sources", []),
+            "status": r.get("status"),
+            "created_at": r.get("created_at"),
+            "updated_at": r.get("updated_at")
+        })
+    return refinements
+
+
+def update_agent_refinement_status(refinement_key: str, status: str) -> bool:
+    """Update agent refinement status (uses auto_learning table)."""
+    return update_auto_learning_status(refinement_key, status)
+
 
 def save_feedback_insight(
     insight_key: Optional[str] = None,
@@ -808,137 +984,108 @@ def save_feedback_insight(
     sentiment: Optional[Dict] = None,
     feedback_sources: Optional[List[str]] = None,
     insight_data: Optional[Dict] = None,
-    summary: Optional[str] = None
+    summary: Optional[str] = None,
+    user_input: Optional[str] = None,
+    agent_response: Optional[str] = None,
+    learning_reason: Optional[str] = None,
+    session_id: Optional[str] = None
 ) -> bool:
-    """Save a feedback insight to Supabase."""
-    if not SUPABASE_ENABLED:
-        return False
+    """Save feedback insight (uses auto_learning table)."""
+    import uuid
+    if not insight_key:
+        insight_key = f"INSIGHT-{uuid.uuid4().hex[:8].upper()}"
     
-    try:
-        import uuid
-        if not insight_key:
-            insight_key = f"INSIGHT-{uuid.uuid4().hex[:8].upper()}"
-        
-        # Store all data in the JSONB 'data' column (table schema only has insight_key, insight_type, data)
-        data_dict = {
-            "agent_name": agent_name or "unknown",
-            "description": description or summary or "Feedback insight",
+    return save_auto_learning(
+        learning_id=insight_key,
+        learning_type="insight",
+        agent_name=agent_name,
+        feedback_id=feedback_sources[0] if feedback_sources else None,
+        data={
+            "insight_type": insight_type,
+            "description": description or summary,
             "sentiment": sentiment or {},
             "feedback_sources": feedback_sources or [],
             **(insight_data or {})
-        }
-        
-        insight_data_dict = {
-            "insight_key": insight_key,
-            "insight_type": insight_type,
-            "data": data_dict,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
-        }
-        
-        result = supabase.table("feedback_insights").upsert(insight_data_dict).execute()
-        return True
-    except Exception as e:
-        print(f"Erreur Supabase save_feedback_insight: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        },
+        status="active",
+        user_input=user_input,
+        agent_response=agent_response,
+        learning_reason=learning_reason,
+        session_id=session_id
+    )
 
 
 def get_feedback_insights(agent_name: Optional[str] = None, insight_type: Optional[str] = None) -> List[Dict]:
-    """Get feedback insights from Supabase."""
-    if not SUPABASE_ENABLED:
-        return []
-    
-    try:
-        query = supabase.table("feedback_insights").select("*")
-        
-        if insight_type:
-            query = query.eq("insight_type", insight_type)
-        
-        result = query.order("created_at", desc=True).execute()
-        insights = result.data or []
-        
-        # Filter by agent_name if provided (agent_name is stored in data JSONB)
-        if agent_name:
-            filtered_insights = []
-            for insight in insights:
-                data = insight.get("data", {})
-                if isinstance(data, dict) and data.get("agent_name") == agent_name:
-                    filtered_insights.append(insight)
-            return filtered_insights
-        
-        return insights
-    except Exception as e:
-        print(f"Erreur Supabase get_feedback_insights: {e}")
-        return []
+    """Get feedback insights (from auto_learning table)."""
+    results = get_auto_learning(learning_type="insight", agent_name=agent_name)
+    # Filter by insight_type if provided
+    if insight_type:
+        results = [r for r in results if r.get("data", {}).get("insight_type") == insight_type]
+    # Convert to old format
+    insights = []
+    for r in results:
+        data = r.get("data", {})
+        insights.append({
+            "insight_key": r.get("learning_id"),
+            "insight_type": data.get("insight_type"),
+            "data": data,
+            "created_at": r.get("created_at"),
+            "updated_at": r.get("updated_at")
+        })
+    return insights
 
-
-# ============================================================================
-# KB Updates from Feedback
-# ============================================================================
 
 def save_kb_update(
     update_id: str,
     feedback_id: Optional[str],
     update_type: str,
     content: Dict,
-    status: str = "pending"
+    status: str = "pending",
+    user_input: Optional[str] = None,
+    agent_response: Optional[str] = None,
+    learning_reason: Optional[str] = None,
+    session_id: Optional[str] = None
 ) -> bool:
-    """Save a KB update suggestion to Supabase."""
-    if not SUPABASE_ENABLED:
-        return False
-    
-    try:
-        kb_update_data = {
-            "update_id": update_id,
-            "feedback_id": feedback_id,
+    """Save KB update (uses auto_learning table)."""
+    return save_auto_learning(
+        learning_id=update_id,
+        learning_type="kb_update",
+        agent_name=None,
+        feedback_id=feedback_id,
+        data={
             "update_type": update_type,
-            "content": content,
-            "status": status,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
-        }
-        
-        result = supabase.table("kb_updates_from_feedback").upsert(kb_update_data).execute()
-        return True
-    except Exception as e:
-        print(f"Erreur Supabase save_kb_update: {e}")
-        return False
+            "content": content
+        },
+        status=status,
+        user_input=user_input,
+        agent_response=agent_response,
+        learning_reason=learning_reason,
+        session_id=session_id
+    )
 
 
 def get_kb_updates(status: Optional[str] = None) -> List[Dict]:
-    """Get KB update suggestions from Supabase."""
-    if not SUPABASE_ENABLED:
-        return []
-    
-    try:
-        query = supabase.table("kb_updates_from_feedback").select("*")
-        
-        if status:
-            query = query.eq("status", status)
-        
-        result = query.order("created_at", desc=True).execute()
-        return result.data or []
-    except Exception as e:
-        print(f"Erreur Supabase get_kb_updates: {e}")
-        return []
+    """Get KB updates (from auto_learning table)."""
+    results = get_auto_learning(learning_type="kb_update", status=status)
+    # Convert to old format
+    updates = []
+    for r in results:
+        data = r.get("data", {})
+        updates.append({
+            "update_id": r.get("learning_id"),
+            "feedback_id": r.get("feedback_id"),
+            "update_type": data.get("update_type"),
+            "content": data.get("content", {}),
+            "status": r.get("status"),
+            "created_at": r.get("created_at"),
+            "updated_at": r.get("updated_at")
+        })
+    return updates
 
 
 def update_kb_update_status(update_id: str, status: str) -> bool:
-    """Update the status of a KB update."""
-    if not SUPABASE_ENABLED:
-        return False
-    
-    try:
-        supabase.table("kb_updates_from_feedback").update({
-            "status": status,
-            "updated_at": datetime.now().isoformat()
-        }).eq("update_id", update_id).execute()
-        return True
-    except Exception as e:
-        print(f"Erreur Supabase update_kb_update_status: {e}")
-        return False
+    """Update KB update status (uses auto_learning table)."""
+    return update_auto_learning_status(update_id, status)
 
 
 # ============================================================================

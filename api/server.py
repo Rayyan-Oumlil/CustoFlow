@@ -104,6 +104,7 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = Field(default="guest", max_length=50, description="User identifier")
     session_id: Optional[str] = Field(default=None, max_length=100, description="Session identifier")
     customer_id: Optional[str] = Field(default=None, max_length=50, description="Customer identifier")
+    inject_refinements: Optional[bool] = Field(default=False, description="If True, inject active refinements minimally into the message")
 
 
 class ChatResponse(BaseModel):
@@ -320,10 +321,25 @@ async def chat(request: ChatRequest, http_request: Request):
         # Increment metrics
         metrics.increment("messages_received")
         
-        # Create message with sanitized content
+        # Optionally inject refinements MINIMALLY (only if user explicitly requests it)
+        message_text = sanitized_message
+        if request.inject_refinements:
+            try:
+                from utils.agent_improver import AgentImprover
+                improver = AgentImprover()
+                # Inject refinements for orchestrator (minimal format - just a tiny note)
+                refinement_note = improver.get_active_refinements_for_agent("orchestrator", minimal=True)
+                if refinement_note:
+                    # Minimal injection: just append a tiny note at the end
+                    message_text = sanitized_message + refinement_note
+                    logger.info("Injected minimal refinements (user requested)")
+            except Exception as e:
+                logger.debug(f"Could not inject refinements: {e}")
+        
+        # Create message with sanitized content (with optional minimal refinements)
         message = types.Content(
             role="user",
-            parts=[types.Part(text=sanitized_message)]
+            parts=[types.Part(text=message_text)]
         )
         
         # Set context for ticket tools (so they can access session_id and user_id)
@@ -688,11 +704,11 @@ async def chat(request: ChatRequest, http_request: Request):
                 # Return both response text and detected agent
                 return response_text, detected_agent
         
-            # Execute with 15 second timeout (reduced from 30)
+            # Execute with 30 second timeout (increased for complex multi-part questions)
             result = await with_timeout(
                 get_response(),
-                timeout_seconds=15,
-                default_response=("I apologize, but the request took too long to process. Please try again with a simpler question.", None)
+                timeout_seconds=30,
+                default_response=("I apologize, but the request took too long to process. Please try again with a simpler question or break it into multiple questions.", None)
             )
             
             # Handle both tuple (response, agent) and string (fallback) responses
@@ -1417,9 +1433,18 @@ async def submit_feedback(request: FeedbackRequest):
                     except Exception as e:
                         logger.warning(f"Failed to update feedback with extracted fields: {e}")
                 
-                # Analyze feedback for improvements (async, non-blocking)
+                # Analyze feedback for improvements IMMEDIATELY (synchronous for real-time updates)
                 try:
                     feedback_manager = FeedbackManager()
+                    # Get conversation context for auto-learning
+                    conversation_context = {}
+                    if request.session_id:
+                        try:
+                            conversation_context = feedback_manager._get_conversation_context(request.session_id)
+                        except Exception as e:
+                            logger.debug(f"Could not get conversation context: {e}")
+                            conversation_context = {}
+                    
                     feedback_data = {
                         "id": result.get("feedback_id"),
                         "session_id": request.session_id,
@@ -1429,10 +1454,12 @@ async def submit_feedback(request: FeedbackRequest):
                         "comment": request.comment,
                         "reason": reason,  # Use extracted or provided reason
                         "category": category,  # Use extracted or provided category
-                        "agent_used": request.agent_used or "orchestrator"
+                        "agent_used": request.agent_used or "orchestrator",
+                        "conversation_context": conversation_context  # Add context for auto-learning
                     }
-                    # Analyze feedback asynchronously (won't block response)
-                    feedback_manager._analyze_feedback_async(feedback_data)
+                    # Analyze feedback SYNCHRONOUSLY to ensure immediate Supabase updates
+                    # This ensures insights, refinements, and KB updates are created immediately
+                    feedback_manager._analyze_feedback(feedback_data)
                 except Exception as e:
                     logger.warning(f"Failed to analyze feedback: {e}")
                     import traceback
@@ -1720,8 +1747,18 @@ async def get_session_metadata(session_id: str):
 
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
-    """Delete a session and all its messages."""
+    """
+    Delete a session and all its messages.
+    
+    IMPORTANT: Tickets associated with this session are automatically CLOSED (not deleted).
+    Tickets are important business entities that must persist for support history.
+    """
     # Delete session metadata (handles both Supabase and JSON)
+    # This will:
+    # - Close all associated tickets (status = "closed")
+    # - Delete: messages, analytics_interactions, conversation_summaries, feedback
+    # - Delete: session metadata
+    # But will NOT delete: tickets (they are closed but persist for support history)
     success = session_metadata.delete_session(session_id)
     
     if not success:
@@ -1729,7 +1766,7 @@ async def delete_session(session_id: str):
     
     return {
         "status": "success",
-        "message": f"Session {session_id} deleted successfully"
+        "message": f"Session {session_id} deleted successfully. Associated tickets were closed but preserved for support history."
     }
 
 
@@ -2413,31 +2450,29 @@ async def get_agent_refinements_endpoint(agent_name: str):
 
 @app.post("/agent-refinements/{agent_name}/apply")
 async def apply_agent_refinements(agent_name: str):
-    """Apply pending refinements to an agent."""
+    """
+    Mark refinements as 'applied' (status update only, no code modification).
+    
+    Refinements marked as 'applied' can then be manually injected into messages
+    when needed via the /chat endpoint with inject_refinements=true parameter.
+    """
     try:
         from utils.agent_improver import AgentImprover
-        from agents import orchestrator_agent, faq_agent, order_agent, escalation_agent
-        
-        # Map agent names to modules
-        agent_modules = {
-            "orchestrator": orchestrator_agent,
-            "faq_agent": faq_agent,
-            "order_agent": order_agent,
-            "escalation_agent": escalation_agent
-        }
-        
-        agent_module = agent_modules.get(agent_name)
-        if not agent_module:
-            raise HTTPException(status_code=404, detail=f"Agent {agent_name} not found")
         
         improver = AgentImprover()
-        applied_count = improver.auto_apply_refinements(agent_name, agent_module)
+        pending = improver.get_pending_refinements(agent_name=agent_name)
+        
+        applied_count = 0
+        for refinement in pending:
+            if improver.apply_refinement_to_agent(refinement, None):  # No module needed, just status update
+                applied_count += 1
         
         return {
             "status": "success",
             "agent_name": agent_name,
             "refinements_applied": applied_count,
-            "message": f"Applied {applied_count} refinements to {agent_name}"
+            "message": f"Marked {applied_count} refinements as 'applied' for {agent_name}. They can now be manually injected when needed.",
+            "note": "Refinements are NOT automatically injected. Use inject_refinements=true in /chat to inject them."
         }
     except Exception as e:
         logger.error(f"Error applying agent refinements: {e}")

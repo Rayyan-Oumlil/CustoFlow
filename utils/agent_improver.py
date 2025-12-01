@@ -49,37 +49,88 @@ class AgentImprover:
             logger.error(f"Error getting pending refinements: {e}")
             return []
     
+    def get_active_refinements_for_agent(self, agent_name: str, minimal: bool = True) -> str:
+        """
+        Get all active refinements for an agent and format them MINIMALLY.
+        
+        Args:
+            agent_name: Name of the agent
+            minimal: If True, return very short format (default: True)
+            
+        Returns:
+            Minimal formatted string with refinements (empty if none)
+        """
+        if not SUPABASE_ENABLED:
+            return ""
+        
+        try:
+            # Get all applied refinements (status="applied" or "active")
+            refinements = get_agent_refinements(agent_name=agent_name, status="applied")
+            if not refinements:
+                # Also check for "active" status
+                all_refinements = get_agent_refinements(agent_name=agent_name)
+                refinements = [r for r in all_refinements if r.get("status") in ["applied", "active"]]
+            
+            if not refinements:
+                return ""
+            
+            if minimal:
+                # MINIMAL format: just the key improvements, very short
+                improvements = []
+                for ref in refinements[:3]:  # Only 3 most recent
+                    changes = ref.get("changes", {})
+                    suggested = changes.get("suggested_improvement", "")
+                    if suggested:
+                        # Extract key phrase (first sentence or 50 chars max)
+                        key_phrase = suggested.split('.')[0][:50]
+                        improvements.append(key_phrase)
+                
+                if improvements:
+                    # Ultra-minimal: just a short note
+                    return f"\n[Note: {', '.join(improvements[:2])}]"
+                return ""
+            else:
+                # Full format (for manual injection if needed)
+                improvements = []
+                for ref in refinements[:5]:
+                    changes = ref.get("changes", {})
+                    suggested = changes.get("suggested_improvement", "")
+                    if suggested:
+                        improvements.append(suggested)
+                
+                if improvements:
+                    return "\n\n" + "IMPROVEMENTS:\n" + "\n".join(improvements)
+                return ""
+            
+        except Exception as e:
+            logger.error(f"Error getting active refinements: {e}")
+            return ""
+    
     def apply_refinement_to_agent(self, refinement: Dict, agent_module) -> bool:
         """
-        Apply a refinement to an agent's instructions.
+        Mark a refinement as applied (status update only, no code modification).
+        
+        WARNING: This does NOT modify the agent code. Refinements are injected dynamically
+        via get_active_refinements_for_agent() at runtime.
         
         Args:
             refinement: Refinement data from Supabase
-            agent_module: The agent module to update
+            agent_module: The agent module (not used, kept for compatibility)
             
         Returns:
-            True if applied successfully
+            True if status updated successfully
         """
         try:
-            changes = refinement.get("changes", {})
-            suggested_improvement = changes.get("suggested_improvement", "")
-            
-            if not suggested_improvement:
+            refinement_key = refinement.get("refinement_key")
+            if not refinement_key:
                 return False
             
-            # Get current instructions
-            if hasattr(agent_module, 'instructions'):
-                current_instructions = agent_module.instructions
-                
-                # Append improvement suggestion to instructions
-                improvement_note = f"\n\n[IMPROVEMENT BASED ON FEEDBACK]: {suggested_improvement}"
-                agent_module.instructions = current_instructions + improvement_note
-                
-                logger.info(f"Applied refinement {refinement.get('refinement_key')} to agent {refinement.get('agent_name')}")
-                return True
-            else:
-                logger.warning(f"Agent module {agent_module} does not have 'instructions' attribute")
-                return False
+            # Mark as applied in database (safe - just status update)
+            update_agent_refinement_status(refinement_key, "applied")
+            
+            logger.info(f"Marked refinement {refinement_key} as applied for agent {refinement.get('agent_name')}")
+            logger.info("NOTE: Refinements are injected dynamically at runtime, not by modifying agent code.")
+            return True
                 
         except Exception as e:
             logger.error(f"Error applying refinement: {e}")

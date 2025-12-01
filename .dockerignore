@@ -10,10 +10,11 @@ ENV/
 .venv
 
 # Data files (should be in Supabase)
+# Exclude all JSON files in data/ except faq_knowledge_base.json
 data/*.json
+!data/faq_knowledge_base.json
 data/faq_index/
 data/kb_versions/
-!data/faq_knowledge_base.json
 
 # Environment
 .env
@@ -44,15 +45,17 @@ frontend/
 node_modules/
 
 # Credentials (NEVER commit!)
+# Exclude all JSON files EXCEPT specific ones we need
 *.json
-credentials.json
-*-credentials.json
-gen-lang-client-*.json
 !package.json
 !package-lock.json
 !tsconfig.json
 !tailwind.config.js
 !next.config.js
+!data/faq_knowledge_base.json
+credentials.json
+*-credentials.json
+gen-lang-client-*.json
 
 # OS
 .DS_Store

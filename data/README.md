@@ -26,26 +26,47 @@ This directory contains **source files** and **generated artifacts** for the Cus
 
 ## 🗄️ Data Storage
 
-**All runtime data is now stored in Supabase:**
+**Runtime data storage (Supabase when enabled, JSON fallback for local):**
+
+### Supabase Mode (Production)
 - ✅ Orders → `orders` table
 - ✅ Tickets → `tickets` table
 - ✅ Sessions → `sessions` table
 - ✅ Messages → `messages` table
 - ✅ Feedback → `feedback` table
 - ✅ Analytics → Calculated from database
-- ✅ Agent Refinements → `agent_refinements` table
-- ✅ KB Updates → `kb_updates_from_feedback` table
+- ✅ **Auto-Learning** → `auto_learning` table (unified for insights, refinements, KB updates)
 - ✅ Conversation Summaries → `conversation_summaries` table
 
-## 🚫 Files NOT in this Directory
+### Local Mode (JSON Fallback)
+- ✅ Orders → `orders.json`
+- ✅ Tickets → `tickets.json`
+- ✅ Sessions → `sessions.json`
+- ✅ Messages → `conversation_history.json`
+- ✅ Feedback → `feedback.json`
+- ✅ **Auto-Learning** → `auto_learning.json` (unified file)
+- ⚠️ Legacy files (deprecated but kept for compatibility):
+  - `agent_refinements.json`
+  - `feedback_insights.json`
+  - `kb_updates_from_feedback.json`
 
-The following files are **NOT stored here** (they're in Supabase):
-- ❌ `orders.json` - Use Supabase `orders` table
-- ❌ `tickets.json` - Use Supabase `tickets` table
-- ❌ `sessions.json` - Use Supabase `sessions` table
-- ❌ `feedback.json` - Use Supabase `feedback` table
-- ❌ `conversation_history.json` - Use Supabase `messages` table
-- ❌ `analytics.json` - Calculated from database
+## 📁 Files in this Directory
+
+### Runtime Data Files (JSON Fallback for Local Mode)
+- ✅ `orders.json` - Order data (fallback when Supabase disabled)
+- ✅ `tickets.json` - Ticket data (fallback when Supabase disabled)
+- ✅ `sessions.json` - Session metadata (fallback when Supabase disabled)
+- ✅ `feedback.json` - Feedback entries (fallback when Supabase disabled)
+- ✅ `conversation_history.json` - Message history (fallback when Supabase disabled)
+- ✅ `auto_learning.json` - **Unified auto-learning data** (insights, refinements, KB updates)
+  - Contains: `learning_type`, `agent_name`, `status`, `user_input`, `agent_response`, `learning_reason`, etc.
+  - This is the main file for auto-learning in local mode
+- ⚠️ Legacy auto-learning files (deprecated, kept for backward compatibility):
+  - `agent_refinements.json`
+  - `feedback_insights.json`
+  - `kb_updates_from_feedback.json`
+
+**Note:** When Supabase is enabled, these JSON files are not used (data goes to database tables instead).
 
 ## 🔧 Regenerating Artifacts
 
@@ -63,8 +84,10 @@ This will:
 
 ## 📝 Notes
 
-- The `data/` directory is primarily for **source files** and **cached artifacts**
-- All **runtime data** is stored in **Supabase PostgreSQL**
+- The `data/` directory contains **source files** and **cached artifacts**
+- **Runtime data** is stored in **Supabase PostgreSQL** when enabled, or in JSON files for local development
 - The FAISS index can be stored in **Supabase Storage** for production
-- This keeps the repository clean and ensures data persistence
+- **Auto-Learning**: Uses unified `auto_learning.json` (local) or `auto_learning` table (Supabase)
+- Legacy auto-learning files (`agent_refinements.json`, etc.) are kept for backward compatibility but new entries go to `auto_learning.json`
+- JSON files are automatically created when needed and updated in real-time
 

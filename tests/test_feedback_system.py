@@ -21,7 +21,7 @@ from utils.feedback_manager import FeedbackManager
 from utils.agent_improver import AgentImprover
 from utils.supabase_client import SUPABASE_ENABLED, create_feedback, get_feedback
 from utils.supabase_client import get_agent_refinements, get_feedback_insights, get_kb_updates
-from utils.supabase_client import create_session
+from utils.supabase_client import create_session, save_auto_learning, get_auto_learning
 
 # Test configuration
 TEST_SESSION_ID = f"test_feedback_session_{int(datetime.now().timestamp())}"
@@ -335,6 +335,84 @@ def test_automatic_reason_extraction():
         return False
 
 
+def test_auto_learning_unified_table():
+    """Test that the unified auto_learning table works correctly."""
+    print_test_header("Auto-Learning Unified Table")
+    
+    try:
+        if not SUPABASE_ENABLED:
+            print_result(True, "Skipped (Supabase not enabled)", indent=1)
+            return True
+        
+        # Test saving different types of learning entries
+        test_learning_id = f"TEST-{int(datetime.now().timestamp())}"
+        
+        # Test 1: Save an insight
+        result1 = save_auto_learning(
+            learning_id=f"{test_learning_id}-insight",
+            learning_type="insight",
+            agent_name="test_agent",
+            data={"test": "insight_data"},
+            status="active"
+        )
+        print_result(result1, "Save insight to auto_learning", indent=1)
+        
+        # Test 2: Save a refinement
+        result2 = save_auto_learning(
+            learning_id=f"{test_learning_id}-refinement",
+            learning_type="refinement",
+            agent_name="test_agent",
+            data={"test": "refinement_data"},
+            status="pending"
+        )
+        print_result(result2, "Save refinement to auto_learning", indent=1)
+        
+        # Test 3: Save a KB update
+        result3 = save_auto_learning(
+            learning_id=f"{test_learning_id}-kb",
+            learning_type="kb_update",
+            agent_name=None,
+            data={"test": "kb_data"},
+            status="pending"
+        )
+        print_result(result3, "Save KB update to auto_learning", indent=1)
+        
+        if not (result1 and result2 and result3):
+            print_result(False, "Failed to save some entries", indent=1)
+            return False
+        
+        # Wait a bit for database
+        time.sleep(1)
+        
+        # Test 4: Retrieve insights
+        insights = get_auto_learning(learning_type="insight", agent_name="test_agent")
+        has_test_insight = any(i.get("learning_id") == f"{test_learning_id}-insight" for i in insights)
+        print_result(has_test_insight, f"Retrieve insights from auto_learning ({len(insights)} found)", indent=1)
+        
+        # Test 5: Retrieve refinements
+        refinements = get_auto_learning(learning_type="refinement", agent_name="test_agent")
+        has_test_refinement = any(r.get("learning_id") == f"{test_learning_id}-refinement" for r in refinements)
+        print_result(has_test_refinement, f"Retrieve refinements from auto_learning ({len(refinements)} found)", indent=1)
+        
+        # Test 6: Retrieve KB updates
+        kb_updates = get_auto_learning(learning_type="kb_update", status="pending")
+        has_test_kb = any(k.get("learning_id") == f"{test_learning_id}-kb" for k in kb_updates)
+        print_result(has_test_kb, f"Retrieve KB updates from auto_learning ({len(kb_updates)} found)", indent=1)
+        
+        if has_test_insight and has_test_refinement and has_test_kb:
+            print_result(True, "Unified auto_learning table works correctly", indent=1)
+            return True
+        else:
+            print_result(False, "Some entries not found in auto_learning", indent=1)
+            return False
+            
+    except Exception as e:
+        print_result(False, f"Exception: {str(e)}", indent=1)
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def test_multiple_feedback_generates_insights():
     """Test that multiple feedback entries generate aggregated insights."""
     print_test_header("Multiple Feedback -> Insights Generation")
@@ -418,6 +496,9 @@ def run_all_tests():
     
     # Test 5: Multiple feedback generates insights
     results.append(("Multiple Feedback -> Insights", test_multiple_feedback_generates_insights()))
+    
+    # Test 6: Auto-learning unified table
+    results.append(("Auto-Learning Unified Table", test_auto_learning_unified_table()))
     
     # Print summary
     print("\n" + "=" * 70)

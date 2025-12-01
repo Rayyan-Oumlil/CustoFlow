@@ -247,6 +247,10 @@ class SessionMetadata:
                 supabase_key = os.getenv("SUPABASE_KEY")
                 if supabase_url and supabase_key:
                     supabase = create_client(supabase_url, supabase_key)
+                    # IMPORTANT: We do NOT delete tickets when deleting a session!
+                    # Tickets are important business entities that must persist even if the session is deleted.
+                    # Tickets are linked to session_id but should remain accessible for support history.
+                    
                     # Delete in correct order to respect foreign key constraints:
                     # 1. Delete analytics_interactions first
                     try:
@@ -266,14 +270,151 @@ class SessionMetadata:
                     except Exception as e:
                         print(f"Warning: Could not delete conversation_summaries: {e}")
                     
-                    # 4. Finally delete session
+                    # 4. Delete feedback linked to session (but keep auto_learning entries - they're important)
+                    try:
+                        supabase.table("feedback").delete().eq("session_id", session_id).execute()
+                    except Exception as e:
+                        print(f"Warning: Could not delete feedback: {e}")
+                    
+                    # 5. Close all tickets associated with this session (but don't delete them)
+                    # Tickets are important business entities that must persist for support history
+                    try:
+                        from utils.supabase_client import get_tickets, update_ticket_status
+                        tickets = get_tickets(session_id=session_id)
+                        closed_count = 0
+                        if not tickets:
+                            print(f"ℹ️  No tickets found for session {session_id}")
+                        else:
+                            print(f"ℹ️  Found {len(tickets)} ticket(s) for session {session_id}")
+                            for ticket in tickets:
+                                ticket_id = ticket.get("ticket_id")
+                                current_status = ticket.get("status", "").lower() if ticket.get("status") else ""
+                                print(f"ℹ️  Ticket {ticket_id} current status: {current_status}")
+                                # Only close if not already closed
+                                if current_status not in ["closed", "resolved"]:
+                                    try:
+                                        success = update_ticket_status(ticket_id, "closed")
+                                        if success:
+                                            closed_count += 1
+                                            print(f"✅ Closed ticket {ticket_id} associated with session {session_id}")
+                                        else:
+                                            print(f"❌ Failed to close ticket {ticket_id} (update_ticket_status returned False)")
+                                    except Exception as ticket_error:
+                                        print(f"❌ Warning: Could not close ticket {ticket_id}: {ticket_error}")
+                                        import traceback
+                                        traceback.print_exc()
+                                else:
+                                    print(f"ℹ️  Ticket {ticket_id} already closed/resolved, skipping")
+                            if closed_count > 0:
+                                print(f"✅ Closed {closed_count} ticket(s) associated with session {session_id}")
+                            else:
+                                print(f"ℹ️  No tickets needed to be closed for session {session_id}")
+                    except Exception as e:
+                        print(f"❌ Warning: Could not close tickets for session {session_id}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                    
+                    # 6. Finally delete session
+                    # NOTE: Tickets are NOT deleted - they are closed but persist for support history
                     result = supabase.table("sessions").delete().eq("session_id", session_id).execute()
                     if result.data or result.count > 0:
+                        print(f"✅ Session {session_id} deleted. Associated tickets were closed but preserved.")
                         return True
         except Exception as e:
             print(f"Error deleting session from Supabase: {e}")
         
         # Fallback to JSON
+        # Before deleting session:
+        # 1. Close all associated tickets
+        # 2. Delete all associated feedback (but keep auto_learning entries - they're important)
+        try:
+            from tools.ticket_tool import get_all_tickets
+            from tools.ticket_modification_tool import update_ticket_status
+            all_tickets = get_all_tickets()
+            closed_count = 0
+            
+            # Find tickets for this session
+            if isinstance(all_tickets, dict):
+                tickets_list = list(all_tickets.values())
+            else:
+                tickets_list = all_tickets if isinstance(all_tickets, list) else []
+            
+            # Filter tickets for this session
+            session_tickets = [t for t in tickets_list if t.get("session_id") == session_id]
+            
+            if not session_tickets:
+                print(f"ℹ️  No tickets found in JSON mode for session {session_id}")
+            else:
+                print(f"ℹ️  Found {len(session_tickets)} ticket(s) for session {session_id} in JSON mode")
+                for ticket in session_tickets:
+                    ticket_id = ticket.get("ticket_id")
+                    current_status = ticket.get("status", "").lower() if ticket.get("status") else ""
+                    print(f"ℹ️  Ticket {ticket_id} current status: {current_status}")
+                    # Only close if not already closed
+                    if current_status not in ["closed", "resolved"]:
+                        try:
+                            result = update_ticket_status(ticket_id, "closed", note="Session deleted by user")
+                            if result.get("status") == "success":
+                                closed_count += 1
+                                print(f"✅ Closed ticket {ticket_id} associated with session {session_id}")
+                            else:
+                                print(f"❌ Failed to close ticket {ticket_id}: {result.get('error_message', 'Unknown error')}")
+                        except Exception as ticket_error:
+                            print(f"❌ Warning: Could not close ticket {ticket_id}: {ticket_error}")
+                            import traceback
+                            traceback.print_exc()
+                    else:
+                        print(f"ℹ️  Ticket {ticket_id} already closed/resolved, skipping")
+            
+            if closed_count > 0:
+                print(f"✅ Closed {closed_count} ticket(s) associated with session {session_id}")
+            else:
+                print(f"ℹ️  No tickets needed to be closed for session {session_id}")
+        except Exception as e:
+            print(f"Warning: Could not close tickets for session {session_id}: {e}")
+        
+        # Delete messages associated with this session (JSON mode)
+        try:
+            from memory.conversation_history import conversation_history
+            # Get all messages for this session
+            all_messages = conversation_history.get_history(user_id="", limit=None, session_id=session_id)
+            if all_messages:
+                # Remove messages from conversation history
+                with conversation_history._lock:
+                    # Remove messages from all user histories
+                    for user_id in list(conversation_history._history.keys()):
+                        conversation_history._history[user_id] = [
+                            msg for msg in conversation_history._history[user_id]
+                            if msg.get("session_id") != session_id
+                        ]
+                    # Save to file
+                    from memory.conversation_history import _save_history
+                    _save_history(conversation_history._history)
+                print(f"✅ Deleted {len(all_messages)} message(s) for session {session_id}")
+        except Exception as e:
+            print(f"Warning: Could not delete messages for session {session_id}: {e}")
+        
+        # Delete feedback associated with this session (JSON mode)
+        try:
+            from utils.feedback_manager import FeedbackManager
+            feedback_mgr = FeedbackManager()
+            # Get all feedback for this session
+            all_feedback = feedback_mgr.get_feedback_list(limit=None)  # Get all feedback
+            feedback_to_delete = [f for f in all_feedback if f.get("session_id") == session_id]
+            
+            if feedback_to_delete:
+                # Remove feedback entries from the list
+                with feedback_mgr._lock:
+                    feedback_mgr._feedback = [
+                        f for f in feedback_mgr._feedback 
+                        if f.get("session_id") != session_id
+                    ]
+                    feedback_mgr._save_data()
+                print(f"✅ Deleted {len(feedback_to_delete)} feedback entry/entries for session {session_id}")
+        except Exception as e:
+            print(f"Warning: Could not delete feedback for session {session_id}: {e}")
+        
+        # Now delete session metadata
         with self._lock:
             if session_id in self._metadata:
                 del self._metadata[session_id]

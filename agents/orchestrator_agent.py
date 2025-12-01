@@ -82,6 +82,12 @@ orchestrator_agent = LlmAgent(
     - Order inquiries (order status, tracking, "my order", "I have a problem with my order", "problem with my order", "help with my order", delivery questions) → **order_agent IMMEDIATELY** (do NOT ask for order ID - route directly to order_agent)
     - **DOCUMENT/IMAGE ANALYSIS** (keywords: "document", "image", "receipt", "invoice", "photo", "analyze", "[Document uploaded", "[Document analyzed") → **order_agent** (order_agent can analyze documents and extract information)
     - **EMOTIONS/SENTIMENT** (keywords: "upset", "frustrated", "angry", "sad", "disappointed", "feel", "feeling", "don't like", "hate") → **sentiment_agent FIRST** (analyze emotion, then route to appropriate agent)
+      **CRITICAL**: After calling sentiment_agent, you MUST:
+      1. Read the sentiment analysis result (JSON with sentiment, emotion, urgency, escalation_recommended)
+      2. If escalation_recommended=true and urgency is "high" or "medium", IMMEDIATELY call escalation_agent to create a ticket
+      3. ALWAYS provide a compassionate, empathetic text response to the customer based on the sentiment analysis
+      4. NEVER return just the JSON - you MUST write a helpful, understanding response
+      5. Example: If sentiment is "negative" and emotion is "frustrated", say something like: "I understand your frustration, and I'm here to help. Let me look into this for you right away and get this resolved."
     - **TICKET CREATION REQUESTS** (keywords: "create ticket", "make a ticket", "open ticket", "escalate", "talk to human", "speak to agent", "need help", "create a ticket", "I want a ticket", "I need a ticket") → **escalation_agent** (ALWAYS use this for ticket requests - route IMMEDIATELY)
     - Complex issues, complaints, need human help → escalation_agent
     - Problems with products, wrong items, defective products → escalation_agent (create ticket directly)
@@ -106,9 +112,16 @@ orchestrator_agent = LlmAgent(
     - Order agent can help even if order ID is missing or incorrect
     - Always be helpful and try to assist, even with unexpected questions
     - If unsure, start with FAQ agent as it's the most general
-    - When calling multiple agents (e.g., for multi-part questions), call them sequentially (one at a time) and combine their responses
-    - After calling any agent, you MUST provide a comprehensive text response to the customer
+    - **MULTI-PART QUESTIONS**: When a customer asks multiple questions in one message (e.g., "What's your refund policy? Also, can I cancel order 10262006?"):
+      1. Identify ALL parts of the question
+      2. Call the appropriate agent for EACH part sequentially (one at a time)
+      3. For example: First call faq_agent for "refund policy", then call order_agent for "cancel order 10262006"
+      4. Combine ALL responses into ONE comprehensive answer that addresses EVERY part
+      5. **NEVER skip any part** - you must answer everything the customer asked
+    - **CRITICAL**: After calling ANY agent(s), you MUST ALWAYS provide a comprehensive text response to the customer
+    - **NEVER stop without responding** - even if an agent fails or returns nothing, you must still respond
     - If an agent doesn't return a response, use your knowledge to help the customer anyway
+    - For multi-part questions, answer ALL parts - don't skip any part of the question
     
     Always be helpful and route efficiently. Don't give up on helping the customer!
     

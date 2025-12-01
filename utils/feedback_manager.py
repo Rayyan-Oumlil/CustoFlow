@@ -25,6 +25,10 @@ from config.settings import settings
 try:
     from utils.supabase_client import (
         SUPABASE_ENABLED,
+        save_auto_learning,
+        get_auto_learning,
+        update_auto_learning_status,
+        # Legacy functions (still work, but use auto_learning table)
         save_agent_refinement,
         get_agent_refinements as supabase_get_agent_refinements,
         save_feedback_insight,
@@ -230,6 +234,43 @@ class FeedbackManager:
         thread = threading.Thread(target=self._analyze_feedback, args=(feedback,), daemon=True)
         thread.start()
     
+    def _get_conversation_context(self, session_id: str) -> Dict[str, Optional[str]]:
+        """
+        Get user input and agent response from session for context.
+        
+        Args:
+            session_id: Session ID to retrieve messages from
+            
+        Returns:
+            Dict with user_input, agent_response, or None if not available
+        """
+        user_input = None
+        agent_response = None
+        
+        if SUPABASE_ENABLED:
+            try:
+                from utils.supabase_client import get_messages
+                # get_messages requires user_id, but we can use a dummy one for session lookup
+                messages = get_messages(user_id="", session_id=session_id, limit=10)
+                if messages:
+                    # Get the last user message and last assistant message
+                    user_messages = [m for m in messages if m.get("role") == "user"]
+                    assistant_messages = [m for m in messages if m.get("role") == "assistant"]
+                    
+                    if user_messages:
+                        user_input = user_messages[-1].get("content", "")
+                    if assistant_messages:
+                        agent_response = assistant_messages[-1].get("content", "")
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Could not get conversation context: {e}")
+        
+        return {
+            "user_input": user_input,
+            "agent_response": agent_response
+        }
+    
     def _analyze_feedback(self, feedback: Dict) -> None:
         """
         Analyze feedback for sentiment, patterns, and insights.
@@ -238,11 +279,20 @@ class FeedbackManager:
             feedback: Feedback entry to analyze
         """
         try:
+            # Get conversation context (user input and agent response)
+            session_id = feedback.get("session_id")
+            context = self._get_conversation_context(session_id) if session_id else {}
+            user_input = context.get("user_input")
+            agent_response = context.get("agent_response")
+            
             # Sentiment analysis
             sentiment = self._analyze_sentiment(feedback)
             
             # Pattern detection
             patterns = self._detect_patterns(feedback)
+            
+            # Determine learning reason from feedback
+            learning_reason = feedback.get("reason") or feedback.get("category") or "low_rating"
             
             # Update feedback entry
             with self._lock:
@@ -254,20 +304,65 @@ class FeedbackManager:
                         break
                 self._save_data()
             
-            # Generate insights periodically
+            # Only save individual insights for NEGATIVE feedback (to reduce data)
+            # Save for: low rating (< 3) OR thumbs_down (even without comment)
+            rating = feedback.get("rating", 5)
+            feedback_type = feedback.get("feedback_type", "")
+            if (rating < 3 or feedback_type == "thumbs_down"):
+                if SUPABASE_ENABLED:
+                    try:
+                        from utils.supabase_client import save_feedback_insight
+                        import uuid
+                        insight_key = f"INSIGHT-{uuid.uuid4().hex[:8].upper()}"
+                        
+                        save_feedback_insight(
+                            insight_key=insight_key,
+                            agent_name=feedback.get("agent_used", "unknown"),
+                            insight_type="negative_feedback",
+                            description=f"Negative feedback: {feedback.get('comment', '')[:100]}",
+                            sentiment=sentiment,
+                            feedback_sources=[feedback.get("id")] if feedback.get("id") else [],
+                            insight_data={
+                                "feedback_id": feedback.get("id"),
+                                "comment": feedback.get("comment"),
+                                "rating": feedback.get("rating"),
+                                "reason": feedback.get("reason"),
+                                "category": feedback.get("category"),
+                                "patterns": patterns
+                            },
+                            summary=f"Negative feedback: {sentiment.get('label', 'negative')} sentiment",
+                            user_input=user_input,
+                            agent_response=agent_response,
+                            learning_reason=learning_reason,
+                            session_id=session_id
+                        )
+                    except Exception as e:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Error saving feedback insight to Supabase: {e}")
+                        import traceback
+                        traceback.print_exc()
+            
+            # Generate aggregated insights periodically (less frequent, less data)
             self._generate_insights()
             
-            # Check for KB updates
+            # Check for KB updates IMMEDIATELY
             if feedback.get("feedback_type") in ["thumbs_down", "rating"] and (
                 feedback.get("rating", 5) < 3 or feedback.get("reason") in ["incorrect", "missing_info"]
             ):
                 self._suggest_kb_update(feedback)
             
-            # Check for agent refinements (negative feedback)
-            if feedback.get("rating", 5) < 3:
+            # Check for agent refinements IMMEDIATELY (negative feedback)
+            # Create refinement for: low rating (< 3) OR thumbs_down (even without rating)
+            rating = feedback.get("rating", 5)
+            feedback_type = feedback.get("feedback_type", "")
+            if rating < 3 or feedback_type == "thumbs_down":
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Creating agent refinement for feedback: agent={feedback.get('agent_used')}, type={feedback_type}, rating={rating}")
                 self._suggest_agent_refinement(feedback)
             
-            # Also analyze positive feedback for insights (what works well)
+            # Also analyze positive feedback for insights IMMEDIATELY (what works well)
             if feedback.get("feedback_type") == "thumbs_up" or feedback.get("rating", 5) >= 4:
                 self._record_positive_feedback_insight(feedback)
                 
@@ -544,6 +639,10 @@ class FeedbackManager:
                 # Try Supabase first
                 if SUPABASE_ENABLED:
                     try:
+                        # Get context for KB update
+                        session_id = feedback.get("session_id")
+                        context = self._get_conversation_context(session_id) if session_id else {}
+                        
                         save_kb_update(
                             update_id=kb_suggestion["id"],
                             feedback_id=kb_suggestion.get("source_feedback_id"),
@@ -554,10 +653,18 @@ class FeedbackManager:
                                 "conversation_context": kb_suggestion.get("conversation_context", {}),
                                 "priority": kb_suggestion.get("priority", "medium")
                             },
-                            status=kb_suggestion["status"]
+                            status=kb_suggestion["status"],
+                            user_input=context.get("user_input"),
+                            agent_response=context.get("agent_response"),
+                            learning_reason=feedback.get("reason") or feedback.get("category") or "missing_info",
+                            session_id=session_id
                         )
                     except Exception as e:
-                        print(f"Error saving KB update to Supabase: {e}")
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Error saving KB update to Supabase: {e}")
+                        import traceback
+                        traceback.print_exc()
                         # Fallback to JSON
                         self._kb_updates.append(kb_suggestion)
                         self._save_data()
@@ -600,9 +707,18 @@ class FeedbackManager:
         
         with self._lock:
             # Try Supabase first
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"SUPABASE_ENABLED: {SUPABASE_ENABLED}, agent_used: {agent_used}")
+            
             if SUPABASE_ENABLED:
                 try:
                     refinement_key = f"{agent_used}_{refinement['id']}"
+                    # Get context for refinement
+                    session_id = feedback.get("session_id")
+                    context = self._get_conversation_context(session_id) if session_id else {}
+                    
+                    logger.info(f"Saving refinement to Supabase: {refinement_key}, session_id: {session_id}")
                     save_agent_refinement(
                         refinement_key=refinement_key,
                         agent_name=agent_used,
@@ -613,10 +729,18 @@ class FeedbackManager:
                             "rating": refinement["rating"]
                         },
                         feedback_sources=[refinement["source_feedback_id"]],
-                        status=refinement["status"]
+                        status=refinement["status"],
+                        user_input=context.get("user_input"),
+                        agent_response=context.get("agent_response"),
+                        learning_reason=refinement["issue"],
+                        session_id=session_id
                     )
                 except Exception as e:
-                    print(f"Error saving agent refinement to Supabase: {e}")
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Error saving agent refinement to Supabase: {e}")
+                    import traceback
+                    traceback.print_exc()
                     # Fallback to JSON
                     if agent_used not in self._agent_refinements:
                         self._agent_refinements[agent_used] = {
@@ -660,6 +784,10 @@ class FeedbackManager:
                 # Analyze sentiment for positive feedback
                 sentiment = self._analyze_sentiment(feedback)
                 
+                # Get context for positive feedback
+                session_id = feedback.get("session_id")
+                context = self._get_conversation_context(session_id) if session_id else {}
+                
                 save_feedback_insight(
                     insight_key=insight_key,
                     agent_name=agent_used,
@@ -673,7 +801,11 @@ class FeedbackManager:
                         "rating": feedback.get("rating", 5),
                         "feedback_type": feedback.get("feedback_type", "thumbs_up")
                     },
-                    summary=f"Positive feedback for {agent_used}: {comment[:100] if comment else 'No comment'}"
+                    summary=f"Positive feedback for {agent_used}: {comment[:100] if comment else 'No comment'}",
+                    user_input=context.get("user_input"),
+                    agent_response=context.get("agent_response"),
+                    learning_reason="helpful",
+                    session_id=session_id
                 )
             except Exception as e:
                 import logging

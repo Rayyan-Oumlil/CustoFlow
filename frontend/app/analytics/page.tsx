@@ -25,6 +25,7 @@ export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [chartData, setChartData] = useState<any[]>([])
+  const [insights, setInsights] = useState<any>(null)
 
   useEffect(() => {
     initFromStorage()
@@ -120,6 +121,32 @@ export default function AnalyticsPage() {
     fetchAnalytics()
     // Poll every 30 seconds (analytics don't need to be super real-time)
     const interval = setInterval(fetchAnalytics, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Fetch auto-learning insights (from unified auto_learning table)
+  useEffect(() => {
+    const fetchInsights = async () => {
+      try {
+        const [refinements, kbUpdates, qaCheck] = await Promise.all([
+          apiClient.get<any>("/agent-refinements/order_agent").catch(() => null),
+          apiClient.get<any>("/kb-updates/pending").catch(() => null),
+          apiClient.get<any>("/qa/check").catch(() => null),
+        ])
+        
+        setInsights({
+          refinements: refinements || { pending_refinements: [], summary: {} },
+          kbUpdates: kbUpdates?.updates || kbUpdates || [],
+          qaCheck: qaCheck || { recent_checks: [] }
+        })
+      } catch (error) {
+        console.error("Failed to fetch insights:", error)
+      }
+    }
+    
+    fetchInsights()
+    // Poll every 10 seconds for real-time insights
+    const interval = setInterval(fetchInsights, 10000)
     return () => clearInterval(interval)
   }, [])
 
@@ -257,6 +284,74 @@ export default function AnalyticsPage() {
             </ResponsiveContainer>
           </Card>
         </div>
+
+        {/* Auto-Learning Insights Section */}
+        <Card className="p-6 mt-6">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            <span className="text-lg">🤖</span>
+            Auto-Learning Insights (Real-Time)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Agent Refinements */}
+            <div className="border rounded-lg p-4">
+              <p className="text-sm font-medium text-muted-foreground mb-2">Agent Refinements</p>
+              <p className="text-2xl font-bold">
+                {insights?.refinements?.pending_refinements?.length || 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Pending improvements</p>
+              {insights?.refinements?.pending_refinements?.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {insights.refinements.pending_refinements.slice(0, 2).map((r: any, idx: number) => (
+                    <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
+                      <p className="font-medium truncate">{r.suggested_improvement || "Improvement suggestion"}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* KB Updates */}
+            <div className="border rounded-lg p-4">
+              <p className="text-sm font-medium text-muted-foreground mb-2">KB Update Suggestions</p>
+              <p className="text-2xl font-bold">
+                {insights?.kbUpdates?.length || 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Pending updates</p>
+              {insights?.kbUpdates?.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {insights.kbUpdates.slice(0, 2).map((kb: any, idx: number) => (
+                    <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
+                      <p className="font-medium truncate">{kb.update_type || "KB Update"}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* QA Checks */}
+            <div className="border rounded-lg p-4">
+              <p className="text-sm font-medium text-muted-foreground mb-2">QA Checks</p>
+              <p className="text-2xl font-bold">
+                {insights?.qaCheck?.recent_checks?.length || 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Recent checks</p>
+              {insights?.qaCheck?.recent_checks?.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {insights.qaCheck.recent_checks.slice(0, 2).map((qa: any, idx: number) => (
+                    <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
+                      <p className="font-medium truncate">
+                        {qa.overall_status === "pass" ? "✅ Pass" : "⚠️ Review"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-4 italic">
+            💡 These insights are generated automatically from feedback and updated in real-time
+          </p>
+        </Card>
       </div>
     </div>
   )

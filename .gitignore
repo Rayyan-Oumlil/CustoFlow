@@ -45,6 +45,7 @@ Thumbs.db
 *.pyc
 .cache/
 YOUTUBE_SCRIPT.md
+PROMPTS_LIST.md
 
 # Google Cloud credentials (NEVER commit these!)
 *.json
