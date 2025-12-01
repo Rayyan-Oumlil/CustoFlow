@@ -385,6 +385,13 @@ This project demonstrates **11 key concepts** from the **Kaggle 5-Day AI Agents 
 - **☁️ API Backend (Cloud Run)**: [https://custoflow-api-171629812602.us-central1.run.app](https://custoflow-api-171629812602.us-central1.run.app)
 - **📦 GitHub Repository**: [https://github.com/Rayyan-Oumlil/CustoFlow](https://github.com/Rayyan-Oumlil/CustoFlow)
 
+### 🚪 How to Access the Live Demo
+
+To try the live website, simply enter one of the available customer usernames when prompted. For example, you can use:
+- `cust_004` (or any other customer ID from the system)
+
+Just type the username directly - no password required!
+
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
