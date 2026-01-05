@@ -1,8 +1,4 @@
-"""
-Conversation Tools for Agents
-
-Tools that allow agents to access and summarize conversation history.
-"""
+"""Conversation Tools for Agents"""
 from typing import Dict, Optional
 import sys
 from pathlib import Path

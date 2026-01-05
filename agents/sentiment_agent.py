@@ -1,22 +1,4 @@
-"""
-Sentiment Agent - Customer Emotion Analysis Specialist
-
-This agent analyzes customer messages to determine:
-- Sentiment: positive, neutral, or negative
-- Emotion: specific emotion (happy, frustrated, angry, etc.)
-- Urgency: low, medium, or high
-- Escalation recommendation: whether human intervention is needed
-
-Output Format:
-Returns structured JSON with sentiment analysis results that can be used
-by the orchestrator to make routing and escalation decisions.
-
-Use Cases:
-- Pre-routing sentiment check for frustrated customers
-- Escalation trigger based on negative sentiment
-- Priority assignment for tickets
-- Customer satisfaction monitoring
-"""
+"""Sentiment Agent - Customer Emotion Analysis Specialist"""
 import os
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -37,12 +19,9 @@ retry_config = types.HttpRetryOptions(
 )
 
 
-# ============================================================================
 # Sentiment Agent
-# ============================================================================
 # Analyzes customer sentiment and emotion to inform routing decisions.
 # Returns structured JSON for programmatic use by orchestrator.
-# ============================================================================
 sentiment_agent = LlmAgent(
     name="sentiment_agent",
     model=Gemini(

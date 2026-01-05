@@ -2444,9 +2444,7 @@ async def get_ticket_summary(ticket_id: str):
     }
 
 
-# ============================================================================
 # Agent Improvement & KB Update Endpoints
-# ============================================================================
 
 @app.get("/auto-learning/insights")
 async def get_all_auto_learning_insights():

@@ -1,18 +1,4 @@
-"""
-Orchestrator Agent - CustoFlow's Main Routing Agent
-
-This module implements the main orchestrator agent that intelligently routes
-customer queries to specialized agents based on query type, sentiment, and urgency.
-
-Architecture:
-- Uses AgentTool pattern to treat specialized agents as tools
-- Implements intelligent routing logic based on query analysis
-
-Design Decisions:
-- Orchestrator pattern chosen for centralized control and easy extensibility
-- Sentiment analysis first to detect urgent/frustrated customers
-- Fallback to FAQ agent for general queries when uncertain
-"""
+"""Orchestrator Agent - CustoFlow's Main Routing Agent"""
 import os
 from google.adk.agents import LlmAgent, SequentialAgent, ParallelAgent
 from google.adk.tools import AgentTool
@@ -41,9 +27,7 @@ retry_config = types.HttpRetryOptions(
 )
 
 
-# ============================================================================
 # Main Orchestrator Agent
-# ============================================================================
 # This is the primary entry point for all customer queries.
 # It analyzes the query and routes to the most appropriate specialized agent.
 #
@@ -51,7 +35,6 @@ retry_config = types.HttpRetryOptions(
 # 1. Sentiment-first: If customer seems frustrated, analyze sentiment first
 # 2. Query-type-based: Route based on keywords and intent
 # 3. Fallback: Default to FAQ agent for general queries
-# ============================================================================
 orchestrator_agent = LlmAgent(
     name="CustoFlow",
     model=Gemini(
@@ -142,9 +125,7 @@ orchestrator_agent = LlmAgent(
 )
 
 
-# ============================================================================
 # Advanced Agent Patterns: Sequential and Parallel Agents
-# ============================================================================
 # These demonstrate additional multi-agent patterns from the course:
 # - SequentialAgent: Chain agents in sequence (output of one feeds into next)
 # - ParallelAgent: Run multiple agents concurrently for efficiency
@@ -163,5 +144,4 @@ orchestrator_agent = LlmAgent(
 #       faq_agent.run(query),
 #       order_agent.run(query)
 #   )
-# ============================================================================
 

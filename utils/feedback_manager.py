@@ -1,15 +1,4 @@
-"""
-Customer Feedback Management System
-
-Comprehensive feedback collection, analysis, and continuous learning system.
-Features:
-- Feedback collection and storage
-- Sentiment analysis on feedback
-- Pattern detection and insights
-- Automatic knowledge base updates
-- Agent instruction refinement
-- Feedback aggregation and reporting
-"""
+"""Customer Feedback Management System"""
 import json
 import os
 from pathlib import Path

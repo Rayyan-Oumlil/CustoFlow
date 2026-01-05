@@ -1,16 +1,4 @@
-"""
-Order Modification Tools for Customer Support Agents
-
-This module provides tools that allow agents to modify orders on behalf of customers.
-These tools enable agents to perform actions like:
-- Updating order status
-- Cancelling orders
-- Updating delivery addresses
-- Modifying order items (with restrictions)
-
-IMPORTANT: These tools should only be used when the customer explicitly requests
-a modification. Always confirm the action with the customer before proceeding.
-"""
+"""Order Modification Tools for Customer Support Agents"""
 from typing import Dict, Optional
 from datetime import datetime
 import sys

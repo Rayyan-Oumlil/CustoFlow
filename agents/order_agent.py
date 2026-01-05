@@ -1,21 +1,4 @@
-"""
-Order Agent - Specialized Agent for Order Inquiries
-
-This agent handles all order-related customer questions including:
-- Order status lookup
-- Order tracking information
-- Customer order history
-- Delivery estimates
-
-Tools:
-- lookup_order: Get details for a specific order ID
-- get_customer_orders: Get all orders for a customer
-
-Error Handling:
-- Provides helpful guidance when order ID is missing or incorrect
-- Suggests where to find order information
-- Offers alternative lookup methods
-"""
+"""Order Agent - Specialized Agent for Order Inquiries"""
 import os
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -42,11 +25,8 @@ retry_config = types.HttpRetryOptions(
 )
 
 
-# ============================================================================
 # Order Agent
-# ============================================================================
 # Specialized agent for order inquiries and tracking.
-# ============================================================================
 order_agent = LlmAgent(
     name="order_agent",
     model=Gemini(

@@ -1,20 +1,4 @@
-"""
-Application Settings and Configuration
-
-This module provides centralized configuration management using pydantic-settings.
-Settings are loaded from environment variables and a .env file.
-
-Configuration Sources (in order of precedence):
-1. Environment variables
-2. .env file
-3. Default values
-
-Key Settings:
-- google_api_key: Required for Gemini API access
-- model_name: Gemini model to use
-- app_name: Application name for sessions
-- api_host/port: FastAPI server configuration
-"""
+"""Application Settings and Configuration"""
 import os
 from typing import Optional
 from pydantic_settings import BaseSettings

@@ -18,9 +18,7 @@ from memory.session_store import session_manager
 from config.settings import settings
 
 
-# ============================================================================
 # Evaluation Test Cases
-# ============================================================================
 # Comprehensive test suite covering all agent types and routing scenarios
 # Each test case includes:
 # - id: Unique test identifier
@@ -28,7 +26,6 @@ from config.settings import settings
 # - agent: Which agent should handle it
 # - expected_keywords: Keywords that should appear in response
 # - category: Test category for reporting
-# ============================================================================
 TEST_CASES = [
     # FAQ Agent Tests
     {

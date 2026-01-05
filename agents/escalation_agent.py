@@ -1,26 +1,4 @@
-"""
-Escalation Agent - Ticket Creation and Issue Escalation Specialist
-
-This agent handles complex issues that require human intervention:
-- Creates support tickets with appropriate priority
-- Determines urgency based on issue type and sentiment
-- Uses LRO (Long-Running Operations) for high-priority tickets requiring approval
-
-Tools:
-- create_ticket: Standard ticket creation
-- get_ticket_status: Check ticket status
-- create_ticket_with_approval (LRO): Human-in-the-loop approval for urgent tickets
-
-Priority Levels:
-- low: Standard inquiries
-- normal: Regular support requests
-- high: Important issues requiring attention
-- urgent: Critical issues requiring immediate action
-
-LRO Pattern:
-For high/urgent tickets, the agent can pause and wait for human approval
-before creating the ticket, demonstrating the Long-Running Operations pattern.
-"""
+"""Escalation Agent - Ticket Creation and Issue Escalation Specialist"""
 import os
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -44,12 +22,9 @@ retry_config = types.HttpRetryOptions(
 )
 
 
-# ============================================================================
 # Escalation Agent
-# ============================================================================
 # Creates support tickets and escalates issues to human agents.
 # Demonstrates LRO pattern with human-in-the-loop approval.
-# ============================================================================
 escalation_agent = LlmAgent(
     name="escalation_agent",
     model=Gemini(

@@ -40,21 +40,19 @@ try:
         try:
             supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
             SUPABASE_ENABLED = True
-            print(f"✅ Supabase activé: {SUPABASE_URL[:30]}...")
+            print(f"Supabase enabled: {SUPABASE_URL[:30]}...")
         except Exception as e:
             SUPABASE_ENABLED = False
-            print(f"⚠️  Erreur initialisation Supabase: {e}. Utilisation des fichiers JSON.")
+            print(f"Supabase initialization error: {e}. Using JSON files.")
     else:
         SUPABASE_ENABLED = False
-        print("⚠️  Supabase non configuré (SUPABASE_URL ou SUPABASE_KEY manquants). Utilisation des fichiers JSON.")
+        print("Supabase not configured (SUPABASE_URL or SUPABASE_KEY missing). Using JSON files.")
 except ImportError:
     SUPABASE_ENABLED = False
-    print("⚠️  Supabase non installé. Utilisation des fichiers JSON.")
+    print("Supabase not installed. Using JSON files.")
 
 
-# ============================================================================
 # Sessions
-# ============================================================================
 
 def get_session(session_id: str) -> Optional[Dict]:
     """Récupérer une session par ID."""
@@ -148,17 +146,17 @@ def get_user_sessions(user_id: str, customer_id: Optional[str] = None) -> List[D
                 s for s in sessions 
                 if s.get("customer_id") and s.get("customer_id").lower() == customer_id_lower
             ]
-            print(f"✅ [SUPABASE] Retrieved {len(filtered_sessions)} sessions from Supabase for customer_id={customer_id} (user_id IGNORED)")
+            print(f"[SUPABASE] Retrieved {len(filtered_sessions)} sessions from Supabase for customer_id={customer_id} (user_id IGNORED)")
             return filtered_sessions
         else:
             # If no customer_id, filter by user_id only (fallback for backward compatibility)
             query = supabase.table("sessions").select("*").eq("user_id", user_id)
             result = query.order("updated_at", desc=True).execute()
             sessions = result.data or []
-            print(f"✅ [SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}")
+            print(f"[SUPABASE] Retrieved {len(sessions)} sessions from Supabase for user {user_id}")
             return sessions
     except Exception as e:
-        print(f"❌ [SUPABASE] Error get_user_sessions: {e}")
+        print(f"[SUPABASE] Error get_user_sessions: {e}")
         # Fallback to JSON on error
         from memory.session_metadata import session_metadata
         return session_metadata.get_user_sessions(user_id, customer_id)
@@ -233,9 +231,7 @@ def increment_message_count(session_id: str) -> None:
         print(f"Erreur Supabase increment_message_count: {e}")
 
 
-# ============================================================================
 # Messages
-# ============================================================================
 
 def add_message(
     user_id: str,
@@ -299,14 +295,14 @@ def get_messages(user_id: str, session_id: Optional[str] = None, limit: int = 10
             query = supabase.table("messages").select("*").eq("session_id", session_id)
             result = query.order("timestamp", desc=False).limit(limit).execute()
             messages = result.data or []
-            print(f"✅ [SUPABASE] Retrieved {len(messages)} messages from Supabase for session_id={session_id} (user_id ignored)")
+            print(f"[SUPABASE] Retrieved {len(messages)} messages from Supabase for session_id={session_id} (user_id ignored)")
             return messages
         else:
             # If no session_id, filter by user_id only
             query = supabase.table("messages").select("*").eq("user_id", user_id)
             result = query.order("timestamp", desc=False).limit(limit).execute()
             messages = result.data or []
-            print(f"✅ [SUPABASE] Retrieved {len(messages)} messages from Supabase for user_id={user_id}")
+            print(f"[SUPABASE] Retrieved {len(messages)} messages from Supabase for user_id={user_id}")
             return messages
     except Exception as e:
         print(f"Erreur Supabase get_messages: {e}. Fallback vers JSON.")
@@ -315,9 +311,7 @@ def get_messages(user_id: str, session_id: Optional[str] = None, limit: int = 10
         return conversation_history.get_history(user_id, limit=limit, session_id=session_id)
 
 
-# ============================================================================
 # Tickets
-# ============================================================================
 
 def create_ticket(
     issue: str,
@@ -426,19 +420,17 @@ def get_tickets(session_id: Optional[str] = None) -> List[Dict]:
         
         result = query.order("created_at", desc=True).execute()
         tickets_list = result.data or []
-        print(f"✅ [SUPABASE] Retrieved {len(tickets_list)} tickets from Supabase")
+        print(f"[SUPABASE] Retrieved {len(tickets_list)} tickets from Supabase")
         return tickets_list
     except Exception as e:
-        print(f"❌ [SUPABASE] Error get_tickets: {e}")
+        print(f"[SUPABASE] Error get_tickets: {e}")
         import traceback
         traceback.print_exc()
         # Don't fallback here - let the caller handle it
         raise
 
 
-# ============================================================================
 # Orders
-# ============================================================================
 
 def get_orders(customer_id: Optional[str] = None) -> List[Dict]:
     """Récupérer les commandes avec mise à jour automatique du statut si estimated_delivery est passée."""
@@ -449,7 +441,7 @@ def get_orders(customer_id: Optional[str] = None) -> List[Dict]:
         orders = get_all_orders()
         if customer_id:
             orders = [o for o in orders if o.get("customer_id") == customer_id]
-        print(f"ℹ️  [ORDERS] Loaded {len(orders)} orders from JSON fallback")
+        print(f"[ORDERS] Loaded {len(orders)} orders from JSON fallback")
         return orders
     
     # Prioritize Supabase
@@ -461,9 +453,9 @@ def get_orders(customer_id: Optional[str] = None) -> List[Dict]:
         
         result = query.order("created_at", desc=True).execute()
         orders = result.data or []
-        print(f"✅ [SUPABASE] Retrieved {len(orders)} orders from Supabase")
+        print(f"[SUPABASE] Retrieved {len(orders)} orders from Supabase")
     except Exception as e:
-        print(f"❌ [SUPABASE] Error get_orders: {e}")
+        print(f"[SUPABASE] Error get_orders: {e}")
         import traceback
         traceback.print_exc()
         # Fallback to JSON on error
@@ -471,7 +463,7 @@ def get_orders(customer_id: Optional[str] = None) -> List[Dict]:
         orders = get_all_orders()
         if customer_id:
             orders = [o for o in orders if o.get("customer_id") == customer_id]
-        print(f"ℹ️  [ORDERS] Fallback to JSON: {len(orders)} orders")
+        print(f"[ORDERS] Fallback to JSON: {len(orders)} orders")
         return orders
     
     # Check each order and update status based on estimated_delivery date
@@ -522,9 +514,7 @@ def get_orders(customer_id: Optional[str] = None) -> List[Dict]:
     return updated_orders
 
 
-# ============================================================================
 # Conversation Summaries
-# ============================================================================
 
 def save_conversation_summary(
     summary_key: str,
@@ -610,9 +600,7 @@ def get_session_summaries(session_id: str) -> List[Dict]:
         return []
 
 
-# ============================================================================
 # Feedback
-# ============================================================================
 
 def create_feedback(
     session_id: str,
@@ -740,9 +728,7 @@ def get_feedback_stats() -> Dict:
         return {}
 
 
-# ============================================================================
 # Auto-Learning (Unified table for insights, refinements, KB updates)
-# ============================================================================
 
 def save_auto_learning(
     learning_id: str,
@@ -932,9 +918,7 @@ def update_auto_learning_status(learning_id: str, status: str) -> bool:
         return False
 
 
-# ============================================================================
 # Legacy functions (for backward compatibility - now use auto_learning)
-# ============================================================================
 
 def save_agent_refinement(
     refinement_key: str,
@@ -1104,9 +1088,7 @@ def update_kb_update_status(update_id: str, status: str) -> bool:
     return update_auto_learning_status(update_id, status)
 
 
-# ============================================================================
 # Analytics
-# ============================================================================
 
 def log_analytics_interaction(
     user_id: str,

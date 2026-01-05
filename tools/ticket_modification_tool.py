@@ -1,12 +1,4 @@
-"""
-Ticket Modification Tools for Customer Support Agents
-
-This module provides tools that allow agents to modify tickets.
-These tools enable agents to:
-- Update ticket status
-- Update ticket priority
-- Add notes/comments to tickets
-"""
+"""Ticket Modification Tools for Customer Support Agents"""
 from typing import Dict, Optional
 from datetime import datetime
 import sys

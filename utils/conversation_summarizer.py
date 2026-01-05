@@ -1,23 +1,4 @@
-"""
-Conversation Summarization Module
-
-Automatically generates conversation summaries for human agents when escalation occurs.
-This saves time and improves handoff quality by providing key context.
-
-Features:
-- Auto-generate summaries after each conversation or when tickets are created
-- Key points extraction (customer issue, attempted solutions, current status)
-- Sentiment summary
-- Action items and next steps
-- Configurable summary length
-- Export summaries for training/analysis
-
-Technical Implementation:
-- Uses LLM summarization (Gemini)
-- Template-based summaries
-- Configurable summary length
-- Stores summaries in conversation history and ticket metadata
-"""
+"""Conversation Summarization Module"""
 import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime

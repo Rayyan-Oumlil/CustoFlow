@@ -1,22 +1,4 @@
-"""
-Document Analysis Tool for Customer Support
-
-This tool uses Gemini Vision API to analyze uploaded documents (PDFs, images)
-and extract relevant information for customer support purposes.
-
-Supported document types:
-- PDF files
-- Images (JPG, PNG, WebP)
-- Receipts, invoices, order confirmations
-- Product photos
-- Identity documents
-
-Use cases:
-- Extract order numbers from receipts/invoices
-- Analyze product photos for defects
-- Extract customer information from documents
-- Verify order details from confirmations
-"""
+"""Document Analysis Tool for Customer Support"""
 import os
 import base64
 import logging

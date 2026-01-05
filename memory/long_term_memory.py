@@ -1,24 +1,4 @@
-"""
-Long-Term Memory Management with Automatic Ingestion
-
-This module provides long-term memory capabilities that persist across sessions,
-enabling the agent to learn from past interactions and provide personalized service.
-
-Key Concepts:
-- Sessions: Short-term conversation context (current conversation)
-- Memory: Long-term persistent knowledge (across all conversations)
-- Ingestion: Process of converting session data into long-term memory
-
-Memory Consolidation:
-After a session ends, key information can be ingested into long-term memory,
-allowing the agent to remember:
-- Customer preferences
-- Past issues and resolutions
-- Sentiment history
-- Common patterns
-
-This enables personalized service and faster resolution of recurring issues.
-"""
+"""Long-Term Memory Management with Automatic Ingestion"""
 from google.adk.memory import InMemoryMemoryService
 from typing import Optional, Dict, Any
 from google.genai import types

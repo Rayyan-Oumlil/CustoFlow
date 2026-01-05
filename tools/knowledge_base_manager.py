@@ -1,16 +1,4 @@
-"""
-Knowledge Base Manager for FAQ System
-
-Provides versioning, A/B testing, and management capabilities for the FAQ
-knowledge base. Supports multiple versions of FAQs and can test different
-configurations.
-
-Features:
-- Knowledge base versioning
-- A/B testing framework
-- Version comparison and rollback
-- Multi-language support tracking
-"""
+"""Knowledge Base Manager for FAQ System"""
 import json
 import hashlib
 from pathlib import Path

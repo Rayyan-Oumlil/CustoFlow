@@ -1,20 +1,4 @@
-"""
-Order Lookup Tool for Customer Support
-
-This tool provides order information retrieval capabilities. In production,
-this would connect to a real order management system (database, API, or CRM).
-
-Current Implementation:
-- Mock order database for demonstration purposes
-- Supports order lookup by ID
-- Supports customer order history
-- Provides helpful error messages with guidance
-- Response caching for performance
-
-Production Integration:
-- Replace _MOCK_ORDERS with database queries or API calls
-- See tools/order_tool_production_example.py for integration patterns
-"""
+"""Order Lookup Tool for Customer Support"""
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import random
@@ -87,15 +71,12 @@ def clear_order_context(session_id: Optional[str] = None):
             del _order_contexts[key]
 
 
-# ============================================================================
 # Order Database with Persistence
-# ============================================================================
 # Orders are stored in data/orders.json for persistence
 # In production, this would be replaced with:
 # - Database queries (PostgreSQL, MySQL, etc.)
 # - API calls to order management system
 # - CRM integration (Salesforce, etc.)
-# ============================================================================
 ORDERS_FILE = Path(__file__).parent.parent / "data" / "orders.json"
 
 # Default orders (used if file doesn't exist)

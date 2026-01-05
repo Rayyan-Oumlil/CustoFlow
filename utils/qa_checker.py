@@ -1,16 +1,4 @@
-"""
-Quality Assurance & Compliance System
-
-Automated QA checks to ensure responses meet quality standards, compliance requirements, and brand guidelines.
-
-Features:
-- Response quality scoring
-- Compliance checking (GDPR, privacy, etc.)
-- Brand voice consistency
-- Profanity detection
-- Automated flagging of problematic responses
-- Quality reports
-"""
+"""Quality Assurance & Compliance System"""
 import re
 import logging
 from typing import Dict, List, Optional
