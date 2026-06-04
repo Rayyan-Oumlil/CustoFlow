@@ -7,6 +7,42 @@ import { apiClient, type Message } from "@/lib/api-client"
 import { cache, CACHE_KEYS } from "@/lib/cache"
 import { MOCK_SESSIONS, MOCK_MESSAGES } from "@/lib/mock-data"
 
+// Generic mock messages shown for any session when backend is empty
+const FALLBACK_MESSAGES = [
+  { id: "f1", role: "user",      content: "Hi, I need help with my recent order.", timestamp: new Date(Date.now() - 15 * 60000).toISOString(), metadata: {} },
+  { id: "f2", role: "assistant", content: "Hello! I'd be happy to help you with your order. Could you share your order ID so I can look it up?", timestamp: new Date(Date.now() - 14 * 60000).toISOString(), metadata: { agent: "order_agent", response_time: 1.4 } },
+  { id: "f3", role: "user",      content: "Sure, it's order_042. I was expecting it yesterday.", timestamp: new Date(Date.now() - 13 * 60000).toISOString(), metadata: {} },
+  { id: "f4", role: "assistant", content: "I can see order_042 is currently in transit. It shows a slight delay due to high carrier volume in your area — the updated estimated delivery is today by 8 PM. Would you like me to set up a delivery notification for you?", timestamp: new Date(Date.now() - 12 * 60000).toISOString(), metadata: { agent: "order_agent", response_time: 2.1 } },
+]
+
+// Mock conversations that always show up regardless of customer ID
+const MOCK_CONVOS = [
+  { session_id: "mock_conv_001", name: "Order delivery issue", message_count: 4, created_at: new Date(Date.now() - 15 * 60000).toISOString(), is_active: true },
+  { session_id: "mock_conv_002", name: "Return policy question", message_count: 3, created_at: new Date(Date.now() - 2 * 3600000).toISOString(), is_active: true },
+  { session_id: "mock_conv_003", name: "Refund status follow-up", message_count: 6, created_at: new Date(Date.now() - 4 * 3600000).toISOString(), is_active: true },
+  { session_id: "mock_conv_004", name: "Wrong item received", message_count: 5, created_at: new Date(Date.now() - 1 * 24 * 3600000).toISOString(), is_active: false },
+]
+
+const MOCK_CONV_MESSAGES: Record<string, any[]> = {
+  mock_conv_001: FALLBACK_MESSAGES,
+  mock_conv_002: [
+    { id: "m1", role: "user",      content: "What's your return window for unworn items?", timestamp: new Date(Date.now() - 2 * 3600000).toISOString(), metadata: {} },
+    { id: "m2", role: "assistant", content: "Unworn items with original tags can be returned within 30 days for a full refund, or within 60 days for store credit. Would you like to start a return?", timestamp: new Date(Date.now() - 2 * 3600000 + 60000).toISOString(), metadata: { agent: "faq_agent", response_time: 1.1 } },
+    { id: "m3", role: "user",      content: "No thanks, just checking. Thanks!", timestamp: new Date(Date.now() - 2 * 3600000 + 120000).toISOString(), metadata: {} },
+  ],
+  mock_conv_003: [
+    { id: "n1", role: "user",      content: "It's been 9 days and my $129 refund still hasn't shown up.", timestamp: new Date(Date.now() - 4 * 3600000).toISOString(), metadata: {} },
+    { id: "n2", role: "assistant", content: "I'm sorry about the delay! I can see the refund was approved on June 1st. Bank processing can take 5–10 business days. It should appear by June 7th at the latest.", timestamp: new Date(Date.now() - 4 * 3600000 + 90000).toISOString(), metadata: { agent: "escalation_agent", response_time: 2.3 } },
+    { id: "n3", role: "user",      content: "Okay thanks, I'll wait a couple more days.", timestamp: new Date(Date.now() - 4 * 3600000 + 180000).toISOString(), metadata: {} },
+    { id: "n4", role: "assistant", content: "Of course! I've also added a note to your account so our team can prioritize this if it hasn't arrived by then. Is there anything else I can help with?", timestamp: new Date(Date.now() - 4 * 3600000 + 240000).toISOString(), metadata: { agent: "escalation_agent", response_time: 1.7 } },
+  ],
+  mock_conv_004: [
+    { id: "o1", role: "user",      content: "I ordered a large but received a medium. This is the third time this has happened.", timestamp: new Date(Date.now() - 24 * 3600000).toISOString(), metadata: {} },
+    { id: "o2", role: "assistant", content: "I sincerely apologize — three fulfillment errors is unacceptable. I've flagged your account and I'm shipping the correct large immediately via express. The return label for the medium is already in your email.", timestamp: new Date(Date.now() - 24 * 3600000 + 120000).toISOString(), metadata: { agent: "escalation_agent", response_time: 2.8 } },
+    { id: "o3", role: "user",      content: "Thank you. I appreciate the fast response.", timestamp: new Date(Date.now() - 24 * 3600000 + 300000).toISOString(), metadata: {} },
+  ],
+}
+
 const AGENT_COLORS: Record<string, string> = {
   orchestrator: "#c4663f",
   faq_agent:    "#4f8a5b",
@@ -112,31 +148,27 @@ export default function ChatPage() {
     const load = async () => {
       setLoading(true)
       try {
-        const cacheKey = customerId ? CACHE_KEYS.sessions(customerId) : `sessions:${userId}`
-        const cached = cache.get<Conversation[]>(cacheKey)
-        if (cached) { setConversations(cached); setLoading(false); return }
-
         const url = customerId ? `/sessions/by-customer/${encodeURIComponent(customerId)}` : `/sessions/${userId}`
         const data = await apiClient.get<any>(url).catch(() => null)
         let arr: any[] = Array.isArray(data) ? data : data?.sessions ?? []
+        // Always use mock convos when backend has no sessions
         if (!arr.length) {
-          arr = MOCK_SESSIONS.slice(0, 2).map(s => ({
-            ...s, customer_id: customerId, user_id: userId,
-            name: `Session ${s.session_id.slice(-8)}`,
-          }))
+          setConversations(MOCK_CONVOS)
+          setSessionId(MOCK_CONVOS[0].session_id)
+          return
         }
-        arr = arr.filter((s: any) => !s.customer_id || s.customer_id.toLowerCase() === customerId.toLowerCase())
-        const convos: Conversation[] = arr.map((s: any) => ({
-          session_id: s.session_id,
-          name: s.name || `Session ${s.session_id.slice(-8)}`,
-          message_count: s.message_count || 0,
-          created_at: s.created_at,
-          is_active: s.is_active !== false,
-        }))
-        setConversations(convos)
-        cache.set(cacheKey, convos, 30000)
-        if (!sessionId && convos.length > 0) setSessionId(convos[0].session_id)
-        if (convos.length === 0) createNewConversation()
+        const convos: Conversation[] = arr
+          .filter((s: any) => !s.customer_id || s.customer_id.toLowerCase() === customerId.toLowerCase())
+          .map((s: any) => ({
+            session_id: s.session_id,
+            name: s.name || `Session ${s.session_id.slice(-8)}`,
+            message_count: s.message_count || 0,
+            created_at: s.created_at,
+            is_active: s.is_active !== false,
+          }))
+        const finalConvos = convos.length ? convos : MOCK_CONVOS
+        setConversations(finalConvos)
+        if (!sessionId && finalConvos.length > 0) setSessionId(finalConvos[0].session_id)
       } catch { /* ignore */ } finally { setLoading(false) }
     }
     load()
@@ -163,8 +195,9 @@ export default function ChatPage() {
     if (!userId || !sessionId) return
     try {
       const data = await apiClient.get<any>(`/history/${userId}?session_id=${sessionId}`).catch(() => null)
-      const mockFallback = MOCK_MESSAGES[sessionId] ?? []
-      const arr: any[] = data ? (Array.isArray(data) ? data : data?.history ?? []) : mockFallback
+      const realMsgs = data ? (Array.isArray(data) ? data : data?.history ?? []) : []
+      const mockFallback = MOCK_CONV_MESSAGES[sessionId] ?? MOCK_MESSAGES[sessionId] ?? FALLBACK_MESSAGES
+      const arr: any[] = realMsgs.length ? realMsgs : mockFallback
       const serverMsgs: Message[] = arr.map((m: any, i: number) => {
         const isHuman = m.metadata?.is_human_agent || m.metadata?.agent_used === "human_agent" || m.agent_used === "human_agent"
         return {

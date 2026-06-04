@@ -30,7 +30,7 @@ function formatAge(iso: string): string {
 export default function MonitoringPage() {
   const [sessions, setSessions] = useState<any[]>(MOCK_ACTIVE_SESSIONS)
   const [metrics, setMetrics]   = useState<any>({})
-  const [loading, setLoading]   = useState(true)
+  const [loading, setLoading]   = useState(false)
   const [sending, setSending]   = useState<Record<string, boolean>>({})
   const [replies, setReplies]   = useState<Record<string, string>>({})
 

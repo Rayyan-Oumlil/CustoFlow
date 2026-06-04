@@ -39,7 +39,7 @@ export default function LearningPage() {
     ...MOCK_REFINEMENTS.faq_agent.pending_refinements,
   ] as Refinement[])
   const [kbUpdates, setKbUpdates]     = useState<any[]>(MOCK_KB_UPDATES)
-  const [loading, setLoading]         = useState(true)
+  const [loading, setLoading] = useState(false)
   const [activeAgent, setActiveAgent] = useState<string>("all")
   const [applied, setApplied]         = useState<Set<string>>(new Set())
   const [dismissed, setDismissed]     = useState<Set<string>>(new Set())

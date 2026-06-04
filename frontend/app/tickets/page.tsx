@@ -22,7 +22,7 @@ type Filter = "all" | "open" | "in_progress" | "resolved" | "urgent"
 
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<any[]>(MOCK_TICKETS)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [filter, setFilter]   = useState<Filter>("all")
   const [selected, setSelected] = useState<any | null>(null)
   const [replyText, setReplyText] = useState("")

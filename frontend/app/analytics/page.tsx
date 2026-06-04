@@ -49,7 +49,7 @@ export default function AnalyticsPage() {
   const [daily, setDaily]         = useState<any[]>(MOCK_DAILY)
   const [ticketStatus, setTicketStatus] = useState<any[]>([])
   const [insights, setInsights]   = useState<any>(MOCK_INSIGHTS)
-  const [loading, setLoading]     = useState(true)
+  const [loading, setLoading] = useState(false)
 
   const load = async () => {
     try {

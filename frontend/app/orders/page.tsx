@@ -17,7 +17,7 @@ type SortField = "order_id" | "customer_id" | "total" | "status"
 
 export default function OrdersPage() {
   const [orders, setOrders]       = useState<any[]>(MOCK_ORDERS)
-  const [loading, setLoading]     = useState(true)
+  const [loading, setLoading] = useState(false)
   const [sortField, setSortField] = useState<SortField>("order_id")
   const [sortDir, setSortDir]     = useState<"asc" | "desc">("asc")
   const [filter, setFilter]       = useState("all")
