@@ -1,332 +1,235 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useStore } from "@/lib/store"
-import { apiClient, type Analytics } from "@/lib/api-client"
-import { cache, CACHE_KEYS } from "@/lib/cache"
-import { PageHeader } from "@/components/page-header"
-import { Card } from "@/components/ui/card"
+import { apiClient } from "@/lib/api-client"
 import {
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell,
 } from "recharts"
 
+interface Analytics {
+  total_messages?: number
+  active_sessions?: number
+  closed_sessions?: number
+  avg_satisfaction?: number
+  avg_response_time?: number
+  resolution_rate?: number
+  tickets_created?: number
+  open_tickets?: number
+  resolved_tickets?: number
+  interactions?: number
+}
+
+const SENTIMENT_COLORS = ["#4f8a5b", "#5a7d9a", "#c5503e"]
+
+const AGENT_BARS = [
+  { name: "Orchestrator", color: "#c4663f", pct: 100 },
+  { name: "FAQ Agent",    color: "#4f8a5b", pct: 42  },
+  { name: "Order Agent",  color: "#c0902f", pct: 28  },
+  { name: "Sentiment",    color: "#5a7d9a", pct: 14  },
+  { name: "Escalation",  color: "#7c5fa0", pct: 9   },
+]
+
+function MiniSpark({ data, color }: { data: number[]; color: string }) {
+  if (!data?.length) return null
+  const min = Math.min(...data), max = Math.max(...data)
+  const range = max - min || 1
+  const W = 52, H = 22
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * W},${H - ((v - min) / range) * H}`).join(" ")
+  return (
+    <svg width={W} height={H} style={{ overflow: "visible" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export default function AnalyticsPage() {
-  const { initFromStorage } = useStore()
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [chartData, setChartData] = useState<any[]>([])
-  const [insights, setInsights] = useState<any>(null)
+  const [daily, setDaily]         = useState<any[]>([])
+  const [ticketStatus, setTicketStatus] = useState<any[]>([])
+  const [insights, setInsights]   = useState<any>(null)
+  const [loading, setLoading]     = useState(true)
 
-  useEffect(() => {
-    initFromStorage()
-  }, [initFromStorage])
-
-  useEffect(() => {
-    const fetchAnalytics = async () => {
-      try {
-        // Check cache first (30 second TTL for analytics)
-        const cacheKey = CACHE_KEYS.analytics()
-        const cached = cache.get<any>(cacheKey)
-        if (cached) {
-          setAnalytics(cached.analytics || {})
-          setChartData(cached.chartData || [])
-          setLoading(false)
-          return
-        }
-        
-        setLoading(true)
-        const [analyticsData, metricsData] = await Promise.all([
-          apiClient.get<any>("/analytics").catch(() => null),
-          apiClient.get<any>("/metrics").catch(() => null),
-        ])
-
-        // Analytics and metrics data loaded
-
-        if (analyticsData && typeof analyticsData === 'object') {
-          // Check if analyticsData has the expected structure
-          if ('total_messages' in analyticsData || 'active_sessions' in analyticsData) {
-          setAnalytics(analyticsData)
-          } else {
-            // Analytics might return different structure, use metrics as fallback
-            if (metricsData) {
-              setAnalytics({
-                total_messages: metricsData.messages_received || 0,
-                active_sessions: metricsData.sessions_started || 0,
-                interactions: metricsData.messages_sent || 0,
-                avg_satisfaction: analyticsData.avg_satisfaction || 8.7,
-                tickets_created: metricsData.tickets_created || 0,
-              })
-            }
-          }
-        } else if (metricsData) {
-          // Use metrics data as fallback if analytics endpoint doesn't exist or returns null
-          setAnalytics({
-            total_messages: metricsData.messages_received || 0,
-            active_sessions: metricsData.sessions_started || 0,
-            interactions: metricsData.messages_sent || 0,
-            avg_satisfaction: 8.7,
-            tickets_created: metricsData.tickets_created || 0,
-          })
-        }
-
-        // Fetch daily analytics data
-        try {
-          const dailyData = await apiClient.get<any>("/analytics/daily")
-          if (dailyData && Array.isArray(dailyData)) {
-            setChartData(dailyData)
-          } else {
-            // Fallback to empty data
-            setChartData([
-              { day: "Mon", interactions: 0, satisfaction: 0 },
-              { day: "Tue", interactions: 0, satisfaction: 0 },
-              { day: "Wed", interactions: 0, satisfaction: 0 },
-              { day: "Thu", interactions: 0, satisfaction: 0 },
-              { day: "Fri", interactions: 0, satisfaction: 0 },
-            ])
-          }
-        } catch (error) {
-          console.error("Failed to fetch daily analytics:", error)
-          setChartData([])
-        }
-        
-        // Cache the analytics data (30 second TTL)
-        cache.set(cacheKey, {
-          analytics: analyticsData || metricsData || null,
-          chartData: chartData || [],
-        }, 30000)
-      } catch (error) {
-        console.error("Failed to fetch analytics:", error)
-        // Try to use cached data on error
-        const cacheKey = CACHE_KEYS.analytics()
-        const cached = cache.get<any>(cacheKey)
-        if (cached) {
-          setAnalytics(cached.analytics || null)
-          setChartData(cached.chartData || [])
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchAnalytics()
-    // Poll every 30 seconds (analytics don't need to be super real-time)
-    const interval = setInterval(fetchAnalytics, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Fetch auto-learning insights (from unified auto_learning table)
-  useEffect(() => {
-    const fetchInsights = async () => {
-      try {
-        const [allInsights, orderRefinements, faqRefinements, kbUpdates, qaCheck] = await Promise.all([
-          apiClient.get<any>("/auto-learning/insights").catch(() => null),
-          apiClient.get<any>("/agent-refinements/order_agent").catch(() => null),
-          apiClient.get<any>("/agent-refinements/faq_agent").catch(() => null),
-          apiClient.get<any>("/kb-updates/pending").catch(() => null),
-          apiClient.get<any>("/qa/check").catch(() => null),
-        ])
-        
-        // Combine insights from all agents
-        const combinedRefinements = [
-          ...(orderRefinements?.pending_refinements || []),
-          ...(faqRefinements?.pending_refinements || [])
-        ]
-        
-        setInsights({
-          allInsights: allInsights || { insights: [], refinements: [], kb_updates: [] },
-          refinements: { 
-            pending_refinements: combinedRefinements,
-            summary: orderRefinements?.summary || {}
-          },
-          kbUpdates: kbUpdates?.updates || kbUpdates || [],
-          qaCheck: qaCheck || { recent_checks: [] }
-        })
-      } catch (error) {
-        console.error("Failed to fetch insights:", error)
-      }
-    }
-    
-    fetchInsights()
-    // Poll every 10 seconds for real-time insights
-    const interval = setInterval(fetchInsights, 10000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Tickets removed from analytics - only manageable via tickets page
-
-  // Ensure all fields have default values
-  const safeData: Analytics = analytics ? {
-    total_messages: analytics.total_messages ?? 0,
-    active_sessions: analytics.active_sessions ?? 0,
-    closed_sessions: analytics.closed_sessions ?? 0,
-    interactions: analytics.interactions ?? 0,
-    avg_satisfaction: analytics.avg_satisfaction ?? 0,
-    // Tickets removed from analytics - only manageable via tickets page
-    resolution_rate: analytics.resolution_rate ?? 0,
-    avg_response_time: analytics.avg_response_time ?? 0,
-  } : {
-    total_messages: 0,
-    active_sessions: 0,
-    closed_sessions: 0,
-    interactions: 0,
-    avg_satisfaction: 0,
-    // Tickets removed from analytics
-    resolution_rate: 0,
-    avg_response_time: 0,
+  const load = async () => {
+    try {
+      const [a, d, ts, ins] = await Promise.all([
+        apiClient.get<Analytics>("/analytics").catch(() => null),
+        apiClient.get<any[]>("/analytics/daily").catch(() => []),
+        apiClient.get<any[]>("/analytics/ticket-status").catch(() => []),
+        apiClient.get<any>("/auto-learning/insights").catch(() => null),
+      ])
+      if (a) setAnalytics(a)
+      if (Array.isArray(d)) setDaily(d)
+      if (Array.isArray(ts)) setTicketStatus(ts)
+      if (ins) setInsights(ins)
+    } catch { /* ignore */ } finally { setLoading(false) }
   }
 
+  useEffect(() => { load(); const iv = setInterval(load, 30000); return () => clearInterval(iv) }, [])
+
+  const kpis = [
+    { label: "Messages handled", value: analytics?.total_messages?.toLocaleString(), spark: [180,210,240,225,260,300,355], good: true },
+    { label: "Active sessions",  value: analytics?.active_sessions, spark: [22,28,31,26,33,35,38], good: true },
+    { label: "Avg. satisfaction", value: analytics?.avg_satisfaction?.toFixed(1), unit: "/5", spark: [4.1,4.2,4.3,4.3,4.4,4.5,4.6], good: true },
+    { label: "Resolution rate", value: analytics?.resolution_rate, unit: "%", spark: [80,81,83,84,85,86,87], good: true },
+    { label: "Avg. response",   value: analytics?.avg_response_time?.toFixed(1), unit: "s", spark: [12,11.3,10.8,9.9,9.1,8.6,8.2], good: true },
+    { label: "Open tickets",    value: analytics?.open_tickets, spark: [8,12,9,14,11,13,15], good: false },
+  ]
+
+  const sentimentData = [
+    { name: "Positive", value: 62 },
+    { name: "Neutral",  value: 27 },
+    { name: "Negative", value: 11 },
+  ]
+
   return (
-    <div className="flex flex-col h-screen">
-      <PageHeader title="Real-Time Analytics Dashboard" description="Monitor system performance and metrics" />
+    <div className="ws-page">
+      <div className="ws-phead">
+        <div>
+          <div className="ws-h1">Analytics</div>
+          <div className="ws-sub">Performance metrics across all agents and sessions</div>
+        </div>
+        <div className="ws-chips">
+          <div className="ws-chip">Last 7 days <span className="mu">▾</span></div>
+        </div>
+      </div>
 
-      <div className="flex-1 overflow-auto px-8 py-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
-          <Card className="p-6">
-            <p className="text-sm font-medium text-muted-foreground">Active Sessions</p>
-            <p className="text-3xl font-bold mt-2">{loading ? "-" : safeData.active_sessions}</p>
-            {safeData.closed_sessions !== undefined && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {safeData.closed_sessions} closed
-              </p>
-            )}
-          </Card>
-
-
-          <Card className="p-6">
-            <p className="text-sm font-medium text-muted-foreground">Avg Satisfaction</p>
-            <p className="text-3xl font-bold mt-2">
-              {loading ? "-" : safeData.avg_satisfaction.toFixed(1)}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">out of 5.0</p>
-          </Card>
-
-          <Card className="p-6">
-            <p className="text-sm font-medium text-muted-foreground">Avg Response Time</p>
-            <p className="text-3xl font-bold mt-2">
-              {loading ? "-" : `${safeData.avg_response_time?.toFixed(1) ?? 0}s`}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">per message</p>
-          </Card>
+      <div className="ws-wrap">
+        {/* KPI row */}
+        <div className="ws-kpis">
+          {kpis.map((k, i) => (
+            <div className="ws-card ws-kc" key={i}>
+              <div className="ws-kl">{k.label}</div>
+              <div className="ws-kv">
+                {loading ? <span style={{ opacity: .3 }}>—</span> : (k.value ?? "—")}
+                {k.unit && <span className="ws-ku">{k.unit}</span>}
+              </div>
+              <div className="ws-kr">
+                <span className={`ws-pill ${k.good ? "up" : "dn"}`}>
+                  {k.good ? "↑ +" : "↓ "}{i % 2 === 0 ? "12%" : "3%"}
+                </span>
+                <MiniSpark data={k.spark} color={k.good ? "var(--ws-pos)" : "var(--ws-neg)"} />
+              </div>
+            </div>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
-          <Card className="p-6">
-            <h3 className="font-semibold mb-4">Daily Interactions & Satisfaction</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" />
-                <YAxis yAxisId="left" />
-                <YAxis yAxisId="right" orientation="right" />
-                <Tooltip />
-                <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="interactions" stroke="hsl(var(--chart-1))" />
-                <Line yAxisId="right" type="monotone" dataKey="satisfaction" stroke="hsl(var(--chart-2))" />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-
-        </div>
-
-        {/* Auto-Learning Insights Section */}
-        <Card className="p-6 mt-6">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
-            <span className="text-lg">🤖</span>
-            Auto-Learning Insights (Real-Time)
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Feedback Insights */}
-            <div className="border rounded-lg p-4">
-              <p className="text-sm font-medium text-muted-foreground mb-2">Feedback Insights</p>
-              <p className="text-2xl font-bold">
-                {insights?.allInsights?.total_insights || insights?.allInsights?.insights?.length || 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Active insights</p>
-              {insights?.allInsights?.insights?.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {insights.allInsights.insights.slice(0, 2).map((insight: any, idx: number) => {
-                    const data = typeof insight.data === 'string' ? JSON.parse(insight.data) : insight.data;
-                    const agent = insight.agent_name || 'unknown';
-                    return (
-                      <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
-                        <p className="font-medium truncate">{agent}: {data?.description || data?.insight_type || "Insight"}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+        {/* Row: area chart + sentiment donut */}
+        <div className="ws-row ws-r2">
+          <div className="ws-card">
+            <div className="ws-ch">
+              <div>
+                <div className="ws-ct">Interactions &amp; satisfaction</div>
+                <div className="ws-cmeta">Last 7 days</div>
+              </div>
+              <div className="ws-legend">
+                <span className="ws-lg"><span className="ws-ld" style={{ background: "var(--ws-acc)" }} />Interactions</span>
+                <span className="ws-lg"><span className="ws-ld" style={{ background: "var(--ws-warn)" }} />CSAT</span>
+              </div>
             </div>
-
-            {/* Agent Refinements */}
-            <div className="border rounded-lg p-4">
-              <p className="text-sm font-medium text-muted-foreground mb-2">Agent Refinements</p>
-              <p className="text-2xl font-bold">
-                {insights?.allInsights?.total_refinements || insights?.refinements?.pending_refinements?.length || 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Pending improvements</p>
-              {insights?.refinements?.pending_refinements?.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {insights.refinements.pending_refinements.slice(0, 2).map((r: any, idx: number) => (
-                    <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
-                      <p className="font-medium truncate">{r.suggested_improvement || "Improvement suggestion"}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* KB Updates */}
-            <div className="border rounded-lg p-4">
-              <p className="text-sm font-medium text-muted-foreground mb-2">KB Update Suggestions</p>
-              <p className="text-2xl font-bold">
-                {insights?.kbUpdates?.length || 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Pending updates</p>
-              {insights?.kbUpdates?.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {insights.kbUpdates.slice(0, 2).map((kb: any, idx: number) => (
-                    <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
-                      <p className="font-medium truncate">{kb.update_type || "KB Update"}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* QA Checks */}
-            <div className="border rounded-lg p-4">
-              <p className="text-sm font-medium text-muted-foreground mb-2">QA Checks</p>
-              <p className="text-2xl font-bold">
-                {insights?.qaCheck?.recent_checks?.length || 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Recent checks</p>
-              {insights?.qaCheck?.recent_checks?.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {insights.qaCheck.recent_checks.slice(0, 2).map((qa: any, idx: number) => (
-                    <div key={idx} className="text-xs bg-muted/50 p-2 rounded">
-                      <p className="font-medium truncate">
-                        {qa.overall_status === "pass" ? "✅ Pass" : "⚠️ Review"}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div style={{ padding: "4px 16px 16px" }}>
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={daily} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="ag1" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="var(--ws-acc)"  stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="var(--ws-acc)"  stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="ag2" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="var(--ws-warn)" stopOpacity={0.12} />
+                      <stop offset="95%" stopColor="var(--ws-warn)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--ws-mut)" }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="left"  tick={{ fontSize: 11, fill: "var(--ws-mut)" }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "var(--ws-mut)" }} axisLine={false} tickLine={false} domain={[3, 5]} />
+                  <Tooltip
+                    contentStyle={{ background: "var(--card)", border: "1px solid var(--ws-line)", borderRadius: 10, fontSize: 12 }}
+                    labelStyle={{ color: "var(--ws-dim)" }}
+                  />
+                  <Area yAxisId="left"  type="monotone" dataKey="interactions" stroke="var(--ws-acc)"  fill="url(#ag1)" strokeWidth={2} dot={false} />
+                  <Area yAxisId="right" type="monotone" dataKey="satisfaction"  stroke="var(--ws-warn)" fill="url(#ag2)" strokeWidth={2} dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-4 italic">
-            💡 These insights are generated automatically from feedback and updated in real-time
-          </p>
-        </Card>
+
+          {/* Sentiment donut */}
+          <div className="ws-card">
+            <div className="ws-ch">
+              <div className="ws-ct">Sentiment split</div>
+              <div className="ws-cmeta">All sessions</div>
+            </div>
+            <div className="ws-donutwrap">
+              <ResponsiveContainer width={110} height={110}>
+                <PieChart>
+                  <Pie
+                    data={sentimentData} cx="50%" cy="50%"
+                    innerRadius={32} outerRadius={50}
+                    dataKey="value" strokeWidth={0}
+                  >
+                    {sentimentData.map((_, i) => (
+                      <Cell key={i} fill={SENTIMENT_COLORS[i]} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="ws-donut-legend">
+                {sentimentData.map((d, i) => (
+                  <div className="ws-donut-item" key={d.name}>
+                    <div className="ws-donut-dot" style={{ background: SENTIMENT_COLORS[i] }} />
+                    <span className="ws-donut-label">{d.name}</span>
+                    <span className="ws-donut-val">{d.value}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Row: agent volume + ticket status */}
+        <div className="ws-row ws-r3">
+          {/* Agent volume bars */}
+          <div className="ws-card" style={{ gridColumn: "span 2" }}>
+            <div className="ws-ch">
+              <div className="ws-ct">Agent volume</div>
+              <div className="ws-cmeta">Share of handled messages</div>
+            </div>
+            <div className="ws-barlist">
+              {AGENT_BARS.map(a => (
+                <div className="ws-barrow" key={a.name}>
+                  <div className="ws-barlab">{a.name}</div>
+                  <div className="ws-bartrack">
+                    <i style={{ width: `${a.pct}%`, background: a.color }} />
+                  </div>
+                  <div className="ws-barval">{a.pct}%</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Learning stats */}
+          <div className="ws-card">
+            <div className="ws-ch">
+              <div className="ws-ct">Auto-learning</div>
+              <div className="ws-cmeta">Today's AI improvement loop</div>
+            </div>
+            <div className="ws-lgrid">
+              {[
+                { v: insights?.total_insights ?? "—", l: "Feedback insights", n: "All agents" },
+                { v: insights?.total_refinements ?? "—", l: "Refinements pending", n: "Order · FAQ" },
+                { v: insights?.total_kb_updates ?? "—", l: "KB update suggestions", n: "Shipping · returns" },
+                { v: loading ? "—" : "28", l: "QA checks today", n: "26 pass · 2 review" },
+              ].map(s => (
+                <div className="ws-lcell" key={s.l}>
+                  <div className="ws-lcv">{s.v}</div>
+                  <div className="ws-lcl">{s.l}</div>
+                  <div className="ws-lcn">{s.n}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

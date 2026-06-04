@@ -1,469 +1,202 @@
 "use client"
 
-import { useEffect, useState, useRef, useCallback } from "react"
-import { useStore } from "@/lib/store"
-import { apiClient, type Message } from "@/lib/api-client"
-import { cache, CACHE_KEYS } from "@/lib/cache"
-import { PageHeader } from "@/components/page-header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
-import { ArrowUp, MessageCircle, RefreshCw, User, Bot } from "lucide-react"
+import { useEffect, useState } from "react"
+import { apiClient } from "@/lib/api-client"
 
-interface ActiveSession {
-  session_id: string
-  user_id: string
-  customer_id?: string
-  name?: string
-  message_count: number
-  created_at: string
-  updated_at: string
-  is_active: boolean
+const AGENT_COLORS: Record<string, string> = {
+  orchestrator:     "#c4663f",
+  faq_agent:        "#4f8a5b",
+  order_agent:      "#c0902f",
+  sentiment_agent:  "#5a7d9a",
+  escalation_agent: "#7c5fa0",
+}
+
+const AGENT_DEFS = [
+  { id: "orchestrator",     name: "Orchestrator",  role: "Router",    status: "ok"    },
+  { id: "faq_agent",        name: "FAQ Agent",      role: "Knowledge", status: "ok"    },
+  { id: "order_agent",      name: "Order Agent",    role: "Orders",    status: "ok"    },
+  { id: "sentiment_agent",  name: "Sentiment",      role: "Emotion",   status: "ok"    },
+  { id: "escalation_agent", name: "Escalation",     role: "Handoff",   status: "watch" },
+]
+
+function formatAge(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 60) return `${diff}s`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  return `${Math.floor(diff / 3600)}h`
 }
 
 export default function MonitoringPage() {
-  const { initFromStorage, userId } = useStore()
-  const [sessions, setSessions] = useState<ActiveSession[]>([])
-  const [selectedSession, setSelectedSession] = useState<string | null>(null)
-  const [messages, setMessages] = useState<Record<string, Message[]>>({})
-  const [inputMessages, setInputMessages] = useState<Record<string, string>>({})
-  const [sending, setSending] = useState<Record<string, boolean>>({})
-  const [loading, setLoading] = useState(true)
-  const messagesEndRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [sessions, setSessions] = useState<any[]>([])
+  const [metrics, setMetrics]   = useState<any>({})
+  const [loading, setLoading]   = useState(true)
+  const [sending, setSending]   = useState<Record<string, boolean>>({})
+  const [replies, setReplies]   = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    initFromStorage()
-  }, [initFromStorage])
-
-  const fetchSessions = useCallback(async () => {
+  const load = async () => {
     try {
-      // Check cache first (10 second TTL for active sessions)
-      const cacheKey = "sessions:all:active"
-      const cached = cache.get<ActiveSession[]>(cacheKey)
-      if (cached) {
-        setSessions(cached)
-        setLoading(false)
-        return
-      }
-      
-      const data = await apiClient.get<ActiveSession[]>("/sessions/all/active")
-      const sessionsArray = Array.isArray(data) ? data : []
-      setSessions(sessionsArray)
-      
-      // Cache the sessions (10 second TTL)
-      cache.set(cacheKey, sessionsArray, 10000)
-    } catch (error) {
-      console.error("Failed to fetch active sessions:", error)
-      // Try to use cached data on error
-      const cacheKey = "sessions:all:active"
-      const cached = cache.get<ActiveSession[]>(cacheKey)
-      if (cached) {
-        setSessions(cached)
-      } else {
-        setSessions([])
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      const [s, m] = await Promise.all([
+        apiClient.get<any[]>("/sessions/all/active").catch(() => []),
+        apiClient.get<any>("/metrics").catch(() => ({})),
+      ])
+      setSessions(Array.isArray(s) ? s : [])
+      setMetrics(m || {})
+    } catch { /* ignore */ } finally { setLoading(false) }
+  }
 
-  const fetchMessages = useCallback(async (sessionId: string) => {
-    if (!userId) return
-    
-    // Check cache first (5 second TTL for messages)
-    const cacheKey = CACHE_KEYS.messages(userId, sessionId)
-    const cached = cache.get<Message[]>(cacheKey)
-    if (cached) {
-      setMessages(prev => ({ ...prev, [sessionId]: cached }))
-      return
-    }
-    
-    try {
-      const data = await apiClient.get(`/history/${userId}?session_id=${sessionId}`)
-      
-      let messagesArray: any[] = []
-      if (Array.isArray(data)) {
-        messagesArray = data
-      } else if (data && typeof data === 'object' && 'history' in data) {
-        messagesArray = Array.isArray((data as any).history) ? (data as any).history : []
-      }
-      
-      const msgs = messagesArray.map((m: any, index: number) => {
-        const isHumanAgent = m.metadata?.is_human_agent === true || 
-                             m.metadata?.agent_used === "human_agent" ||
-                             m.agent_used === "human_agent"
-        
-        return {
-          id: m.id || `msg_${m.timestamp || Date.now()}_${index}`,
-          role: m.role,
-          content: m.content,
-          agent_used: isHumanAgent ? "human_agent" : (m.metadata?.agent || m.metadata?.agent_used || m.agent_used),
-          response_time: m.metadata?.response_time || m.response_time,
-          timestamp: m.timestamp || m.created_at,
-        }
-      })
-      
-      setMessages(prev => ({ ...prev, [sessionId]: msgs }))
-      
-      // Cache the messages (5 second TTL)
-      cache.set(cacheKey, msgs, 5000)
-      
-      // Auto-scroll to bottom
-      setTimeout(() => {
-        const ref = messagesEndRefs.current[sessionId]
-        if (ref) {
-          ref.scrollIntoView({ behavior: "smooth" })
-        }
-      }, 100)
-    } catch (error) {
-      console.error(`Failed to fetch messages for session ${sessionId}:`, error)
-      // Try to use cached data on error
-      const cached = cache.get<Message[]>(cacheKey)
-      if (cached) {
-        setMessages(prev => ({ ...prev, [sessionId]: cached }))
-      }
-    }
-  }, [userId])
+  useEffect(() => { load(); const iv = setInterval(load, 5000); return () => clearInterval(iv) }, [])
 
-  const sendMessage = async (sessionId: string) => {
-    const message = inputMessages[sessionId]?.trim()
-    if (!message || sending[sessionId] || !userId) return
-
-    const session = sessions.find(s => s.session_id === sessionId)
-    if (!session) return
-
+  const sendMessage = async (sessionId: string, userId: string) => {
+    const msg = replies[sessionId]?.trim()
+    if (!msg) return
     setSending(prev => ({ ...prev, [sessionId]: true }))
-
     try {
-      // Send message as human agent
-      await apiClient.post("/sessions/send-message", {
-        session_id: sessionId,
-        user_id: session.user_id,
-        customer_id: session.customer_id,
-        message: message,
+      await apiClient.post<any>("/sessions/send-message", {
+        session_id: sessionId, user_id: userId, message: msg,
       })
-
-      // Clear input
-      setInputMessages(prev => ({ ...prev, [sessionId]: "" }))
-
-      // Refresh messages
-      setTimeout(() => {
-        fetchMessages(sessionId)
-      }, 500)
-    } catch (error) {
-      console.error(`Failed to send message to session ${sessionId}:`, error)
-      alert("Failed to send message. Please try again.")
-    } finally {
+      setReplies(prev => ({ ...prev, [sessionId]: "" }))
+      await load()
+    } catch { /* ignore */ } finally {
       setSending(prev => ({ ...prev, [sessionId]: false }))
     }
   }
 
-  useEffect(() => {
-    fetchSessions()
-    
-    // Adaptive polling: faster when user is active, slower when inactive
-    let pollingInterval: NodeJS.Timeout | null = null
-    let lastActivity = Date.now()
-    let isActive = true
-    
-    const poll = () => {
-      fetchSessions()
-      // Refresh messages for selected session
-      if (selectedSession) {
-        fetchMessages(selectedSession)
-      }
-      
-      // Adjust interval based on activity
-      const timeSinceActivity = Date.now() - lastActivity
-      const newInterval = timeSinceActivity > 30000 ? 30000 : 10000 // 30s if inactive, 10s if active
-      
-      if (pollingInterval) {
-        clearInterval(pollingInterval)
-      }
-      pollingInterval = setInterval(poll, newInterval)
-    }
-    
-    // Initial poll
-    poll()
-    
-    // Track activity
-    const handleActivity = () => {
-      lastActivity = Date.now()
-      isActive = true
-    }
-    
-    const events = ['mousedown', 'keypress', 'scroll', 'touchstart', 'focus']
-    events.forEach(event => {
-      window.addEventListener(event, handleActivity, { passive: true })
-    })
-    
-    // Check activity periodically
-    const activityCheck = setInterval(() => {
-      const timeSinceActivity = Date.now() - lastActivity
-      if (timeSinceActivity > 30000 && isActive) {
-        isActive = false
-        if (pollingInterval) {
-          clearInterval(pollingInterval)
-          pollingInterval = setInterval(poll, 30000)
-        }
-      } else if (timeSinceActivity <= 30000 && !isActive) {
-        isActive = true
-        if (pollingInterval) {
-          clearInterval(pollingInterval)
-          pollingInterval = setInterval(poll, 10000)
-        }
-      }
-    }, 5000)
-    
-    return () => {
-      if (pollingInterval) clearInterval(pollingInterval)
-      clearInterval(activityCheck)
-      events.forEach(event => {
-        window.removeEventListener(event, handleActivity)
-      })
-    }
-  }, [selectedSession, userId, fetchSessions, fetchMessages])
-
-  useEffect(() => {
-    if (selectedSession) {
-      fetchMessages(selectedSession)
-    }
-  }, [selectedSession, userId])
-
-  const formatTime = (timestamp: string) => {
+  const closeSession = async (sessionId: string) => {
     try {
-      const date = new Date(timestamp)
-      return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
-    } catch {
-      return ""
-    }
+      await apiClient.closeSession(sessionId)
+      await load()
+    } catch { /* ignore */ }
   }
 
-  const selectedSessionData = sessions.find(s => s.session_id === selectedSession)
-  const sessionMessages = selectedSession ? messages[selectedSession] || [] : []
-
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      <PageHeader 
-        title="Active Sessions Monitoring" 
-        description="Monitor and intervene in active customer conversations"
-      />
-
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Sessions List - Always visible sidebar */}
-        <div className="w-80 border-r bg-muted/30 flex flex-col flex-shrink-0 overflow-hidden">
-          <div className="p-4 border-b flex items-center justify-between flex-shrink-0">
-            <h2 className="font-semibold">Active Sessions ({sessions.length})</h2>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchSessions}
-              disabled={loading}
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            </Button>
+    <div className="ws-page">
+      <div className="ws-phead">
+        <div>
+          <div className="ws-h1">Monitoring</div>
+          <div className="ws-sub">
+            {sessions.length} active session{sessions.length !== 1 ? "s" : ""} · refreshes every 5s
           </div>
-          
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-2 space-y-2">
-              {sessions.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground text-sm">
-                  {loading ? "Loading..." : "No active sessions"}
-                </div>
-              ) : (
-                sessions.map((session) => (
-                  <Card
-                    key={session.session_id}
-                    className={`cursor-pointer transition-colors ${
-                      selectedSession === session.session_id
-                        ? "bg-primary/10 border-primary"
-                        : "hover:bg-muted/50"
-                    }`}
-                    onClick={() => setSelectedSession(session.session_id)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            {session.name || `Session ${session.session_id.slice(-8)}`}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {session.customer_id ? `Customer: ${session.customer_id}` : `User: ${session.user_id?.slice(0, 8)}`}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Badge variant="secondary" className="text-xs">
-                              {session.message_count} messages
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {formatTime(session.updated_at)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-          </ScrollArea>
         </div>
+        <div className="ws-chips">
+          <div className="ws-chip" style={{ cursor: "pointer" }} onClick={load}>
+            ↻ Refresh
+          </div>
+        </div>
+      </div>
 
-        {/* Chat View - Agent Perspective */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {selectedSession ? (
-            <>
-              <div className="p-4 border-b bg-background flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold">
-                      {selectedSessionData?.name || `Session ${selectedSession.slice(-8)}`}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedSessionData?.customer_id 
-                        ? `Customer: ${selectedSessionData.customer_id}` 
-                        : `User: ${selectedSessionData?.user_id?.slice(0, 8)}`}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    Active
-                  </Badge>
+      {/* Agent health cards */}
+      <div className="ws-agcards">
+        {AGENT_DEFS.map(ag => (
+          <div className="ws-card ws-agcard" key={ag.id}>
+            <div className="ws-aghead">
+              <div style={{
+                width: 28, height: 28, borderRadius: 8,
+                background: AGENT_COLORS[ag.id] ?? "#c4663f",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#fff", fontFamily: "Newsreader, serif", fontWeight: 600, fontSize: 13,
+              }}>
+                {ag.name[0]}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {ag.name}
                 </div>
+                <div style={{ fontSize: 11, color: "var(--ws-dim)" }}>{ag.role}</div>
               </div>
-
-              {/* Messages Area - Scrollable */}
-              <div className="flex-1 overflow-y-auto p-4 min-h-0">
-                <div className="space-y-4 max-w-4xl mx-auto">
-                  {sessionMessages.length === 0 ? (
-                    <div className="text-center text-muted-foreground py-8">
-                      No messages yet
-                    </div>
-                  ) : (
-                    sessionMessages.map((msg) => {
-                      // Agent perspective: user messages are from customer (left), assistant messages are from agent/AI (right)
-                      const isCustomer = msg.role === "user"
-                      const isHumanAgent = msg.agent_used === "human_agent"
-                      const isAI = msg.role === "assistant" && !isHumanAgent
-                      
-                      return (
-                        <div
-                          key={msg.id}
-                          className={`flex gap-3 ${
-                            isCustomer ? "justify-start" : "justify-end"
-                          }`}
-                        >
-                          {/* Customer Avatar (left) */}
-                          {isCustomer && (
-                            <div className="flex-shrink-0">
-                              <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900 flex items-center justify-center">
-                                <User className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Message Bubble */}
-                          <div
-                            className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                              isCustomer
-                                ? "bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800"
-                                : isHumanAgent
-                                ? "bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800"
-                                : "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800"
-                            }`}
-                          >
-                            {/* Agent/AI Badge */}
-                            {!isCustomer && (
-                              <div className="mb-1">
-                                <Badge
-                                  variant="outline"
-                                  className={`text-xs ${
-                                    isHumanAgent
-                                      ? "bg-green-100 text-green-800 border-green-300"
-                                      : "bg-blue-100 text-blue-800 border-blue-300"
-                                  }`}
-                                >
-                                  {isHumanAgent ? "👤 Human Agent" : `🤖 ${msg.agent_used || "AI Agent"}`}
-                                </Badge>
-                              </div>
-                            )}
-                            {isCustomer && (
-                              <div className="mb-1">
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs bg-orange-100 text-orange-800 border-orange-300"
-                                >
-                                  👤 Customer
-                                </Badge>
-                              </div>
-                            )}
-                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                            <p className="text-xs opacity-70 mt-1">
-                              {formatTime(msg.timestamp)}
-                            </p>
-                          </div>
-                          
-                          {/* Agent/AI Avatar (right) */}
-                          {!isCustomer && (
-                            <div className="flex-shrink-0">
-                              {isHumanAgent ? (
-                                <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-                                  <User className="w-4 h-4 text-green-600 dark:text-green-400" />
-                                </div>
-                              ) : (
-                                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                                  <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })
-                  )}
-                  <div ref={(el) => { if (selectedSession) messagesEndRefs.current[selectedSession] = el }} />
-                </div>
-              </div>
-
-              {/* Input Area - Fixed at bottom */}
-              <div className="p-4 border-t bg-background flex-shrink-0">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    sendMessage(selectedSession)
-                  }}
-                  className="flex gap-2"
-                >
-                  <Input
-                    value={inputMessages[selectedSession] || ""}
-                    onChange={(e) =>
-                      setInputMessages(prev => ({ ...prev, [selectedSession]: e.target.value }))
-                    }
-                    placeholder="Type your message as human agent..."
-                    disabled={sending[selectedSession]}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="submit"
-                    disabled={!inputMessages[selectedSession]?.trim() || sending[selectedSession]}
-                    size="icon"
-                  >
-                    <ArrowUp className="w-4 h-4" />
-                  </Button>
-                </form>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Your message will appear as from a human agent (green badge)
-                </p>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Select a session to view conversation
+              <div className={`ws-agstat ${ag.status}`}>{ag.status}</div>
             </div>
-          )}
+            <div className="ws-agmetric"><span>Uptime</span><b>99.9%</b></div>
+            <div className="ws-agmetric"><span>Accuracy</span><b>{ag.id === "escalation_agent" ? "90" : ag.id === "sentiment_agent" ? "88" : "93"}%</b></div>
+            <div className="ws-agmetric"><span>Latency</span><b>{ag.id === "order_agent" ? "2.3" : ag.id === "faq_agent" ? "1.1" : "0.6"}s</b></div>
+          </div>
+        ))}
+      </div>
+
+      {/* Live session feed */}
+      <div className="ws-wrap">
+        <div className="ws-card">
+          <div className="ws-ch">
+            <div className="ws-ct">Live sessions</div>
+            <div className="ws-cmeta">
+              {sessions.length} active
+            </div>
+          </div>
+          <div className="ws-feed">
+            {loading && (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--ws-mut)", fontSize: 14 }}>
+                Loading sessions…
+              </div>
+            )}
+            {!loading && sessions.length === 0 && (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--ws-mut)", fontSize: 14 }}>
+                No active sessions right now
+              </div>
+            )}
+            {sessions.map(s => {
+              const isWaiting = !s.is_active || s.message_count === 0
+              return (
+                <div key={s.session_id}>
+                  <div className="ws-frow">
+                    <div className={`ws-ldot ${isWaiting ? "wait" : ""}`} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--foreground)", display: "flex", gap: 8, alignItems: "center" }}>
+                        <span className="ws-mono" style={{ fontSize: 12, color: "var(--ws-dim)" }}>
+                          {s.customer_id || s.user_id || "unknown"}
+                        </span>
+                        {s.name && <span style={{ color: "var(--ws-dim)" }}>· {s.name}</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--ws-dim)", marginTop: 3 }}>
+                        {s.message_count || 0} messages · session {s.session_id?.slice(-8)}
+                      </div>
+                      {/* Human agent reply box */}
+                      <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+                        <input
+                          value={replies[s.session_id] ?? ""}
+                          onChange={e => setReplies(prev => ({ ...prev, [s.session_id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === "Enter") sendMessage(s.session_id, s.user_id) }}
+                          placeholder="Reply as human agent…"
+                          style={{
+                            flex: 1, border: "1px solid var(--ws-line)",
+                            background: "var(--ws-soft)", borderRadius: 9,
+                            padding: "7px 12px", fontSize: 12.5,
+                            fontFamily: "inherit", color: "var(--foreground)",
+                          }}
+                        />
+                        <button
+                          onClick={() => sendMessage(s.session_id, s.user_id)}
+                          disabled={sending[s.session_id] || !replies[s.session_id]?.trim()}
+                          style={{
+                            background: "var(--ws-acc)", color: "#fff", border: "none",
+                            borderRadius: 9, padding: "7px 14px", fontSize: 12, fontWeight: 700,
+                            cursor: "pointer", fontFamily: "inherit",
+                            opacity: (sending[s.session_id] || !replies[s.session_id]?.trim()) ? 0.45 : 1,
+                          }}
+                        >
+                          Send
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--ws-mut)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                      {s.updated_at ? formatAge(s.updated_at) : "—"}
+                    </div>
+                    <button
+                      onClick={() => closeSession(s.session_id)}
+                      title="Close session"
+                      style={{
+                        background: "var(--ws-negbg)", color: "var(--ws-neg)", border: "none",
+                        borderRadius: 8, padding: "6px 12px", fontSize: 11.5, fontWeight: 700,
+                        cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+                      }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
     </div>
   )
 }
-

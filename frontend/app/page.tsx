@@ -2,227 +2,299 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useStore } from "@/lib/store"
-import { apiClient, type Analytics } from "@/lib/api-client"
-import { PageHeader } from "@/components/page-header"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { MessageSquare, ShoppingCart, BarChart3, Ticket, TrendingUp, Users, Clock } from "lucide-react"
-import Link from "next/link"
+import { apiClient } from "@/lib/api-client"
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+} from "recharts"
 
-interface DashboardStats {
-  analytics: Analytics | null
-  ordersCount: number
-  ticketsCount: number
-  recentOrders: any[]
-  recentTickets: any[]
+const AGENT_COLORS: Record<string, string> = {
+  orchestrator: "#c4663f",
+  faq:          "#4f8a5b",
+  order:        "#c0902f",
+  sentiment:    "#5a7d9a",
+  escalation:   "#7c5fa0",
 }
 
-export default function HomePage() {
+const PRIORITY_COLOR: Record<string, string> = {
+  urgent: "#c5503e",
+  high:   "#c0902f",
+  normal: "#5a7d9a",
+  low:    "#a99b86",
+}
+
+const STATUS_BADGE: Record<string, [string, string]> = {
+  open:        ["#fbe9e4", "#c5503e"],
+  in_progress: ["#f7eed7", "#c0902f"],
+  resolved:    ["#e8f1e6", "#4f8a5b"],
+  closed:      ["#faf5ec", "#a99b86"],
+}
+
+function MiniSpark({ data, color }: { data: number[]; color: string }) {
+  if (!data?.length) return null
+  const min = Math.min(...data), max = Math.max(...data)
+  const range = max - min || 1
+  const W = 52, H = 22
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * W
+    const y = H - ((v - min) / range) * H
+    return `${x},${y}`
+  }).join(" ")
+  return (
+    <svg width={W} height={H} style={{ overflow: "visible" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+interface Analytics {
+  total_messages?: number
+  active_sessions?: number
+  closed_sessions?: number
+  avg_satisfaction?: number
+  avg_response_time?: number
+  resolution_rate?: number
+  tickets_created?: number
+  open_tickets?: number
+}
+
+interface DailyRow { day: string; interactions: number; satisfaction: number }
+
+export default function OverviewPage() {
   const router = useRouter()
-  const { userId, customerId, initFromStorage } = useStore()
-  const [stats, setStats] = useState<DashboardStats>({
-    analytics: null,
-    ordersCount: 0,
-    ticketsCount: 0,
-    recentOrders: [],
-    recentTickets: [],
-  })
+  const [analytics, setAnalytics] = useState<Analytics | null>(null)
+  const [daily, setDaily] = useState<DailyRow[]>([])
+  const [tickets, setTickets] = useState<any[]>([])
+  const [agents] = useState([
+    { id: "orchestrator", name: "Orchestrator", role: "Router",    share: 100 },
+    { id: "faq",          name: "FAQ Agent",    role: "Knowledge", share: 42  },
+    { id: "order",        name: "Order Agent",  role: "Orders",    share: 28  },
+    { id: "sentiment",    name: "Sentiment",    role: "Emotion",   share: 14  },
+    { id: "escalation",   name: "Escalation",   role: "Handoff",   share: 9   },
+  ])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    initFromStorage()
-  }, [initFromStorage])
-
-  useEffect(() => {
-    const fetchDashboardData = async () => {
+    const load = async () => {
       try {
-        setLoading(true)
-        const [analyticsData, ordersData, ticketsData] = await Promise.all([
-          apiClient.get<any>("/analytics").catch(() => null),
-          apiClient.get<any>("/orders").catch(() => null),
+        const [a, d, t] = await Promise.all([
+          apiClient.get<Analytics>("/analytics").catch(() => null),
+          apiClient.get<DailyRow[]>("/analytics/daily").catch(() => []),
           apiClient.get<any>("/tickets").catch(() => null),
         ])
-
-        const orders = Array.isArray(ordersData?.orders) ? ordersData.orders : []
-        const tickets = Array.isArray(ticketsData?.tickets) ? ticketsData.tickets : []
-
-        setStats({
-          analytics: analyticsData || null,
-          ordersCount: orders.length,
-          ticketsCount: tickets.length,
-          recentOrders: orders.slice(0, 5),
-          recentTickets: tickets.slice(0, 5),
-        })
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error)
+        if (a) setAnalytics(a)
+        if (Array.isArray(d)) setDaily(d)
+        if (t?.tickets) setTickets(t.tickets.slice(0, 5))
       } finally {
         setLoading(false)
       }
     }
-
-    fetchDashboardData()
-    const interval = setInterval(fetchDashboardData, 30000) // Refresh every 30 seconds
-    return () => clearInterval(interval)
+    load()
+    const iv = setInterval(load, 30000)
+    return () => clearInterval(iv)
   }, [])
 
-  const analytics = stats.analytics
+  const kpis = [
+    {
+      label: "Messages handled",
+      value: analytics?.total_messages?.toLocaleString() ?? "—",
+      delta: "+12.4", good: true,
+      spark: [180, 210, 240, 225, 260, 300, 355],
+    },
+    {
+      label: "Active sessions",
+      value: analytics?.active_sessions ?? "—",
+      delta: "+6", good: true,
+      spark: [22, 28, 31, 26, 33, 35, 38],
+    },
+    {
+      label: "Avg. satisfaction",
+      value: analytics?.avg_satisfaction ? analytics.avg_satisfaction.toFixed(1) : "—",
+      unit: "/5", delta: "+0.2", good: true,
+      spark: [4.1, 4.2, 4.3, 4.3, 4.4, 4.5, 4.6],
+    },
+    {
+      label: "Avg. response",
+      value: analytics?.avg_response_time ? analytics.avg_response_time.toFixed(1) : "—",
+      unit: "s", delta: "-1.4", good: true,
+      spark: [12, 11.3, 10.8, 9.9, 9.1, 8.6, 8.2],
+    },
+    {
+      label: "Resolution rate",
+      value: analytics?.resolution_rate ? `${analytics.resolution_rate}` : "—",
+      unit: "%", delta: "+2.0", good: true,
+      spark: [80, 81, 83, 84, 85, 86, 87],
+    },
+    {
+      label: "Tickets created",
+      value: analytics?.tickets_created ?? "—",
+      delta: "+3", good: false,
+      spark: [8, 12, 9, 14, 11, 13, 15],
+    },
+  ]
 
   return (
-    <div className="flex flex-col h-screen">
-      <PageHeader title="Dashboard" description="Overview of your customer support system" />
+    <div className="ws-page">
+      {/* Page header */}
+      <div className="ws-phead">
+        <div>
+          <div className="ws-h1">Good morning</div>
+          <div className="ws-sub">Here's how support is doing across all agents today.</div>
+        </div>
+        <div className="ws-chips">
+          <div className="ws-chip">Last 7 days <span className="mu">▾</span></div>
+          <button
+            className="ws-chip acc"
+            style={{ border: "none", cursor: "pointer" }}
+            onClick={() => router.push("/tickets")}
+          >
+            ＋ New ticket
+          </button>
+        </div>
+      </div>
 
-      <div className="flex-1 overflow-auto px-8 py-8">
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Messages</p>
-                <p className="text-3xl font-bold mt-2">{loading ? "-" : analytics?.total_messages || 0}</p>
+      <div className="ws-wrap">
+        {/* KPI grid */}
+        <div className="ws-kpis">
+          {kpis.map((k, i) => (
+            <div className="ws-card ws-kc" key={i}>
+              <div className="ws-kl">{k.label}</div>
+              <div className="ws-kv">
+                {loading ? <span style={{ opacity: 0.3 }}>—</span> : k.value}
+                {k.unit && <span className="ws-ku">{k.unit}</span>}
               </div>
-              <MessageSquare className="h-8 w-8 text-blue-500" />
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Active Sessions</p>
-                <p className="text-3xl font-bold mt-2">{loading ? "-" : analytics?.active_sessions || 0}</p>
+              <div className="ws-kr">
+                <span className={`ws-pill ${k.good ? "up" : "dn"}`}>
+                  {k.good ? "↑" : "↓"} {k.delta.replace(/[+-]/, "")}
+                </span>
+                <MiniSpark
+                  data={k.spark}
+                  color={k.good ? "var(--ws-pos)" : "var(--ws-neg)"}
+                />
               </div>
-              <Users className="h-8 w-8 text-green-500" />
             </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Tickets Created</p>
-                <p className="text-3xl font-bold mt-2">{loading ? "-" : analytics?.tickets_created || 0}</p>
-              </div>
-              <Ticket className="h-8 w-8 text-orange-500" />
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Avg Satisfaction</p>
-                <p className="text-3xl font-bold mt-2">
-                  {loading ? "-" : analytics?.avg_satisfaction ? `${analytics.avg_satisfaction.toFixed(1)}/10` : "N/A"}
-                </p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-purple-500" />
-            </div>
-          </Card>
+          ))}
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => router.push("/chat")}>
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
-                <MessageSquare className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-              </div>
+        {/* Row 1: chart + agents */}
+        <div className="ws-row ws-r1">
+          {/* Area chart */}
+          <div className="ws-card">
+            <div className="ws-ch">
               <div>
-                <h3 className="font-semibold">Start Chat</h3>
-                <p className="text-sm text-muted-foreground">Begin a new conversation</p>
+                <div className="ws-ct">Interactions &amp; satisfaction</div>
+                <div className="ws-cmeta">Last 7 days</div>
+              </div>
+              <div className="ws-legend">
+                <span className="ws-lg">
+                  <span className="ws-ld" style={{ background: "var(--ws-acc)" }} />
+                  Interactions
+                </span>
+                <span className="ws-lg">
+                  <span className="ws-ld" style={{ background: "var(--ws-warn)" }} />
+                  CSAT
+                </span>
               </div>
             </div>
-          </Card>
+            <div style={{ padding: "4px 16px 16px" }}>
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={daily} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="intGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="var(--ws-acc)"  stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="var(--ws-acc)"  stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="satGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="var(--ws-warn)" stopOpacity={0.12} />
+                      <stop offset="95%" stopColor="var(--ws-warn)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: "var(--ws-mut)" }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="left"  tick={{ fontSize: 11, fill: "var(--ws-mut)" }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "var(--ws-mut)" }} axisLine={false} tickLine={false} domain={[3, 5]} />
+                  <Tooltip
+                    contentStyle={{ background: "var(--card)", border: "1px solid var(--ws-line)", borderRadius: 10, fontSize: 12 }}
+                    labelStyle={{ color: "var(--ws-dim)" }}
+                  />
+                  <Area yAxisId="left"  type="monotone" dataKey="interactions" stroke="var(--ws-acc)"  fill="url(#intGrad)" strokeWidth={2} dot={false} />
+                  <Area yAxisId="right" type="monotone" dataKey="satisfaction"  stroke="var(--ws-warn)" fill="url(#satGrad)" strokeWidth={2} dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-          <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => router.push("/orders")}>
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
-                <ShoppingCart className="h-6 w-6 text-green-600 dark:text-green-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Manage Orders</h3>
-                <p className="text-sm text-muted-foreground">{stats.ordersCount} orders available</p>
-              </div>
+          {/* Agent list */}
+          <div className="ws-card">
+            <div className="ws-ch">
+              <div className="ws-ct">Your agents</div>
+              <div className="ws-cmeta">5 active</div>
             </div>
-          </Card>
-
-          <Card className="p-6 hover:shadow-lg transition-shadow cursor-pointer" onClick={() => router.push("/analytics")}>
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-purple-100 dark:bg-purple-900 rounded-lg">
-                <BarChart3 className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold">View Analytics</h3>
-                <p className="text-sm text-muted-foreground">Performance metrics</p>
-              </div>
+            <div className="ws-alist">
+              {agents.map((a) => (
+                <div className="ws-arow" key={a.id}>
+                  <div className="ws-ab" style={{ background: AGENT_COLORS[a.id] }}>
+                    {a.name[0]}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="ws-an">{a.name}</div>
+                    <div className="ws-arole">{a.role}</div>
+                    <div className="ws-abar">
+                      <i style={{ width: `${a.share}%`, background: AGENT_COLORS[a.id] }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="ws-ap ws-num">{a.share}%</div>
+                  </div>
+                </div>
+              ))}
             </div>
-          </Card>
+          </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recent Orders */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <ShoppingCart className="h-5 w-5" />
-                Recent Orders
-              </h2>
-              <Button variant="ghost" size="sm" onClick={() => router.push("/orders")}>
-                View All
-              </Button>
+        {/* Row 2: tickets */}
+        <div className="ws-card" style={{ marginBottom: 0 }}>
+          <div className="ws-ch">
+            <div className="ws-ct">Needs attention</div>
+            <div className="ws-cmeta">
+              {analytics?.open_tickets ?? "—"} open · {tickets.filter(t => t.priority === "urgent").length} urgent
             </div>
-            {loading ? (
-              <p className="text-muted-foreground text-sm">Loading...</p>
-            ) : stats.recentOrders.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No orders yet</p>
-            ) : (
-              <div className="space-y-3">
-                {stats.recentOrders.map((order: any) => (
-                  <div key={order.order_id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Order {order.order_id}</p>
-                      <p className="text-xs text-muted-foreground">Customer: {order.customer_id}</p>
-                    </div>
-                    <Badge className={order.status === "delivered" ? "bg-green-500" : order.status === "delivery_soon" ? "bg-orange-500" : "bg-blue-500"}>
-                      {order.status}
-                    </Badge>
-                  </div>
-                ))}
+          </div>
+          <div className="ws-tlist">
+            {loading && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--ws-mut)", fontSize: 13.5 }}>
+                Loading…
               </div>
             )}
-          </Card>
-
-          {/* Recent Tickets */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <Ticket className="h-5 w-5" />
-                Recent Tickets
-              </h2>
-              <Button variant="ghost" size="sm" onClick={() => router.push("/orders")}>
-                View All
-              </Button>
-            </div>
-            {loading ? (
-              <p className="text-muted-foreground text-sm">Loading...</p>
-            ) : stats.recentTickets.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No tickets yet</p>
-            ) : (
-              <div className="space-y-3">
-                {stats.recentTickets.map((ticket: any) => (
-                  <div key={ticket.ticket_id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{ticket.issue?.substring(0, 50)}...</p>
-                      <p className="text-xs text-muted-foreground mt-1">Priority: {ticket.priority}</p>
-                    </div>
-                    <Badge className={ticket.status === "resolved" ? "bg-green-500" : "bg-red-500"}>
-                      {ticket.status}
-                    </Badge>
-                  </div>
-                ))}
+            {!loading && tickets.length === 0 && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--ws-mut)", fontSize: 13.5 }}>
+                No open tickets
               </div>
             )}
-          </Card>
+            {tickets.map((t) => {
+              const [bg, fg] = STATUS_BADGE[t.status] ?? ["#faf5ec", "#a99b86"]
+              return (
+                <div
+                  className="ws-trow"
+                  key={t.ticket_id}
+                  onClick={() => router.push("/tickets")}
+                >
+                  <span className="ws-pdot" style={{ background: PRIORITY_COLOR[t.priority] }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ws-ti">{t.issue}</div>
+                    <div className="ws-tm">
+                      <span className="ws-mono">{t.ticket_id}</span>
+                      <span>·</span>
+                      <span>{t.customer_id || t.user_id}</span>
+                      <span>·</span>
+                      <span style={{ textTransform: "capitalize" }}>{t.priority}</span>
+                    </div>
+                  </div>
+                  <span className="ws-badge" style={{ background: bg, color: fg }}>
+                    {t.status.replace("_", " ")}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
     </div>

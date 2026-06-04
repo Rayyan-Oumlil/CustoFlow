@@ -1,18 +1,12 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
-import { SidebarNav } from "@/components/sidebar-nav"
-import { Toaster } from "@/components/ui/toaster"
+import { TopBar } from "@/components/top-bar"
 import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
-
 export const metadata: Metadata = {
-  title: "CustoFlow - Customer Support System",
-  description: "Intelligent customer support dashboard",
-  generator: "v0.app",
+  title: "CustoFlow — Customer Support",
+  description: "Multi-agent customer support console",
 }
 
 export default function RootLayout({
@@ -23,24 +17,23 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* Warm Studio fonts */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap"
+          rel="stylesheet"
+        />
+        {/* Apply saved theme before first paint */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                // Force light theme - remove dark mode
-                document.documentElement.classList.remove('dark');
-                localStorage.setItem('custoflow_theme', 'light');
-              })();
-            `,
+            __html: `(function(){var m=localStorage.getItem('cf-mode')||'light';document.documentElement.dataset.mode=m;})()`,
           }}
         />
       </head>
-      <body className={`font-sans antialiased ${_geist.className}`}>
-        <div className="flex h-screen">
-          <SidebarNav />
-          <div className="flex-1 overflow-hidden">{children}</div>
-        </div>
-        <Toaster />
+      <body>
+        <TopBar />
+        <main>{children}</main>
         <Analytics />
       </body>
     </html>

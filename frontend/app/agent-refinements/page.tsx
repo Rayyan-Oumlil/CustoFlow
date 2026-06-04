@@ -1,283 +1,270 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useStore } from "@/lib/store"
 import { apiClient } from "@/lib/api-client"
-import { PageHeader } from "@/components/page-header"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CheckCircle2, XCircle, Clock, Play, TestTube } from "lucide-react"
 
-const AGENTS = [
-  { value: "orchestrator", label: "Orchestrator" },
-  { value: "faq_agent", label: "FAQ Agent" },
-  { value: "order_agent", label: "Order Agent" },
-  { value: "escalation_agent", label: "Escalation Agent" },
-  { value: "sentiment_agent", label: "Sentiment Agent" },
-]
+const AGENTS = ["orchestrator", "faq_agent", "order_agent", "sentiment_agent", "escalation_agent"]
 
-interface Refinement {
-  refinement_key: string
-  agent_name: string
-  refinement_type: string
-  changes: {
-    suggested_improvement: string
-    customer_feedback?: string
-    rating?: number
-  }
-  feedback_sources: string[]
-  status: "pending" | "applied" | "rejected" | "active"
-  created_at?: string
-  updated_at?: string
-  user_input?: string
-  agent_response?: string
-  learning_reason?: string
+const AGENT_LABELS: Record<string, string> = {
+  orchestrator:     "Orchestrator",
+  faq_agent:        "FAQ Agent",
+  order_agent:      "Order Agent",
+  sentiment_agent:  "Sentiment",
+  escalation_agent: "Escalation",
 }
 
-export default function AgentRefinementsPage() {
-  const { initFromStorage } = useStore()
-  const [selectedAgent, setSelectedAgent] = useState<string>("order_agent")
+const AGENT_COLORS: Record<string, string> = {
+  orchestrator:     "#c4663f",
+  faq_agent:        "#4f8a5b",
+  order_agent:      "#c0902f",
+  sentiment_agent:  "#5a7d9a",
+  escalation_agent: "#7c5fa0",
+}
+
+interface Refinement {
+  id: string
+  agent_name: string
+  refinement_text?: string
+  content?: string
+  created_at: string
+  status: string
+}
+
+export default function LearningPage() {
+  const [insights, setInsights]       = useState<any>(null)
   const [refinements, setRefinements] = useState<Refinement[]>([])
-  const [summary, setSummary] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [applying, setApplying] = useState(false)
-  
-  // Test injection
-  const [testMessage, setTestMessage] = useState("")
-  const [testResponse, setTestResponse] = useState("")
-  const [testing, setTesting] = useState(false)
+  const [kbUpdates, setKbUpdates]     = useState<any[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [activeAgent, setActiveAgent] = useState<string>("all")
+  const [applied, setApplied]         = useState<Set<string>>(new Set())
+  const [dismissed, setDismissed]     = useState<Set<string>>(new Set())
+  const [running, setRunning]         = useState(false)
 
-  useEffect(() => {
-    initFromStorage()
-  }, [initFromStorage])
-
-  useEffect(() => {
-    fetchRefinements()
-  }, [selectedAgent])
-
-  const fetchRefinements = async () => {
+  const load = async () => {
     try {
-      setLoading(true)
-      const data = await apiClient.get<any>(`/agent-refinements/${selectedAgent}`)
-      setRefinements(data.pending_refinements || [])
-      setSummary(data.summary || {})
-    } catch (error) {
-      console.error("Failed to fetch refinements:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const applyRefinements = async () => {
-    try {
-      setApplying(true)
-      const result = await apiClient.post<any>(`/agent-refinements/${selectedAgent}/apply`, {})
-      alert(`✅ ${result.message || `Applied ${result.refinements_applied || 0} refinements`}`)
-      await fetchRefinements()
-    } catch (error: any) {
-      alert(`❌ Error: ${error.message || "Failed to apply refinements"}`)
-    } finally {
-      setApplying(false)
-    }
-  }
-
-  const testInjection = async () => {
-    if (!testMessage.trim()) {
-      alert("Please enter a test message")
-      return
-    }
-
-    try {
-      setTesting(true)
-      setTestResponse("")
-      
-      // Test with injection
-      const response = await apiClient.post<{ response: string }>("/chat", {
-        message: testMessage,
-        user_id: "test_user",
-        inject_refinements: true, // Enable injection
+      const [ins, refs] = await Promise.all([
+        apiClient.get<any>("/auto-learning/insights").catch(() => null),
+        // Fetch refinements for all agents in parallel
+        Promise.all(AGENTS.map(a =>
+          apiClient.get<any>(`/agent-refinements/${a}`).catch(() => null)
+        )),
+      ])
+      if (ins) setInsights(ins)
+      const allRefs: Refinement[] = []
+      refs.forEach((r: any, i: number) => {
+        if (r?.pending_refinements) {
+          r.pending_refinements.forEach((ref: any) => {
+            allRefs.push({ ...ref, agent_name: AGENTS[i] })
+          })
+        }
       })
-      
-      setTestResponse(response.response)
-    } catch (error: any) {
-      setTestResponse(`Error: ${error.message || "Failed to test"}`)
-    } finally {
-      setTesting(false)
-    }
+      setRefinements(allRefs)
+
+      const kb = await apiClient.get<any>("/kb-updates").catch(() => null)
+      if (kb?.updates) setKbUpdates(kb.updates)
+    } catch { /* ignore */ } finally { setLoading(false) }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "applied":
-        return <Badge variant="default" className="bg-green-500"><CheckCircle2 className="w-3 h-3 mr-1" />Applied</Badge>
-      case "pending":
-        return <Badge variant="secondary"><Clock className="w-3 h-3 mr-1" />Pending</Badge>
-      case "rejected":
-        return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
+  useEffect(() => { load() }, [])
+
+  const applyRefinement = async (agentName: string, refId: string) => {
+    try {
+      await apiClient.post<any>(`/agent-refinements/${agentName}/apply`, {})
+      setApplied(prev => new Set([...prev, refId]))
+    } catch { /* ignore */ }
   }
+
+  const runImprovements = async () => {
+    setRunning(true)
+    try {
+      await apiClient.post<any>("/improvements/run-now", {})
+      await load()
+    } catch { /* ignore */ } finally { setRunning(false) }
+  }
+
+  const applyKbUpdate = async (updateId: string) => {
+    try {
+      await apiClient.post<any>(`/kb-updates/${updateId}/apply`, {})
+      setKbUpdates(prev => prev.filter(u => u.update_id !== updateId))
+    } catch { /* ignore */ }
+  }
+
+  const rejectKbUpdate = async (updateId: string) => {
+    try {
+      await apiClient.post<any>(`/kb-updates/${updateId}/reject`, {})
+      setKbUpdates(prev => prev.filter(u => u.update_id !== updateId))
+    } catch { /* ignore */ }
+  }
+
+  const visibleRefs = refinements.filter(r => {
+    if (dismissed.has(r.id)) return false
+    if (activeAgent === "all") return true
+    return r.agent_name === activeAgent
+  })
 
   return (
-    <div className="flex flex-col h-screen">
-      <PageHeader 
-        title="Agent Refinements & Auto-Learning" 
-        description="Visualize and manage agent improvements based on customer feedback"
-      />
+    <div className="ws-page">
+      <div className="ws-phead">
+        <div>
+          <div className="ws-h1">Learning</div>
+          <div className="ws-sub">Agent refinements and knowledge base updates from customer feedback</div>
+        </div>
+        <div className="ws-chips">
+          <button
+            className="ws-chip acc"
+            style={{ border: "none", cursor: "pointer", opacity: running ? .6 : 1 }}
+            onClick={runImprovements}
+            disabled={running}
+          >
+            {running ? "Running…" : "▶ Run improvements now"}
+          </button>
+        </div>
+      </div>
 
-      <div className="flex-1 overflow-auto px-8 py-8">
-        {/* Agent Selection */}
-        <Card className="p-6 mb-6">
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium mb-2 block">Select Agent</label>
-              <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-                <SelectTrigger className="w-64">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {AGENTS.map((agent) => (
-                    <SelectItem key={agent.value} value={agent.value}>
-                      {agent.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Button 
-                onClick={applyRefinements} 
-                disabled={applying || refinements.filter(r => r.status === "pending").length === 0}
-                className="min-w-[150px]"
-              >
-                {applying ? "Applying..." : `Apply Pending (${refinements.filter(r => r.status === "pending").length})`}
-              </Button>
-            </div>
+      <div className="ws-wrap">
+        {/* Learning stat grid */}
+        <div className="ws-card" style={{ marginBottom: 15 }}>
+          <div className="ws-ch">
+            <div className="ws-ct">Today's learning loop</div>
+            <div className="ws-cmeta">Auto-updated from feedback</div>
           </div>
-        </Card>
-
-        {/* Summary */}
-        {summary && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <Card className="p-4">
-              <p className="text-sm text-muted-foreground">Total Refinements</p>
-              <p className="text-2xl font-bold">{summary.total_refinements || 0}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-sm text-muted-foreground">Pending</p>
-              <p className="text-2xl font-bold text-yellow-600">{summary.pending || 0}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-sm text-muted-foreground">Applied</p>
-              <p className="text-2xl font-bold text-green-600">{summary.applied || 0}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-sm text-muted-foreground">Rejected</p>
-              <p className="text-2xl font-bold text-red-600">{summary.rejected || 0}</p>
-            </Card>
+          <div className="ws-lgrid">
+            {[
+              { v: insights?.total_insights ?? "—",     l: "Feedback insights",      n: "Across all agents" },
+              { v: insights?.total_refinements ?? "—",  l: "Pending refinements",    n: visibleRefs.length ? `${visibleRefs.length} actionable` : "All clear" },
+              { v: insights?.total_kb_updates ?? "—",   l: "KB update suggestions",  n: kbUpdates.length ? `${kbUpdates.length} awaiting approval` : "None pending" },
+              { v: "Daily",                              l: "Auto-run schedule",      n: "2:00 AM server time" },
+            ].map(s => (
+              <div className="ws-lcell" key={s.l}>
+                <div className="ws-lcv">{s.v}</div>
+                <div className="ws-lcl">{s.l}</div>
+                <div className="ws-lcn">{s.n}</div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
 
-        {/* Refinements List */}
-        <Card className="p-6 mb-6">
-          <h2 className="text-xl font-bold mb-4">Refinements</h2>
-          {loading ? (
-            <p className="text-muted-foreground">Loading...</p>
-          ) : refinements.length === 0 ? (
-            <p className="text-muted-foreground">No refinements found for this agent.</p>
-          ) : (
-            <div className="space-y-4">
-              {refinements.map((refinement) => (
-                <Card key={refinement.refinement_key} className="p-4 border-l-4 border-l-blue-500">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        {getStatusBadge(refinement.status)}
-                        <span className="text-sm text-muted-foreground">
-                          {refinement.refinement_type}
-                        </span>
-                        {refinement.learning_reason && (
-                          <Badge variant="outline" className="text-xs">
-                            Reason: {refinement.learning_reason}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="font-medium mb-2">
-                        {refinement.changes.suggested_improvement}
-                      </p>
-                      {refinement.changes.customer_feedback && (
-                        <p className="text-sm text-muted-foreground mb-2">
-                          <strong>Customer Feedback:</strong> {refinement.changes.customer_feedback}
-                        </p>
-                      )}
-                      {refinement.user_input && (
-                        <div className="mt-2 p-2 bg-muted rounded text-sm">
-                          <p><strong>User Input:</strong> {refinement.user_input}</p>
-                          {refinement.agent_response && (
-                            <p className="mt-1"><strong>Agent Response:</strong> {refinement.agent_response}</p>
-                          )}
+        <div className="ws-row" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          {/* Refinement queue */}
+          <div className="ws-card">
+            <div className="ws-ch">
+              <div className="ws-ct">Agent refinements</div>
+              <div className="ws-cmeta">{visibleRefs.length} pending</div>
+            </div>
+
+            {/* Agent filter */}
+            <div style={{ display: "flex", gap: 6, padding: "0 14px 12px", flexWrap: "wrap" }}>
+              {["all", ...AGENTS].map(a => (
+                <div
+                  key={a}
+                  className={`ws-fchip${activeAgent === a ? " on" : ""}`}
+                  style={{ padding: "5px 12px", fontSize: 12 }}
+                  onClick={() => setActiveAgent(a)}
+                >
+                  {a === "all" ? "All agents" : AGENT_LABELS[a]}
+                </div>
+              ))}
+            </div>
+
+            <div className="ws-reflist">
+              {loading && (
+                <div style={{ padding: 28, textAlign: "center", color: "var(--ws-mut)", fontSize: 13.5 }}>
+                  Loading refinements…
+                </div>
+              )}
+              {!loading && visibleRefs.length === 0 && (
+                <div style={{ padding: 28, textAlign: "center", color: "var(--ws-mut)", fontSize: 13.5 }}>
+                  ✓ No pending refinements
+                </div>
+              )}
+              {visibleRefs.slice(0, 10).map(r => {
+                const isDone = applied.has(r.id)
+                const text = r.refinement_text || r.content || "Refinement pending review"
+                return (
+                  <div className="ws-refrow" key={r.id}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <div style={{
+                          width: 20, height: 20, borderRadius: 6,
+                          background: AGENT_COLORS[r.agent_name] ?? "var(--ws-acc)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "#fff", fontSize: 10, fontWeight: 700, flexShrink: 0,
+                        }}>
+                          {AGENT_LABELS[r.agent_name]?.[0] ?? "?"}
                         </div>
-                      )}
-                      {refinement.created_at && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Created: {new Date(refinement.created_at).toLocaleString()}
-                        </p>
+                        <span style={{ fontSize: 11, color: "var(--ws-dim)", fontWeight: 600 }}>
+                          {AGENT_LABELS[r.agent_name] ?? r.agent_name}
+                        </span>
+                      </div>
+                      <div className="ws-reft">{text.slice(0, 100)}{text.length > 100 ? "…" : ""}</div>
+                      <div className="ws-refm">
+                        {r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}
+                      </div>
+                    </div>
+                    <div className="ws-refacts">
+                      {isDone ? (
+                        <span className="ws-rbtn done">✓ Applied</span>
+                      ) : (
+                        <>
+                          <button className="ws-rbtn acc" onClick={() => applyRefinement(r.agent_name, r.id)}>
+                            Approve
+                          </button>
+                          <button className="ws-rbtn" onClick={() => setDismissed(prev => new Set([...prev, r.id]))}>
+                            Dismiss
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
-                </Card>
-              ))}
+                )
+              })}
             </div>
-          )}
-        </Card>
-
-        {/* Test Injection */}
-        <Card className="p-6">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <TestTube className="w-5 h-5" />
-            Test Refinement Injection
-          </h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Test how refinements are injected into agent responses. Enter a message and see the result with refinements applied.
-          </p>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Test Message</label>
-              <Input
-                value={testMessage}
-                onChange={(e) => setTestMessage(e.target.value)}
-                placeholder="Enter a test message..."
-                className="mb-2"
-              />
-              <Button 
-                onClick={testInjection} 
-                disabled={testing || !testMessage.trim()}
-                className="w-full"
-              >
-                {testing ? "Testing..." : "Test with Refinements Injected"}
-              </Button>
-            </div>
-            
-            {testResponse && (
-              <div>
-                <label className="text-sm font-medium mb-2 block">Agent Response (with refinements)</label>
-                <Textarea
-                  value={testResponse}
-                  readOnly
-                  className="min-h-[200px] font-mono text-sm"
-                />
-              </div>
-            )}
           </div>
-        </Card>
+
+          {/* KB updates */}
+          <div className="ws-card">
+            <div className="ws-ch">
+              <div className="ws-ct">KB update suggestions</div>
+              <div className="ws-cmeta">Require manual approval</div>
+            </div>
+            <div className="ws-reflist">
+              {loading && (
+                <div style={{ padding: 28, textAlign: "center", color: "var(--ws-mut)", fontSize: 13.5 }}>
+                  Loading…
+                </div>
+              )}
+              {!loading && kbUpdates.length === 0 && (
+                <div style={{ padding: 28, textAlign: "center", color: "var(--ws-mut)", fontSize: 13.5 }}>
+                  ✓ No KB updates pending
+                </div>
+              )}
+              {kbUpdates.slice(0, 8).map(u => {
+                const content = u.content ?? {}
+                const comment = content.customer_comment || content.summary || JSON.stringify(content).slice(0, 80)
+                return (
+                  <div className="ws-refrow" key={u.update_id}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="ws-reft">{comment.slice(0, 90)}{comment.length > 90 ? "…" : ""}</div>
+                      <div className="ws-refm">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
+                        {u.agent_name && ` · ${AGENT_LABELS[u.agent_name] ?? u.agent_name}`}
+                      </div>
+                    </div>
+                    <div className="ws-refacts">
+                      <button className="ws-rbtn acc" onClick={() => applyKbUpdate(u.update_id)}>
+                        Add to FAQ
+                      </button>
+                      <button className="ws-rbtn" onClick={() => rejectKbUpdate(u.update_id)}>
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
-

@@ -1,561 +1,221 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useStore } from "@/lib/store"
 import { apiClient } from "@/lib/api-client"
-import { cache, CACHE_KEYS } from "@/lib/cache"
-import { PageHeader } from "@/components/page-header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Ticket, MessageSquare, Search, Filter, MessageCircle, PowerOff } from "lucide-react"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import { ChatPanel } from "@/components/chat-panel"
 
-interface TicketWithSummary {
-  ticket_id: string
-  customer_id?: string
-  user_id?: string
-  session_id?: string
-  issue: string
-  priority: string
-  status: string
-  created_at: string
-  updated_at: string
-  summary?: string
-  session_is_active?: boolean
+const PRIORITY_COLOR: Record<string, string> = {
+  urgent: "#c5503e",
+  high:   "#c0902f",
+  normal: "#5a7d9a",
+  low:    "#a99b86",
 }
 
-function formatDateOnly(dateString: string): string {
-  try {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
-  } catch {
-    return dateString
-  }
+const STATUS_BADGE: Record<string, [string, string]> = {
+  open:        ["#fbe9e4", "#c5503e"],
+  in_progress: ["#f7eed7", "#c0902f"],
+  resolved:    ["#e8f1e6", "#4f8a5b"],
+  closed:      ["#faf5ec", "#a99b86"],
 }
 
-function formatSummary(summary: string): string[] {
-  if (!summary) return []
-  return summary
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((p) => p.length > 0)
-}
+type Filter = "all" | "open" | "in_progress" | "resolved" | "urgent"
 
 export default function TicketsPage() {
-  const { initFromStorage, userId } = useStore()
-  const [tickets, setTickets] = useState<TicketWithSummary[]>([])
+  const [tickets, setTickets] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false)
-  const [isChatOpen, setIsChatOpen] = useState(false)
-  const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false)
-  const [selectedTicket, setSelectedTicket] = useState<TicketWithSummary | null>(null)
-  const [selectedSummaryTicket, setSelectedSummaryTicket] = useState<TicketWithSummary | null>(null)
-  const [ticketMessage, setTicketMessage] = useState("")
-  const [sendingMessage, setSendingMessage] = useState(false)
-  const [filters, setFilters] = useState({
-    status: "all",
-    priority: "all",
-    search: "",
-  })
+  const [filter, setFilter]   = useState<Filter>("all")
+  const [selected, setSelected] = useState<any | null>(null)
+  const [replyText, setReplyText] = useState("")
+  const [sending, setSending] = useState(false)
 
-  useEffect(() => {
-    initFromStorage()
-  }, [initFromStorage])
-
-  const fetchData = async () => {
+  const load = async () => {
     try {
-      // Check cache first (30 second TTL for tickets)
-      const cacheKey = CACHE_KEYS.tickets()
-      const cached = cache.get<TicketWithSummary[]>(cacheKey)
-      if (cached) {
-        setTickets(cached)
-        setLoading(false)
-        return
-      }
-      
-      setLoading(true)
-      const response = await apiClient.get<any>("/tickets")
-      const ticketsList = response.tickets || []
-      setTickets(ticketsList)
-      
-      // Cache the tickets (30 second TTL)
-      cache.set(cacheKey, ticketsList, 30000)
-    } catch (error) {
-      console.error("Failed to fetch tickets:", error)
-      // Try to use cached data on error
-      const cacheKey = CACHE_KEYS.tickets()
-      const cached = cache.get<TicketWithSummary[]>(cacheKey)
-      if (cached) {
-        setTickets(cached)
-      }
-    } finally {
-      setLoading(false)
-    }
+      const data = await apiClient.get<any>("/tickets")
+      if (data?.tickets) setTickets(data.tickets)
+    } catch { /* ignore */ } finally { setLoading(false) }
   }
 
-  useEffect(() => {
-    fetchData()
-    // Poll every 30 seconds (tickets don't change as frequently)
-    const interval = setInterval(fetchData, 30000)
-    return () => clearInterval(interval)
-  }, [])
+  useEffect(() => { load(); const iv = setInterval(load, 15000); return () => clearInterval(iv) }, [])
 
-  const getStatusBadgeColor = (status: string) => {
-    const colors: Record<string, string> = {
-      open: "bg-blue-500/20 text-blue-700 dark:text-blue-300",
-      in_progress: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-300",
-      resolved: "bg-green-500/20 text-green-700 dark:text-green-300",
-      closed: "bg-gray-500/20 text-gray-700 dark:text-gray-300",
-    }
-    return colors[status.toLowerCase()] || "bg-muted text-muted-foreground"
-  }
-
-  const getPriorityBadgeColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      urgent: "bg-red-500/20 text-red-700 dark:text-red-300",
-      high: "bg-orange-500/20 text-orange-700 dark:text-orange-300",
-      normal: "bg-blue-500/20 text-blue-700 dark:text-blue-300",
-      low: "bg-gray-500/20 text-gray-700 dark:text-gray-300",
-    }
-    return colors[priority.toLowerCase()] || "bg-muted text-muted-foreground"
-  }
-
-  const filteredTickets = tickets.filter((ticket) => {
-    if (filters.status !== "all" && ticket.status.toLowerCase() !== filters.status.toLowerCase()) {
-      return false
-    }
-    if (filters.priority !== "all" && ticket.priority.toLowerCase() !== filters.priority.toLowerCase()) {
-      return false
-    }
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase()
-      return (
-        ticket.ticket_id.toLowerCase().includes(searchLower) ||
-        ticket.issue.toLowerCase().includes(searchLower) ||
-        (ticket.customer_id && ticket.customer_id.toLowerCase().includes(searchLower))
-      )
-    }
-    return true
-  })
-
-  const handleSendMessage = async () => {
-    if (!selectedTicket || !ticketMessage.trim() || !selectedTicket.user_id || !selectedTicket.session_id) {
-      alert("Please select a ticket and enter a message.")
-      return
-    }
-    setSendingMessage(true)
+  const updateStatus = async (ticketId: string, status: string) => {
     try {
-      await apiClient.sendTicketMessage(selectedTicket.ticket_id, ticketMessage)
-      alert("Message sent successfully!")
-      setTicketMessage("")
-      setIsMessageDialogOpen(false)
-      fetchData() // Refresh tickets
-    } catch (error: any) {
-      console.error("Failed to send message:", error)
-      alert(`Failed to send message: ${error.message || "Unknown error"}`)
-    } finally {
-      setSendingMessage(false)
-    }
+      await apiClient.put(`/tickets/${ticketId}/status`, { status })
+      setTickets(prev => prev.map(t => t.ticket_id === ticketId ? { ...t, status } : t))
+      if (selected?.ticket_id === ticketId) setSelected((prev: any) => prev ? { ...prev, status } : null)
+    } catch { /* ignore */ }
   }
 
-  const handleCloseTicket = async (ticketId: string) => {
+  const sendReply = async () => {
+    if (!selected || !replyText.trim()) return
+    setSending(true)
     try {
-      await apiClient.put<{ status: string; message: string }>(`/tickets/${ticketId}/status`, { status: "closed" })
-      alert("Ticket closed successfully. The session has been closed automatically.")
-      fetchData() // Refresh tickets
-    } catch (error: any) {
-      console.error("Failed to close ticket:", error)
-      alert(`Failed to close ticket: ${error.message || "Unknown error"}`)
-    }
+      await apiClient.post<any>(`/tickets/${selected.ticket_id}/message`, { message: replyText.trim() })
+      setReplyText("")
+    } catch { /* ignore */ } finally { setSending(false) }
   }
 
+  const FILTERS: [Filter, string][] = [
+    ["all", "All"],
+    ["open", "Open"],
+    ["in_progress", "In progress"],
+    ["resolved", "Resolved"],
+    ["urgent", "Urgent"],
+  ]
+
+  const visible = tickets.filter(t =>
+    filter === "all"    ? true :
+    filter === "urgent" ? t.priority === "urgent" :
+    t.status === filter
+  )
+
+  const urgentCount = tickets.filter(t => t.priority === "urgent" && t.status === "open").length
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <PageHeader
-        title="Support Tickets"
-        description="Manage and respond to customer support tickets"
-      />
-
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <Label htmlFor="search">Search</Label>
-              <div className="relative mt-2">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="search"
-                  placeholder="Search tickets..."
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="status-filter">Status</Label>
-              <Select value={filters.status} onValueChange={(value) => setFilters({ ...filters, status: value })}>
-                <SelectTrigger id="status-filter" className="mt-2">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="open">Open</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="priority-filter">Priority</Label>
-              <Select value={filters.priority} onValueChange={(value) => setFilters({ ...filters, priority: value })}>
-                <SelectTrigger id="priority-filter" className="mt-2">
-                  <SelectValue placeholder="All priorities" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                onClick={() => setFilters({ status: "all", priority: "all", search: "" })}
-                className="w-full"
-              >
-                Clear Filters
-              </Button>
-            </div>
+    <div className="ws-page">
+      <div className="ws-phead">
+        <div>
+          <div className="ws-h1">Tickets</div>
+          <div className="ws-sub">
+            {tickets.filter(t => t.status === "open" || t.status === "in_progress").length} open
+            {urgentCount > 0 && ` · ${urgentCount} urgent`}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <div className="ws-chips">
+          <div className="ws-chip">Sort: Recent <span className="mu">▾</span></div>
+        </div>
+      </div>
 
-      {/* Tickets List */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">
-            Tickets ({filteredTickets.length} of {tickets.length})
-          </h2>
+      <div className="ws-filters">
+        {FILTERS.map(([key, label]) => (
+          <div
+            key={key}
+            className={`ws-fchip${filter === key ? " on" : ""}`}
+            onClick={() => setFilter(key)}
+          >
+            {label}
+            {key !== "all" && (
+              <span style={{ marginLeft: 6, opacity: .6 }}>
+                {key === "urgent"
+                  ? tickets.filter(t => t.priority === "urgent").length
+                  : tickets.filter(t => t.status === key).length}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="ws-wrap" style={{ display: "grid", gridTemplateColumns: selected ? "1fr 380px" : "1fr", gap: 16 }}>
+        {/* Ticket list */}
+        <div className="ws-card">
+          <div className="ws-tlist" style={{ padding: "8px 12px 14px" }}>
+            {loading && (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--ws-mut)", fontSize: 14 }}>Loading…</div>
+            )}
+            {!loading && visible.length === 0 && (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--ws-mut)", fontSize: 14 }}>
+                No tickets in this view
+              </div>
+            )}
+            {visible.map(t => {
+              const [bg, fg] = STATUS_BADGE[t.status] ?? ["#faf5ec", "#a99b86"]
+              const isSelected = selected?.ticket_id === t.ticket_id
+              return (
+                <div
+                  key={t.ticket_id}
+                  className="ws-trow"
+                  style={{
+                    padding: "14px 12px",
+                    background: isSelected ? "var(--ws-accbg)" : undefined,
+                    borderRadius: isSelected ? 13 : undefined,
+                  }}
+                  onClick={() => setSelected(isSelected ? null : t)}
+                >
+                  <span className="ws-pdot" style={{ background: PRIORITY_COLOR[t.priority] }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="ws-ti">{t.issue}</div>
+                    <div className="ws-tm">
+                      <span className="ws-mono">{t.ticket_id}</span>
+                      <span>·</span>
+                      <span>{t.customer_id || t.user_id || "—"}</span>
+                      <span>·</span>
+                      <span style={{ textTransform: "capitalize" }}>{t.priority}</span>
+                    </div>
+                  </div>
+                  <span className="ws-badge" style={{ background: bg, color: fg }}>
+                    {t.status.replace("_", " ")}
+                  </span>
+                  <span className="ws-ts">{t.created_at ? new Date(t.created_at).toLocaleDateString() : "—"}</span>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
-        {loading ? (
-          <div className="text-center text-muted-foreground py-8">Loading tickets...</div>
-        ) : filteredTickets.length === 0 ? (
-          <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              No tickets found.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredTickets.map((ticket) => (
-              <Card key={ticket.ticket_id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-sm font-medium">Ticket {ticket.ticket_id}</CardTitle>
-                    <div className="flex gap-2">
-                      <Badge className={getStatusBadgeColor(ticket.status)}>{ticket.status}</Badge>
-                      <Badge className={getPriorityBadgeColor(ticket.priority)} variant="outline">
-                        {ticket.priority}
-                      </Badge>
-                    </div>
+        {/* Detail panel */}
+        {selected && (
+          <div className="ws-card" style={{ display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 200px)", overflow: "hidden" }}>
+            <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid var(--ws-line)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div className="ws-ct" style={{ fontSize: 15 }}>{selected.ticket_id}</div>
+                  <div style={{ fontSize: 12, color: "var(--ws-mut)", marginTop: 2, fontFamily: "JetBrains Mono, monospace" }}>
+                    {selected.customer_id || selected.user_id}
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <p className="text-sm font-medium mb-1">Issue</p>
-                    <p className="text-sm text-muted-foreground line-clamp-2">{ticket.issue}</p>
-                  </div>
-                  {ticket.summary && (
-                    <div className="bg-muted/50 rounded-lg p-3 border border-border">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-semibold flex items-center gap-2">
-                          <span className="text-primary">📋</span>
-                          Conversation Summary
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs"
-                          onClick={() => {
-                            setSelectedSummaryTicket(ticket)
-                            setIsSummaryDialogOpen(true)
-                          }}
-                        >
-                          View Full →
-                        </Button>
-                      </div>
-                      <div className="text-sm text-muted-foreground space-y-1.5 max-h-32 overflow-y-auto">
-                        {formatSummary(ticket.summary).slice(0, 5).map((line, idx) => {
-                          // Remove markdown formatting for preview
-                          const cleanLine = line.replace(/\*\*/g, '').replace(/^#+\s*/, '')
-                          if (cleanLine.trim().length === 0) return null
-                          return (
-                            <p key={idx} className="line-clamp-2 text-xs leading-relaxed">
-                              {cleanLine}
-                            </p>
-                          )
-                        })}
-                        {formatSummary(ticket.summary).length > 5 && (
-                          <p className="text-xs text-muted-foreground italic pt-1">
-                            +{formatSummary(ticket.summary).length - 5} more lines...
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>Customer: {ticket.customer_id || "N/A"}</p>
-                    <p>Created: {formatDateOnly(ticket.created_at)}</p>
-                    <p>Updated: {formatDateOnly(ticket.updated_at)}</p>
-                  </div>
-                  {ticket.user_id && ticket.session_id && ticket.customer_id && (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="default"
-                          onClick={() => {
-                            setSelectedTicket(ticket)
-                            setIsChatOpen(true)
-                          }}
-                          className="flex-1"
-                        >
-                          <MessageCircle className="w-4 h-4 mr-2" />
-                          Open Chat
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedTicket(ticket)
-                            setIsMessageDialogOpen(true)
-                          }}
-                          className="flex-1"
-                        >
-                          <MessageSquare className="w-4 h-4 mr-2" />
-                          Quick Reply
-                        </Button>
-                      </div>
-                      {ticket.status !== "closed" && (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleCloseTicket(ticket.ticket_id)}
-                          className="w-full"
-                        >
-                          <PowerOff className="w-4 h-4 mr-2" />
-                          Close Ticket
-                        </Button>
-                      )}
-                      {ticket.status === "closed" && (
-                        <div className="text-xs text-muted-foreground text-center py-2">
-                          Ticket closed - Session is inactive
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+                <button
+                  onClick={() => setSelected(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ws-mut)", fontSize: 18 }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div style={{ marginTop: 12, fontSize: 13.5, color: "var(--foreground)" }}>{selected.issue}</div>
+              <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {["open", "in_progress", "resolved", "closed"].map(s => (
+                  <button
+                    key={s}
+                    onClick={() => updateStatus(selected.ticket_id, s)}
+                    style={{
+                      fontSize: 11.5, fontWeight: 700, padding: "4px 12px",
+                      borderRadius: 999, border: "none", cursor: "pointer",
+                      background: selected.status === s ? STATUS_BADGE[s]?.[0] : "var(--ws-soft)",
+                      color: selected.status === s ? STATUS_BADGE[s]?.[1] : "var(--ws-dim)",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {s.replace("_", " ")}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ padding: "14px 20px 18px", borderTop: "1px solid var(--ws-line)", marginTop: "auto" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ws-mut)", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 10 }}>
+                Reply to customer
+              </div>
+              <textarea
+                className="ws-cinput"
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                placeholder="Type your reply…"
+                rows={3}
+                style={{ width: "100%", marginBottom: 10 }}
+              />
+              <button
+                onClick={sendReply}
+                disabled={sending || !replyText.trim()}
+                style={{
+                  background: "var(--ws-acc)", color: "#fff", border: "none",
+                  borderRadius: 10, padding: "9px 18px", fontSize: 13, fontWeight: 700,
+                  cursor: "pointer", fontFamily: "inherit",
+                  opacity: (sending || !replyText.trim()) ? 0.45 : 1,
+                }}
+              >
+                {sending ? "Sending…" : "Send reply"}
+              </button>
+            </div>
           </div>
         )}
       </div>
-
-      {/* Send Message Dialog */}
-      <Dialog open={isMessageDialogOpen} onOpenChange={setIsMessageDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Send Message to Customer</DialogTitle>
-            <DialogDescription>
-              Send a message to the customer for ticket {selectedTicket?.ticket_id}. The message will appear in their
-              chat as if from a human agent.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="ticket-message">Message</Label>
-              <Textarea
-                id="ticket-message"
-                className="w-full mt-2 min-h-[120px] resize-none"
-                placeholder="Type your message to the customer..."
-                value={ticketMessage}
-                onChange={(e) => setTicketMessage(e.target.value)}
-                disabled={sendingMessage}
-              />
-            </div>
-            {selectedTicket && (
-              <div className="text-sm text-muted-foreground space-y-1">
-                <p>Customer: {selectedTicket.customer_id || "N/A"}</p>
-                <p>Session: {selectedTicket.session_id?.slice(-8) || "N/A"}</p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsMessageDialogOpen(false)
-                setTicketMessage("")
-                setSelectedTicket(null)
-              }}
-              disabled={sendingMessage}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSendMessage} disabled={sendingMessage || !ticketMessage.trim()}>
-              {sendingMessage ? "Sending..." : "Send Message"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Summary Dialog */}
-      <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
-          <DialogHeader className="pb-4 border-b">
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <span className="text-primary">📋</span>
-              Conversation Summary - {selectedSummaryTicket?.ticket_id}
-            </DialogTitle>
-            <DialogDescription className="pt-2">
-              Complete overview of the customer conversation for this support ticket
-            </DialogDescription>
-          </DialogHeader>
-          {selectedSummaryTicket?.summary && (
-            <div className="flex-1 overflow-y-auto py-4">
-              <div className="prose prose-sm max-w-none dark:prose-invert">
-                {formatSummary(selectedSummaryTicket.summary).map((line, idx) => {
-                  // Check if line is a heading (starts with ** and ends with **)
-                  if (line.startsWith("**") && line.endsWith("**") && line.length > 4) {
-                    return (
-                      <h3 key={idx} className="font-bold text-lg mt-6 mb-3 text-foreground border-b pb-2">
-                        {line.replace(/\*\*/g, "")}
-                      </h3>
-                    )
-                  }
-                  // Check if line is a markdown heading (# ## ###)
-                  const headingMatch = line.match(/^(#{1,3})\s+(.+)$/)
-                  if (headingMatch) {
-                    const level = headingMatch[1].length
-                    const text = headingMatch[2]
-                    const className = level === 1 ? "text-xl font-bold mt-6 mb-3" : 
-                                     level === 2 ? "text-lg font-semibold mt-5 mb-2" : 
-                                     "text-base font-semibold mt-4 mb-2"
-                    return (
-                      <h3 key={idx} className={`${className} text-foreground border-b pb-1`}>
-                        {text}
-                      </h3>
-                    )
-                  }
-                  // Check if line is a bold label (format: **Label:** text)
-                  const boldMatch = line.match(/^\*\*([^*]+):\*\*\s*(.+)$/)
-                  if (boldMatch) {
-                    return (
-                      <div key={idx} className="mb-3 p-2 bg-muted/50 rounded-md">
-                        <p className="mb-1">
-                          <strong className="text-foreground">{boldMatch[1]}:</strong>
-                        </p>
-                        <p className="text-muted-foreground ml-4">{boldMatch[2]}</p>
-                      </div>
-                    )
-                  }
-                  // Check if line starts with ** (bold text)
-                  if (line.startsWith("**") && line.includes("**")) {
-                    const parts = line.split(/(\*\*[^*]+\*\*)/g)
-                    return (
-                      <p key={idx} className="mb-3 text-foreground">
-                        {parts.map((part, partIdx) => {
-                          if (part.startsWith("**") && part.endsWith("**")) {
-                            return <strong key={partIdx} className="text-foreground">{part.replace(/\*\*/g, "")}</strong>
-                          }
-                          return <span key={partIdx}>{part}</span>
-                        })}
-                      </p>
-                    )
-                  }
-                  // Regular paragraph
-                  if (line.trim().length > 0) {
-                    return (
-                      <p key={idx} className="mb-3 text-muted-foreground leading-relaxed">
-                        {line}
-                      </p>
-                    )
-                  }
-                  return null
-                })}
-              </div>
-            </div>
-          )}
-          <DialogFooter className="border-t pt-4">
-            <Button onClick={() => setIsSummaryDialogOpen(false)} variant="default">
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Chat Panel */}
-      <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
-          <SheetHeader className="sr-only">
-            <SheetTitle>Chat with Customer</SheetTitle>
-            <SheetDescription>
-              Continue the conversation with the customer for ticket {selectedTicket?.ticket_id}
-            </SheetDescription>
-          </SheetHeader>
-          {selectedTicket && selectedTicket.customer_id && selectedTicket.session_id && userId && (
-            <div className="flex-1 min-h-0">
-              <ChatPanel
-                customerId={selectedTicket.customer_id}
-                sessionId={selectedTicket.session_id}
-                userId={userId}
-                ticketId={selectedTicket.ticket_id}
-              />
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
     </div>
   )
 }
-
