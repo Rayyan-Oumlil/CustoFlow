@@ -32,9 +32,13 @@ interface Refinement {
 }
 
 export default function LearningPage() {
-  const [insights, setInsights]       = useState<any>(null)
-  const [refinements, setRefinements] = useState<Refinement[]>([])
-  const [kbUpdates, setKbUpdates]     = useState<any[]>([])
+  const [insights, setInsights]       = useState<any>(MOCK_INSIGHTS)
+  const [refinements, setRefinements] = useState<Refinement[]>([
+    ...MOCK_REFINEMENTS.orchestrator.pending_refinements,
+    ...MOCK_REFINEMENTS.order_agent.pending_refinements,
+    ...MOCK_REFINEMENTS.faq_agent.pending_refinements,
+  ] as Refinement[])
+  const [kbUpdates, setKbUpdates]     = useState<any[]>(MOCK_KB_UPDATES)
   const [loading, setLoading]         = useState(true)
   const [activeAgent, setActiveAgent] = useState<string>("all")
   const [applied, setApplied]         = useState<Set<string>>(new Set())
@@ -49,24 +53,17 @@ export default function LearningPage() {
           apiClient.get<any>(`/agent-refinements/${a}`).catch(() => null)
         )),
       ])
-      setInsights(ins?.total_insights ? ins : MOCK_INSIGHTS)
+      if (ins?.total_insights) setInsights(ins)
       const allRefs: Refinement[] = []
-      let anyRefs = false
       refs.forEach((r: any, i: number) => {
         if (r?.pending_refinements?.length) {
-          anyRefs = true
           r.pending_refinements.forEach((ref: any) => allRefs.push({ ...ref, agent_name: AGENTS[i] }))
         }
       })
-      if (!anyRefs) {
-        Object.values(MOCK_REFINEMENTS).forEach(agentData => {
-          agentData.pending_refinements.forEach(ref => allRefs.push(ref as Refinement))
-        })
-      }
-      setRefinements(allRefs)
+      if (allRefs.length) setRefinements(allRefs)
 
       const kb = await apiClient.get<any>("/kb-updates").catch(() => null)
-      setKbUpdates(kb?.updates ?? MOCK_KB_UPDATES)
+      if (kb?.updates?.length) setKbUpdates(kb.updates)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

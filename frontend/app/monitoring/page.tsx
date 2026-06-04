@@ -28,7 +28,7 @@ function formatAge(iso: string): string {
 }
 
 export default function MonitoringPage() {
-  const [sessions, setSessions] = useState<any[]>([])
+  const [sessions, setSessions] = useState<any[]>(MOCK_ACTIVE_SESSIONS)
   const [metrics, setMetrics]   = useState<any>({})
   const [loading, setLoading]   = useState(true)
   const [sending, setSending]   = useState<Record<string, boolean>>({})
@@ -40,7 +40,7 @@ export default function MonitoringPage() {
         apiClient.get<any[]>("/sessions/all/active").catch(() => null),
         apiClient.get<any>("/metrics").catch(() => null),
       ])
-      setSessions(Array.isArray(s) && s.length ? s : MOCK_ACTIVE_SESSIONS)
+      if (Array.isArray(s) && s.length) setSessions(s)
       setMetrics(m || {})
     } catch { /* ignore */ } finally { setLoading(false) }
   }

@@ -16,7 +16,7 @@ const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = 
 type SortField = "order_id" | "customer_id" | "total" | "status"
 
 export default function OrdersPage() {
-  const [orders, setOrders]       = useState<any[]>([])
+  const [orders, setOrders]       = useState<any[]>(MOCK_ORDERS)
   const [loading, setLoading]     = useState(true)
   const [sortField, setSortField] = useState<SortField>("order_id")
   const [sortDir, setSortDir]     = useState<"asc" | "desc">("asc")
@@ -25,7 +25,7 @@ export default function OrdersPage() {
   const load = async () => {
     try {
       const data = await apiClient.get<any>("/orders").catch(() => null)
-      setOrders(data?.orders?.length ? data.orders : MOCK_ORDERS)
+      if (data?.orders?.length) setOrders(data.orders)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

@@ -45,10 +45,10 @@ function MiniSpark({ data, color }: { data: number[]; color: string }) {
 }
 
 export default function AnalyticsPage() {
-  const [analytics, setAnalytics] = useState<Analytics | null>(null)
-  const [daily, setDaily]         = useState<any[]>([])
+  const [analytics, setAnalytics] = useState<Analytics>(MOCK_ANALYTICS)
+  const [daily, setDaily]         = useState<any[]>(MOCK_DAILY)
   const [ticketStatus, setTicketStatus] = useState<any[]>([])
-  const [insights, setInsights]   = useState<any>(null)
+  const [insights, setInsights]   = useState<any>(MOCK_INSIGHTS)
   const [loading, setLoading]     = useState(true)
 
   const load = async () => {
@@ -59,12 +59,10 @@ export default function AnalyticsPage() {
         apiClient.get<any[]>("/analytics/ticket-status").catch(() => null),
         apiClient.get<any>("/auto-learning/insights").catch(() => null),
       ])
-      const analyticsEmpty = !a || (a.total_messages === 0 && a.active_sessions === 0)
-      setAnalytics(analyticsEmpty ? MOCK_ANALYTICS : a)
-      const dailyEmpty = !Array.isArray(d) || d.every((r: any) => r.interactions === 0)
-      setDaily(dailyEmpty ? MOCK_DAILY : d)
+      if (a?.total_messages) setAnalytics(a)
+      if (Array.isArray(d) && d.some((r: any) => r.interactions > 0)) setDaily(d)
       if (Array.isArray(ts) && ts.length) setTicketStatus(ts)
-      setInsights(ins?.total_insights ? ins : MOCK_INSIGHTS)
+      if (ins?.total_insights) setInsights(ins)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

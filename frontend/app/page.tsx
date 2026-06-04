@@ -62,9 +62,9 @@ interface DailyRow { day: string; interactions: number; satisfaction: number }
 
 export default function OverviewPage() {
   const router = useRouter()
-  const [analytics, setAnalytics] = useState<Analytics | null>(null)
-  const [daily, setDaily] = useState<DailyRow[]>([])
-  const [tickets, setTickets] = useState<any[]>([])
+  const [analytics, setAnalytics] = useState<Analytics>(MOCK_ANALYTICS)
+  const [daily, setDaily] = useState<DailyRow[]>(MOCK_DAILY)
+  const [tickets, setTickets] = useState<any[]>(MOCK_TICKETS.slice(0, 5))
   const [agents] = useState([
     { id: "orchestrator", name: "Orchestrator", role: "Router",    share: 100 },
     { id: "faq",          name: "FAQ Agent",    role: "Knowledge", share: 42  },
@@ -72,7 +72,7 @@ export default function OverviewPage() {
     { id: "sentiment",    name: "Sentiment",    role: "Emotion",   share: 14  },
     { id: "escalation",   name: "Escalation",   role: "Handoff",   share: 9   },
   ])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -82,12 +82,9 @@ export default function OverviewPage() {
           apiClient.get<DailyRow[]>("/analytics/daily").catch(() => null),
           apiClient.get<any>("/tickets").catch(() => null),
         ])
-        const analyticsEmpty = !a || (a.total_messages === 0 && a.active_sessions === 0 && a.tickets_created === 0)
-        setAnalytics(analyticsEmpty ? MOCK_ANALYTICS : a)
-        const dailyEmpty = !Array.isArray(d) || d.every((r: any) => r.interactions === 0)
-        setDaily(dailyEmpty ? MOCK_DAILY : d)
-        const ticketsEmpty = !t?.tickets?.length
-        setTickets((ticketsEmpty ? MOCK_TICKETS : t.tickets).slice(0, 5))
+        if (a?.total_messages) setAnalytics(a)
+        if (Array.isArray(d) && d.some((r: any) => r.interactions > 0)) setDaily(d)
+        if (t?.tickets?.length) setTickets(t.tickets.slice(0, 5))
       } finally {
         setLoading(false)
       }
