@@ -59,10 +59,12 @@ export default function AnalyticsPage() {
         apiClient.get<any[]>("/analytics/ticket-status").catch(() => null),
         apiClient.get<any>("/auto-learning/insights").catch(() => null),
       ])
-      setAnalytics(a ?? MOCK_ANALYTICS)
-      setDaily(Array.isArray(d) ? d : MOCK_DAILY)
-      if (Array.isArray(ts)) setTicketStatus(ts)
-      setInsights(ins ?? MOCK_INSIGHTS)
+      const analyticsEmpty = !a || (a.total_messages === 0 && a.active_sessions === 0)
+      setAnalytics(analyticsEmpty ? MOCK_ANALYTICS : a)
+      const dailyEmpty = !Array.isArray(d) || d.every((r: any) => r.interactions === 0)
+      setDaily(dailyEmpty ? MOCK_DAILY : d)
+      if (Array.isArray(ts) && ts.length) setTicketStatus(ts)
+      setInsights(ins?.total_insights ? ins : MOCK_INSIGHTS)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

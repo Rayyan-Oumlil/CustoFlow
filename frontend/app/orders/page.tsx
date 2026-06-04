@@ -25,7 +25,7 @@ export default function OrdersPage() {
   const load = async () => {
     try {
       const data = await apiClient.get<any>("/orders").catch(() => null)
-      setOrders(data?.orders ?? MOCK_ORDERS)
+      setOrders(data?.orders?.length ? data.orders : MOCK_ORDERS)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

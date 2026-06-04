@@ -82,9 +82,12 @@ export default function OverviewPage() {
           apiClient.get<DailyRow[]>("/analytics/daily").catch(() => null),
           apiClient.get<any>("/tickets").catch(() => null),
         ])
-        setAnalytics(a ?? MOCK_ANALYTICS)
-        setDaily(Array.isArray(d) ? d : MOCK_DAILY)
-        setTickets((t?.tickets ?? MOCK_TICKETS).slice(0, 5))
+        const analyticsEmpty = !a || (a.total_messages === 0 && a.active_sessions === 0 && a.tickets_created === 0)
+        setAnalytics(analyticsEmpty ? MOCK_ANALYTICS : a)
+        const dailyEmpty = !Array.isArray(d) || d.every((r: any) => r.interactions === 0)
+        setDaily(dailyEmpty ? MOCK_DAILY : d)
+        const ticketsEmpty = !t?.tickets?.length
+        setTickets((ticketsEmpty ? MOCK_TICKETS : t.tickets).slice(0, 5))
       } finally {
         setLoading(false)
       }

@@ -49,7 +49,7 @@ export default function LearningPage() {
           apiClient.get<any>(`/agent-refinements/${a}`).catch(() => null)
         )),
       ])
-      setInsights(ins ?? MOCK_INSIGHTS)
+      setInsights(ins?.total_insights ? ins : MOCK_INSIGHTS)
       const allRefs: Refinement[] = []
       let anyRefs = false
       refs.forEach((r: any, i: number) => {

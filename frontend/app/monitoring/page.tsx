@@ -40,7 +40,7 @@ export default function MonitoringPage() {
         apiClient.get<any[]>("/sessions/all/active").catch(() => null),
         apiClient.get<any>("/metrics").catch(() => null),
       ])
-      setSessions(Array.isArray(s) ? s : MOCK_ACTIVE_SESSIONS)
+      setSessions(Array.isArray(s) && s.length ? s : MOCK_ACTIVE_SESSIONS)
       setMetrics(m || {})
     } catch { /* ignore */ } finally { setLoading(false) }
   }

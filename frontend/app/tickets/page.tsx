@@ -31,7 +31,7 @@ export default function TicketsPage() {
   const load = async () => {
     try {
       const data = await apiClient.get<any>("/tickets").catch(() => null)
-      setTickets(data?.tickets ?? MOCK_TICKETS)
+      setTickets(data?.tickets?.length ? data.tickets : MOCK_TICKETS)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

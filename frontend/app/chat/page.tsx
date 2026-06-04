@@ -119,10 +119,11 @@ export default function ChatPage() {
         const url = customerId ? `/sessions/by-customer/${encodeURIComponent(customerId)}` : `/sessions/${userId}`
         const data = await apiClient.get<any>(url).catch(() => null)
         let arr: any[] = Array.isArray(data) ? data : data?.sessions ?? []
-        if (arr.length === 0) {
-          // Use mock sessions filtered/adapted to this customer
-          arr = MOCK_SESSIONS.filter(s => !s.customer_id || s.customer_id === customerId)
-          if (arr.length === 0) arr = MOCK_SESSIONS.slice(0, 2).map(s => ({ ...s, customer_id: customerId, user_id: userId }))
+        if (!arr.length) {
+          arr = MOCK_SESSIONS.slice(0, 2).map(s => ({
+            ...s, customer_id: customerId, user_id: userId,
+            name: `Session ${s.session_id.slice(-8)}`,
+          }))
         }
         arr = arr.filter((s: any) => !s.customer_id || s.customer_id.toLowerCase() === customerId.toLowerCase())
         const convos: Conversation[] = arr.map((s: any) => ({
