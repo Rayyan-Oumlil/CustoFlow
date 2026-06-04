@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
+import { MOCK_ORDERS } from "@/lib/mock-data"
 
 const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
   processing:    { bg: "#e8eef3", fg: "#5a7d9a", label: "Processing" },
@@ -23,8 +24,8 @@ export default function OrdersPage() {
 
   const load = async () => {
     try {
-      const data = await apiClient.get<any>("/orders")
-      if (data?.orders) setOrders(data.orders)
+      const data = await apiClient.get<any>("/orders").catch(() => null)
+      setOrders(data?.orders ?? MOCK_ORDERS)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

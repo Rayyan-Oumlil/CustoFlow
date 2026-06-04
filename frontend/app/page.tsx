@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api-client"
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts"
+import { MOCK_ANALYTICS, MOCK_DAILY, MOCK_TICKETS } from "@/lib/mock-data"
 
 const AGENT_COLORS: Record<string, string> = {
   orchestrator: "#c4663f",
@@ -78,12 +79,12 @@ export default function OverviewPage() {
       try {
         const [a, d, t] = await Promise.all([
           apiClient.get<Analytics>("/analytics").catch(() => null),
-          apiClient.get<DailyRow[]>("/analytics/daily").catch(() => []),
+          apiClient.get<DailyRow[]>("/analytics/daily").catch(() => null),
           apiClient.get<any>("/tickets").catch(() => null),
         ])
-        if (a) setAnalytics(a)
-        if (Array.isArray(d)) setDaily(d)
-        if (t?.tickets) setTickets(t.tickets.slice(0, 5))
+        setAnalytics(a ?? MOCK_ANALYTICS)
+        setDaily(Array.isArray(d) ? d : MOCK_DAILY)
+        setTickets((t?.tickets ?? MOCK_TICKETS).slice(0, 5))
       } finally {
         setLoading(false)
       }

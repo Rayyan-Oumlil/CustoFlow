@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
+import { MOCK_TICKETS } from "@/lib/mock-data"
 
 const PRIORITY_COLOR: Record<string, string> = {
   urgent: "#c5503e",
@@ -29,8 +30,8 @@ export default function TicketsPage() {
 
   const load = async () => {
     try {
-      const data = await apiClient.get<any>("/tickets")
-      if (data?.tickets) setTickets(data.tickets)
+      const data = await apiClient.get<any>("/tickets").catch(() => null)
+      setTickets(data?.tickets ?? MOCK_TICKETS)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

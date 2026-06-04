@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
+import { MOCK_ANALYTICS, MOCK_DAILY, MOCK_INSIGHTS } from "@/lib/mock-data"
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -54,14 +55,14 @@ export default function AnalyticsPage() {
     try {
       const [a, d, ts, ins] = await Promise.all([
         apiClient.get<Analytics>("/analytics").catch(() => null),
-        apiClient.get<any[]>("/analytics/daily").catch(() => []),
-        apiClient.get<any[]>("/analytics/ticket-status").catch(() => []),
+        apiClient.get<any[]>("/analytics/daily").catch(() => null),
+        apiClient.get<any[]>("/analytics/ticket-status").catch(() => null),
         apiClient.get<any>("/auto-learning/insights").catch(() => null),
       ])
-      if (a) setAnalytics(a)
-      if (Array.isArray(d)) setDaily(d)
+      setAnalytics(a ?? MOCK_ANALYTICS)
+      setDaily(Array.isArray(d) ? d : MOCK_DAILY)
       if (Array.isArray(ts)) setTicketStatus(ts)
-      if (ins) setInsights(ins)
+      setInsights(ins ?? MOCK_INSIGHTS)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

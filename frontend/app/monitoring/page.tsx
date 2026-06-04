@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
+import { MOCK_ACTIVE_SESSIONS } from "@/lib/mock-data"
 
 const AGENT_COLORS: Record<string, string> = {
   orchestrator:     "#c4663f",
@@ -36,10 +37,10 @@ export default function MonitoringPage() {
   const load = async () => {
     try {
       const [s, m] = await Promise.all([
-        apiClient.get<any[]>("/sessions/all/active").catch(() => []),
-        apiClient.get<any>("/metrics").catch(() => ({})),
+        apiClient.get<any[]>("/sessions/all/active").catch(() => null),
+        apiClient.get<any>("/metrics").catch(() => null),
       ])
-      setSessions(Array.isArray(s) ? s : [])
+      setSessions(Array.isArray(s) ? s : MOCK_ACTIVE_SESSIONS)
       setMetrics(m || {})
     } catch { /* ignore */ } finally { setLoading(false) }
   }

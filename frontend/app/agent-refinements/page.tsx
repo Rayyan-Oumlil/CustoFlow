@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
+import { MOCK_REFINEMENTS, MOCK_INSIGHTS, MOCK_KB_UPDATES } from "@/lib/mock-data"
 
 const AGENTS = ["orchestrator", "faq_agent", "order_agent", "sentiment_agent", "escalation_agent"]
 
@@ -44,24 +45,28 @@ export default function LearningPage() {
     try {
       const [ins, refs] = await Promise.all([
         apiClient.get<any>("/auto-learning/insights").catch(() => null),
-        // Fetch refinements for all agents in parallel
         Promise.all(AGENTS.map(a =>
           apiClient.get<any>(`/agent-refinements/${a}`).catch(() => null)
         )),
       ])
-      if (ins) setInsights(ins)
+      setInsights(ins ?? MOCK_INSIGHTS)
       const allRefs: Refinement[] = []
+      let anyRefs = false
       refs.forEach((r: any, i: number) => {
-        if (r?.pending_refinements) {
-          r.pending_refinements.forEach((ref: any) => {
-            allRefs.push({ ...ref, agent_name: AGENTS[i] })
-          })
+        if (r?.pending_refinements?.length) {
+          anyRefs = true
+          r.pending_refinements.forEach((ref: any) => allRefs.push({ ...ref, agent_name: AGENTS[i] }))
         }
       })
+      if (!anyRefs) {
+        Object.values(MOCK_REFINEMENTS).forEach(agentData => {
+          agentData.pending_refinements.forEach(ref => allRefs.push(ref as Refinement))
+        })
+      }
       setRefinements(allRefs)
 
       const kb = await apiClient.get<any>("/kb-updates").catch(() => null)
-      if (kb?.updates) setKbUpdates(kb.updates)
+      setKbUpdates(kb?.updates ?? MOCK_KB_UPDATES)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 

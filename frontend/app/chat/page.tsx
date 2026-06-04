@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useStore } from "@/lib/store"
 import { apiClient, type Message } from "@/lib/api-client"
 import { cache, CACHE_KEYS } from "@/lib/cache"
+import { MOCK_SESSIONS, MOCK_MESSAGES } from "@/lib/mock-data"
 
 const AGENT_COLORS: Record<string, string> = {
   orchestrator: "#c4663f",
@@ -116,8 +117,13 @@ export default function ChatPage() {
         if (cached) { setConversations(cached); setLoading(false); return }
 
         const url = customerId ? `/sessions/by-customer/${encodeURIComponent(customerId)}` : `/sessions/${userId}`
-        const data = await apiClient.get<any>(url)
+        const data = await apiClient.get<any>(url).catch(() => null)
         let arr: any[] = Array.isArray(data) ? data : data?.sessions ?? []
+        if (arr.length === 0) {
+          // Use mock sessions filtered/adapted to this customer
+          arr = MOCK_SESSIONS.filter(s => !s.customer_id || s.customer_id === customerId)
+          if (arr.length === 0) arr = MOCK_SESSIONS.slice(0, 2).map(s => ({ ...s, customer_id: customerId, user_id: userId }))
+        }
         arr = arr.filter((s: any) => !s.customer_id || s.customer_id.toLowerCase() === customerId.toLowerCase())
         const convos: Conversation[] = arr.map((s: any) => ({
           session_id: s.session_id,
@@ -155,8 +161,9 @@ export default function ChatPage() {
   const fetchMessages = useCallback(async (merge = false) => {
     if (!userId || !sessionId) return
     try {
-      const data = await apiClient.get<any>(`/history/${userId}?session_id=${sessionId}`)
-      const arr: any[] = Array.isArray(data) ? data : data?.history ?? []
+      const data = await apiClient.get<any>(`/history/${userId}?session_id=${sessionId}`).catch(() => null)
+      const mockFallback = MOCK_MESSAGES[sessionId] ?? []
+      const arr: any[] = data ? (Array.isArray(data) ? data : data?.history ?? []) : mockFallback
       const serverMsgs: Message[] = arr.map((m: any, i: number) => {
         const isHuman = m.metadata?.is_human_agent || m.metadata?.agent_used === "human_agent" || m.agent_used === "human_agent"
         return {
