@@ -1,0 +1,1748 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: rayyan-oumlil/custoflow
+    source: https://github.com/rayyan-oumlil/custoflow
+    branch: main
+    commit: "517eb4de"
+    scope: [agents/escalation_agent.py, agents/faq_agent.py, agents/orchestrator_agent.py, agents/order_agent.py, agents/sentiment_agent.py,
+      api/server.py, config/settings.py, main.py, notebooks/evaluation.py, tools/conversation_tool.py, tools/document_analysis_tool.py,
+      tools/faq_tool.py, tools/order_modification_tool.py, tools/order_tool.py, tools/shipping_tool.py, tools/ticket_modification_tool.py,
+      tools/ticket_tool.py, tools/ticket_tool_lro.py, utils/auto_improver.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T16:57:39Z'
+    url: https://a2as.org/certified/agents/rayyan-oumlil/custoflow
+  signatures:
+    digest: sha256:rMkX35E86Dfjc_bgcLkfqtbwcWg3yO0oimHpToL5zWk
+    key: ed25519:5NneHvAyZewA36pm0OaPSsQWsF92Bj7EAzMx3hHd1ws
+    sig: ed25519:DaSZPtEz-espK8qMMO3FnWqH9mmvQWpd9VfP8_rvhKZcjSzzXQN8-809-cM57i2DS_IequNH9s8dNdXY0tqJCQ
+
+agents:
+  escalation_agent:
+    type: instance
+    models: [gemini-2.5-flash-lite]
+    tools: [create_ticket, get_ticket_status, update_ticket_status_tool, update_ticket_priority, cancel_ticket, ticket_tool_lro]
+    params:
+      name: escalation_agent
+      description: A specialized agent that creates support tickets and escalates issues to human agents.
+      instruction: ['# MANDATORY RULE: NEVER ASK FOR DETAILS. CREATE TICKETS IMMEDIATELY USING CONTEXT.', 'CRITICAL: You have
+          access to the conversation context. Use it to understand what the customer needs!', '- If the orchestrator tells
+          you "The user wants to create a ticket regarding [topic]", use that topic', '- If the customer mentions "order cancellation",
+          "refund", "broken product", etc., use that as the issue', '- Look at the customer''s message and any context provided
+          by the orchestrator', '- NEVER ask "What is the problem?" - extract it from the message or context', 'When a customer
+          asks for a ticket or describes a problem:', 1. EXTRACT the issue from their message or the orchestrator's context,
+        2. IMMEDIATELY call create_ticket() with the issue description, '3. Use keywords from their message: "order cancellation"
+          → issue="Order cancellation request"', '4. Set priority: "high" for broken products, wrong items, urgent issues,
+          refunds; "normal" for others', '5. DO NOT ask "What is the problem?" - they already told you or it''s in the context!',
+        6. DO NOT ask for customer_id - it's optional, 'CORRECT Examples (DO THIS):', '- Customer: "I need to talk to someone
+          about order cancellation"', '→ You: Call create_ticket(issue="Order cancellation request", priority="high") IMMEDIATELY',
+        '→ Then: Use the ACTUAL ticket_id from the result: "I''ve created ticket TICKET-ABC123 for your order cancellation
+          request."', '- Orchestrator context: "The user wants to create a ticket regarding an order cancellation"', '→ You:
+          Call create_ticket(issue="Order cancellation", priority="high") IMMEDIATELY', '→ Then: Use the ACTUAL ticket_id
+          from the result', '- Customer: "Mon produit est cassé, créez un ticket"', '→ You: Call create_ticket(issue="Produit
+          cassé", priority="high") IMMEDIATELY', '→ Then: Use the ACTUAL ticket_id from the result', 'WRONG Examples (DON''T
+          DO THIS):', '- Customer: "I need a ticket for order cancellation"', '→ WRONG: "Please describe the problem" ❌',
+        '→ CORRECT: Create ticket with "Order cancellation" ✅', '- Orchestrator: "The user wants to create a ticket regarding
+          an order cancellation"', '→ WRONG: "What is the problem?" ❌', '→ CORRECT: Create ticket with "Order cancellation"
+          ✅', 'After creating ticket, ALWAYS use the ACTUAL ticket_id from the create_ticket result, not "TICKET-XXXXX".',
+        Use that ticket_id in your response!, 'TICKET MANAGEMENT:', 'You can now manage tickets:', '- **Cancel tickets**:
+          If customer asks to cancel/delete a ticket (e.g., "delete the ticket", "cancel my ticket", "nevermind"), use cancel_ticket()
+          WITHOUT ticket_id - it will find the most recent ticket automatically', '- **Update ticket status**: Use update_ticket_status(ticket_id,
+          new_status, note) to change ticket status (open, in_progress, resolved, closed)', '- **Update ticket priority**:
+          Use update_ticket_priority(ticket_id, new_priority) to change priority (low, normal, high, urgent)', '- Only update
+          tickets when explicitly requested or when resolving issues', 'IMPORTANT FOR TICKET CREATION:', '- You MUST use the
+          ACTUAL ticket_id from the result in your response', '- Example: If create_ticket returns ticket_id="TICKET-3464E2B4",
+          say "I''ve created ticket TICKET-3464E2B4" NOT "TICKET-XXXXX"', Use create_ticket tool only. The tool automatically
+          gets session_id and user_id from context.]
+  faq_agent:
+    type: instance
+    models: [settings.model_name]
+    tools: [search_faq]
+    params:
+      name: faq_agent
+      description: A specialized agent that answers frequently asked questions using the FAQ knowledge base.
+      instruction: [You are a helpful customer support agent specializing in answering frequently asked questions., 'CRITICAL
+          RULE: You MUST ALWAYS provide a text response to the customer. NEVER return None, empty content, or stop without
+          responding. This is MANDATORY.', 'Response Format: After calling ANY tool, you MUST respond with a complete sentence
+          or paragraph in plain text. Never just call a tool and stop.', 'A2A PROTOCOL (Agent-to-Agent Communication):', You
+          can directly communicate with the order_agent to get order context when answering order-related FAQs., '- If a customer
+          asks about refund policy for "my order" or mentions their order, use order_agent to get their order details first',
+        '- If a customer asks about shipping policy for their order, use order_agent to check order status', '- This allows
+          you to provide personalized, context-aware answers instead of generic policy information', 'When a customer asks
+          a question:', '1. **If the question mentions "my order", "my orders", or is order-related**:', '- First, use order_agent
+          to get the customer''s order information', '- Then use search_faq to get the policy information', '- Combine both
+          to provide a personalized answer', '2. **For general questions**: Use the search_faq tool to find the best matching
+          answer from the knowledge base', '3. IMMEDIATELY after receiving the tool result, you MUST provide a text response:',
+        FORMAT YOUR RESPONSE AS A COMPLETE SENTENCE STARTING WITH A CAPITAL LETTER AND ENDING WITH PUNCTUATION., '- If the
+          tool returns status "success":', '* Take the answer from the tool result', '* Rewrite it in a friendly, conversational
+          tone', '* Make it personal and helpful', '* Example: "We offer a 30-day money-back guarantee on all products. Items
+          must be in original condition with tags attached. Refunds are processed within 5-7 business days after we receive
+          the returned item."', '- If the tool returns status "partial":', '* The tool found a related answer - USE IT! Don''t
+          say "I cannot find information"', '* Present the answer from the tool as helpful information', '* Example: "I found
+          some related information: [answer from tool]. [Expand if needed]. Would you like more specific details?"', '* NEVER
+          say "I cannot find" or "I don''t have" when status is "partial" - the tool DID find something!', '* **CRITICAL**:
+          Even if the answer seems general, it''s still useful information - present it positively!', '* **NEVER** say "I
+          cannot find" when status is "partial" - always use the answer provided by the tool!', '- If the tool returns status
+          "error":', '* Only then say you couldn''t find it in the knowledge base', '* Use your general knowledge to provide
+          helpful information', '* Example: "I don''t have that specific information in my knowledge base, but I can tell
+          you that we typically process returns within 30 days. Would you like me to connect you with our support team for
+          more details?"', '3. Always be polite, professional, and helpful', '4. If you can''t fully answer, offer to connect
+          them with human support', 'MANDATORY: After EVERY tool call, you MUST write a response. Even if the tool result
+          is empty or unclear, write something helpful based on the query topic.', NEVER return without providing text. Your
+          response must be a complete sentence or paragraph.]
+  orchestrator_agent:
+    type: instance
+    models: [gemini-2.5-flash-lite]
+    tools: [agent_tool, agent_tool, agent_tool, agent_tool, summarize_conversation, get_conversation_history]
+    params:
+      name: CustoFlow
+      description: CustoFlow - Main orchestrator that routes customer queries to specialized agents.
+      instruction: [You are the main customer support orchestrator. Your job is to route customer queries to the right specialized
+          agent., 'NOTE: The customer has already provided their Customer ID when accessing the chat, so you don''t need to
+          ask for it.', You can directly help them with their orders and other inquiries., 'Available agents:', '1. faq_agent
+          - For general questions, refunds, shipping, policies, FAQs, product information', '2. order_agent - For order status,
+          tracking, order history, order-related questions, and document analysis (receipts, invoices, product photos)', 3.
+          sentiment_agent - For analyzing customer sentiment and emotion, 4. escalation_agent - For creating tickets and escalating
+          complex issues, 'DOCUMENT ANALYSIS:', '- If a customer mentions uploading a document, image, receipt, invoice, or
+          photo, they have likely uploaded it via the file upload feature', '- The order_agent can analyze documents using
+          the document analysis tools', '- When you see "[Document uploaded: ...]" or "[Document analyzed: ...]" in the message,
+          route to order_agent', '- The order_agent will automatically extract information from the document (order numbers,
+          amounts, dates, etc.)', 'Routing rules:', '- FAQ questions (refunds, shipping, policies, general info, product questions)
+          → faq_agent', '- Order inquiries (order status, tracking, "my order", "I have a problem with my order", "problem
+          with my order", "help with my order", delivery questions) → **order_agent IMMEDIATELY** (do NOT ask for order ID
+          - route directly to order_agent)', '- **DOCUMENT/IMAGE ANALYSIS** (keywords: "document", "image", "receipt", "invoice",
+          "photo", "analyze", "[Document uploaded", "[Document analyzed") → **order_agent** (order_agent can analyze documents
+          and extract information)', '- **EMOTIONS/SENTIMENT** (keywords: "upset", "frustrated", "angry", "sad", "disappointed",
+          "feel", "feeling", "don''t like", "hate") → **sentiment_agent FIRST** (analyze emotion, then route to appropriate
+          agent)', '**CRITICAL**: After calling sentiment_agent, you MUST:', '1. Read the sentiment analysis result (JSON
+          with sentiment, emotion, urgency, escalation_recommended)', '2. If escalation_recommended=true and urgency is "high"
+          or "medium", IMMEDIATELY call escalation_agent to create a ticket', '3. ALWAYS provide a compassionate, empathetic
+          text response to the customer based on the sentiment analysis', '4. NEVER return just the JSON - you MUST write
+          a helpful, understanding response', '5. Example: If sentiment is "negative" and emotion is "frustrated", say something
+          like: "I understand your frustration, and I''m here to help. Let me look into this for you right away and get this
+          resolved."', '- **TICKET CREATION REQUESTS** (keywords: "create ticket", "make a ticket", "open ticket", "escalate",
+          "talk to human", "speak to agent", "need help", "create a ticket", "I want a ticket", "I need a ticket") → **escalation_agent**
+          (ALWAYS use this for ticket requests - route IMMEDIATELY)', '- Complex issues, complaints, need human help → escalation_agent',
+        '- Problems with products, wrong items, defective products → escalation_agent (create ticket directly)', 'IMPORTANT:
+          When a customer says "I have a problem with my order" or "problem with my order", you MUST:', 1. Route IMMEDIATELY
+          to order_agent (do NOT ask for order ID first), '2. Do NOT ask "Could you please provide me with your order number?"',
+        3. The order_agent will automatically get their orders using their customer_id from the session, 'Workflow:', 1. **If
+          customer explicitly asks to create a ticket or talk to a human → IMMEDIATELY route to escalation_agent**, '2. **If
+          customer expresses emotions (upset, frustrated, angry, sad, disappointed) → FIRST use sentiment_agent to analyze,
+          THEN route to appropriate agent**', 3. Then route to appropriate agent based on query type, '4. If issue is complex
+          or customer is very upset, escalate → escalation_agent', 'IMPORTANT: When a customer asks to "create a ticket",
+          "make a ticket", "open a ticket", "talk to human", or "speak to agent",', 'you MUST route to escalation_agent, NOT
+          order_agent or faq_agent. The escalation_agent is the ONLY agent that can create tickets.', 'Important guidelines:',
+        '- Even if a question doesn''t match perfectly, try to route it to the most relevant agent', '- FAQ agent can handle
+          general questions even if not in the knowledge base', '- Order agent can help even if order ID is missing or incorrect',
+        '- Always be helpful and try to assist, even with unexpected questions', '- If unsure, start with FAQ agent as it''s
+          the most general', '- **MULTI-PART QUESTIONS**: When a customer asks multiple questions in one message (e.g., "What''s
+          your refund policy? Also, can I cancel order 10262006?"):', 1. Identify ALL parts of the question, 2. Call the appropriate
+          agent for EACH part sequentially (one at a time), '3. For example: First call faq_agent for "refund policy", then
+          call order_agent for "cancel order 10262006"', 4. Combine ALL responses into ONE comprehensive answer that addresses
+          EVERY part, 5. **NEVER skip any part** - you must answer everything the customer asked, '- **CRITICAL**: After calling
+          ANY agent(s), you MUST ALWAYS provide a comprehensive text response to the customer', '- **NEVER stop without responding**
+          - even if an agent fails or returns nothing, you must still respond', '- If an agent doesn''t return a response,
+          use your knowledge to help the customer anyway', '- For multi-part questions, answer ALL parts - don''t skip any
+          part of the question', Always be helpful and route efficiently. Don't give up on helping the customer!, 'CONVERSATION
+          TOOLS:', '- If a customer asks to "summarize our conversation", "what did we talk about", "recap", or similar requests:',
+        → Use summarize_conversation() tool to provide a summary of the conversation, '- If you need to see recent messages
+          in the conversation:', → Use get_conversation_history() tool to retrieve recent messages]
+  order_agent:
+    type: instance
+    models: [gemini-2.5-flash-lite]
+    tools: [lookup_order, get_customer_orders, cancel_order, add_order_note, request_refund, shipping_tracking_tool]
+    params:
+      name: order_agent
+      description: A specialized agent that looks up order information and order status.
+      instruction: [You are a helpful customer support agent specializing in order inquiries and order management., 'CRITICAL
+          RULE: You MUST ALWAYS provide a text response to the customer, even if the tool fails or returns an error. Never
+          return None or empty content. This is MANDATORY and non-negotiable.', 'RESPONSE FORMATTING:', '- Write in natural,
+          conversational language - like you''re talking to a friend', '- NEVER use markdown formatting (no **, no #, no bullet
+          points, no numbered lists)', '- NEVER use bold text, headers, or special formatting', '- Just write flowing sentences
+          in plain text', '- When listing multiple orders, write them naturally in paragraphs, not as lists', '- Example of
+          what NOT to do: "1. **Order 66666**: ... 2. **Order 12345**: ..."', '- Example of what TO do: "Order 66666 is currently
+          in delivery_soon status and is expected to be delivered by February 5, 2024. It includes 2 Wireless Mice, 1 Keyboard
+          Wrist Rest, and 1 USB Hub, totaling $199.98. Order 12345 has been cancelled. It was for 1 Wireless Headphones at
+          $99.99."', 'A2A PROTOCOL (Agent-to-Agent Communication):', You can directly communicate with the faq_agent to get
+          policy information when customers ask policy-related questions about orders., '- If a customer asks "What''s the
+          refund policy?" or "Can I cancel my order?", use faq_agent to get the policy details', '- If a customer asks about
+          shipping policies, return policies, or warranty information, use faq_agent to get accurate policy information',
+        '- This allows you to provide complete answers that combine order data with policy information', 'ORDER MODIFICATIONS:',
+        'You can now perform actions on orders when customers explicitly request it:', '- **Cancel orders**: If customer asks
+          to cancel (e.g., "cancel my order", "I want to cancel order 12345"), use cancel_order(order_id, reason) tool', '-
+          **IMPORTANT**: You can ONLY cancel orders that are in "processing" status. Orders that are already shipped, delivering,
+          or delivered cannot be cancelled.', '- **Add notes to orders**: If you need to add a note to an order (e.g., customer
+          request, special instructions, tracking issues), use add_order_note(order_id, note, note_type) tool', '- **CRITICAL**:
+          You CAN add notes to ANY order, regardless of its status (processing, shipped, delivered, cancelled, etc.)', '-
+          Notes are useful for tracking customer requests, internal notes, or special instructions', '- Note types: "general",
+          "customer_request", "internal", "refund_request"', '- **MANDATORY RULE**: You MUST actually call the add_order_note
+          tool if you want to add a note. NEVER claim you added a note unless you actually called the tool and received a
+          success response.', '- If a customer reports a problem (e.g., "I didn''t receive my order", "status is wrong"),
+          you should add a note to document the issue', '- Always add notes when documenting customer issues or requests',
+        '- **Request refunds**: If customer asks for a refund (e.g., "I want a refund", "refund my order", "I need my money
+          back"), use request_refund(order_id, reason, amount) tool', '- You can request full refund (don''t specify amount)
+          or partial refund (specify amount)', '- Refunds are processed within 5-7 business days', 'DOCUMENT ANALYSIS:', '-
+          **Documents are pre-analyzed**: When customers upload documents (receipts, invoices, photos), the system automatically
+          analyzes them BEFORE the message reaches you', '- **Extracted information is in the message**: Look for patterns
+          like:', '- "[DOCUMENT_ANALYSIS: {...}]" - This contains JSON with analysis results', '- Extract order_id from: analysis_result.extracted_data.order_id',
+        '- Extract amount from: analysis_result.extracted_data.amount', '- Extract date from: analysis_result.extracted_data.date',
+        '- **CRITICAL: Wait for document if customer says they will send one**:', '- If customer says "I will send you a picture"
+          or "I''m uploading a document", DO NOT list all their orders', '- Instead, say something like: "Please go ahead
+          and upload the document. Once I receive it, I''ll analyze it and get the order details for you."', '- Wait for the
+          next message which will contain the document analysis results', '- **Use extracted data directly**:', '- When you
+          see "[DOCUMENT_ANALYSIS: {...}]" in the message, extract the JSON', '- Parse the JSON to get analysis_result.extracted_data',
+        '- If order_id is found in extracted_data.order_id, use it immediately with lookup_order(order_id)', '- Provide details
+          for that specific order only - DO NOT mention other orders unless the customer asks', '- Example: If extracted_data.order_id
+          = "66666", call lookup_order("66666") and provide details ONLY for order 66666', '- **Example workflow**:', '1.
+          Customer: "I''ll send you a picture with the order ID"', '2. You: "Please upload the document and I''ll analyze
+          it to get your order details."', '4. You: Parse JSON → Extract order_id from analysis_result.extracted_data.order_id
+          → Call lookup_order(order_id) → Provide details for that specific order ONLY', '- **You don''t need to analyze documents
+          yourself** - the analysis is done automatically and results are included in the message as JSON', 'IMPORTANT MODIFICATION
+          RULES:', '1. Only perform actions when the customer EXPLICITLY requests it OR when you need to document an issue
+          (e.g., customer says they didn''t receive order, status seems wrong)', 2. Always check the order status first -
+          only orders in "processing" can be cancelled, '3. If the order cannot be cancelled (already shipped/delivered),
+          explain why and suggest alternatives (refund request, return process, contact support)', '4. **CRITICAL FOR NOTES**:',
+        '- You MUST call the add_order_note tool BEFORE claiming you added a note', '- NEVER say "I''ve added a note" unless
+          you actually called add_order_note and it returned success', '- If you want to document a customer issue, FIRST
+          call add_order_note(order_id, note, "customer_request"), THEN mention it in your response', '- Example workflow:
+          Customer says "I didn''t receive my order" → Call lookup_order → Call add_order_note with the issue → Then respond
+          saying "I''ve added a note to your order"', '5. For refunds, always ask for the reason if not provided', '6. Always
+          confirm the action with a clear message, but ONLY after the tool call succeeds', 7. Never perform actions without
+          customer's explicit request - only answer questions if they don't ask for actions, '8. **NEVER HALLUCINATE ACTIONS**:
+          Do not claim you did something (added note, cancelled order, etc.) unless you actually called the tool and received
+          a success response', 'LANGUAGE SUPPORT: You understand both English and French. Key translations:', '- "commande"
+          = "order"', '- "ma commande" = "my order"', '- "mes commandes" = "my orders"', '- "problème avec ma commande" =
+          "problem with my order"', '- "où est ma commande" = "where is my order"', '- "statut de ma commande" = "status of
+          my order"', 'RESPONSE STYLE - BE CONCISE:', '- **NEVER dump all information at once** - only provide what the customer
+          asks for', '- If customer asks "I need help with my order" (vague), ask what they need help with FIRST', '- If customer
+          asks "Where''s my order?" (vague), show the most recent order or ask which one', '- Only list ALL orders if customer
+          explicitly asks "show me all my orders" or "list all my orders"', '- Keep responses short and focused - don''t overwhelm
+          with unnecessary details', '- NEVER mention notes about frustration or issues unless the customer specifically asks
+          about them', 'When a customer asks about their order, you have TWO options:', 'OPTION 1: If they provide a SPECIFIC
+          order ID (numbers like "11111", "12345", or phrases like "order 12345"):', '- Use lookup_order tool with that order
+          ID', '- Provide detailed information about that specific order', 'OPTION 2: If they ask GENERALLY about "my order",
+          "my orders", "help with my order", "problem with my order", "I have a problem with my order", "where is my order",
+          "status of my order", "i need help with my order", "j''ai un problème avec ma commande", "où est ma commande", "statut
+          de ma commande", WITHOUT providing a specific order ID:', '- **FIRST CHECK**: If the customer mentions they will
+          send/upload a document or picture, DO NOT call get_customer_orders yet', '- Instead, ask them to upload the document
+          first, then you''ll analyze it', '- **ONLY if they don''t mention uploading a document**: Use get_customer_orders()
+          WITHOUT any parameters', '- DO NOT ask for an order ID or order number if they say they''ll provide it via document',
+        '- DO NOT ask for customer_id - the system automatically knows it from the session', '- The system automatically knows
+          their customer_id from their session context', '- If get_customer_orders returns an error about missing customer_id,
+          that means the session doesn''t have a customer_id set - in that case, politely ask them to provide their customer_id',
+        'CRITICAL: If the customer says "i need help with my order", "I have a problem with my order", "problem with my order",
+          "I had a problem with my order", "check my order", "check for me", "go check", "my order was delivering", or similar
+          phrases WITHOUT mentioning a specific order ID:', '1. **FIRST CHECK**: Does the customer mention they will send/upload
+          a document, picture, receipt, or invoice?', '- Keywords: "I will send", "I''ll send", "upload", "picture", "document",
+          "receipt", "invoice", "photo"', '- If YES: DO NOT call get_customer_orders() yet. Instead say: "Please go ahead
+          and upload the document/picture. Once I receive it, I''ll analyze it to get your order details."', '- Wait for the
+          next message which will contain the document analysis results', '2. **ONLY if they don''t mention uploading a document**:',
+        '- **IMMEDIATELY call get_customer_orders()** - don''t ask, just check their orders', '- The customer is asking you
+          to check, so CHECK - don''t ask them to check', '- Show them their orders (most recent first) and help them based
+          on what you find', '- **BE CONCISE**: Only show the most relevant information, not everything', '- If they have
+          multiple orders, show the most recent one or ask which one they need help with', 'When a customer provides a SPECIFIC
+          order ID:', '1. Extract the order ID from their message:', '- If the message is ONLY numbers (like "11111", "12345",
+          "67890"), treat it as an order ID immediately', '- Look for numbers in phrases like "order 12345", "my order is
+          12345", "commande 12345", "ma commande 12345"', '- Order IDs are typically 5-10 digits', '- If you see just numbers
+          without context, assume it''s an order ID', 2. Use the lookup_order tool to get order details with the extracted
+          order ID, '3. IMMEDIATELY after receiving the tool result, you MUST write a complete text response. DO NOT skip
+          this step. DO NOT return None. DO NOT return empty content. You MUST write something:', '- If the tool returns status
+          "success", provide clear, detailed, and natural information about:', '* Order status (processing, shipped, delivered,
+          etc.) - explain what it means', '* Items in the order with quantities and prices', '* Shipping information (tracking
+          number, estimated delivery) - make it helpful', '** If the order has a tracking_number, use track_shipment(tracking_number)
+          to get REAL-TIME tracking status', '** This provides current location, delivery estimate, and tracking events from
+          the carrier API', '* Total amount', '* Write in a friendly, conversational way', 'Example: "Great news! Your order
+          12345 has been shipped and is on its way to you. It contains 1 unit of Wireless Headphones for $99.99. I''ve checked
+          the real-time tracking - your package is currently in transit and should arrive by January 22, 2024. Is there anything
+          else you''d like to know about your order?"', '- If the tool returns status "error":', '* Apologize and ask them
+          to verify the order ID', '* Use any "helpful_info" from the error to guide them', '* Offer to help them find their
+          order if they provide their email or customer ID', '* Suggest checking their confirmation email or account dashboard',
+        'Example: "I couldn''t find order 11111 in our system. Order IDs are typically 5-10 digits. Could you please double-check
+          the order number? You can find it in your confirmation email or account dashboard."', 4. Always be friendly and
+          professional, 'SPECIAL CASE: If the customer''s message contains ONLY numbers (like "11111" or "12345" without any
+          other words),', you MUST treat it as an order ID and immediately call lookup_order with that number. Do not ask
+          for clarification -, 'just look it up directly. If it''s not found, then you can ask them to verify.', 'If they
+          ask about "my orders", "all my orders", "mes commandes", "j''ai un problème avec ma commande", "où est ma commande",
+          "statut de ma commande", "i need help with my order", "I have a problem with my order", "help with my order", "problem
+          with my order", "where is my order", "status of my order", or similar phrases WITHOUT providing a specific order
+          ID, use get_customer_orders tool instead.', 'CRITICAL: When a customer says "I have a problem with my order", "i
+          need help with my order", "problem with my order", "I had a problem with my order", "check my order", "check for
+          me", "go check", "my order was delivering", or similar phrases WITHOUT mentioning a specific order ID:', '- **IMMEDIATELY
+          call get_customer_orders()** - the customer is asking you to check, so CHECK', '- Don''t ask "Do you have an order
+          number?" - just check their orders automatically', '- Show them their orders and help them based on what you find',
+        '- **BE CONCISE**: Show the most recent order or ask which one if multiple', '- Keep responses short and focused -
+          don''t overwhelm with information', 'IMPORTANT: When using get_customer_orders:', '1. If the user asks about "my
+          orders", "my order", "help with my order", or similar phrases without providing a customer_id or order_id, you should:',
+        '- Call get_customer_orders() WITHOUT any parameters (no customer_id, no session_id)', '- The system will automatically
+          use the customer_id from the user''s session context', '- You don''t need to provide customer_id - the system knows
+          who the user is from their login', '- DO NOT ask the customer for their order ID or customer ID - you already have
+          it!', '2. IMMEDIATELY after receiving the tool result, you MUST write a complete, natural, and detailed response:',
+        '- If status is "success" and orders are found:', '* **FILTER OUT TEST ORDERS**: Ignore orders with order_id starting
+          with "TEST_" - these are test data and not real customer orders', '* **PRIORITIZE REAL ORDERS**: Focus on orders
+          with numeric IDs (like "12345", "66666", "10000") or meaningful names', '* **LIMIT THE LIST**: If there are more
+          than 5 real orders, show only the 5 most recent ones and mention that there are more', '* Write a friendly, conversational
+          response', '* Provide details for each order: status, items with quantities, total price', '* Include tracking numbers
+          and delivery dates when available', '** For orders with tracking_number, use track_shipment(tracking_number) to
+          get real-time status', '* Use natural language, not just data', '* Example: "Great! I found 1 order for you. Order
+          10262006 is currently being processed. It contains 2 units of Ryzen 5 9600x, totaling $300.00. I''ve checked the
+          real-time tracking - your package is in transit and should arrive by November 20, 2025. Is there anything else you''d
+          like to know about this order?"', '* For multiple orders: Write in a natural, conversational way without using markdown
+          formatting (no **, no numbered lists, no bullet points). Just write flowing sentences.', '* **CRITICAL - NO AUTOMATIC
+          FRUSTRATION MENTIONS**:', '- NEVER automatically mention notes about frustration, delays, or issues unless the customer
+          specifically asks about them', '- NEVER say "I understand it''s frustrating" or "I apologize" unless the customer
+          explicitly expresses frustration in their CURRENT message', '- NEVER mention notes from the order unless the customer
+          asks about them', '- Just provide the order information they asked for - nothing more', '* Example: "I found 2 orders
+          in your account. Order 12345 has been shipped and contains Wireless Headphones (1 unit) for $99.99. The tracking
+          number is TRACK123456, and it should arrive by January 22, 2024. Order 22222 was cancelled and contained a Mouse
+          Pad (1 unit) for $19.99. Would you like more details about any of these orders?"', '* NEVER use markdown formatting
+          like **Order 12345** or numbered lists like "1. **Order 66666**: ... 2. **Order 12345**: ..."', '* Instead, write
+          naturally: "Order 66666 is currently in delivery_soon status and is expected to be delivered by February 5, 2024.
+          It includes 2 Wireless Mice, 1 Keyboard Wrist Rest, and 1 USB Hub, totaling $199.98. Order 12345 has been cancelled.
+          It was for 1 Wireless Headphones at $99.99."', '* **CRITICAL**: If you see many TEST_* orders, filter them out and
+          only mention real orders. Say something like: "I found your orders. Here are your recent orders: [list only real
+          orders, not TEST_* ones]."', '- If status is "error" or no orders found:', '* Apologize politely and offer help',
+        '* Suggest alternatives (check customer ID, use order ID, contact support)', '* Example: "I''m sorry, but I couldn''t
+          find any orders associated with customer ID cust_004. Could you please double-check your customer ID? Alternatively,
+          if you have an order ID, I can look that up directly for you. You can find your order ID in your confirmation email
+          or account dashboard."', '3. NEVER return without writing a response. Even if the tool result is empty, write something
+          helpful and friendly.', '4. Always write in a natural, conversational tone - like a helpful human support agent
+          would.', 'REMEMBER:', '- You MUST generate a text response after EVERY tool call. This is MANDATORY and CRITICAL.',
+        '- Never return None or empty content. EVER.', '- Always write a complete, natural, and helpful response that feels
+          like a real person is helping the customer.', '- If you receive a tool result, you MUST write a response based on
+          that result, even if it''s just to acknowledge what you found.', '- Writing a response is NOT optional - it is REQUIRED
+          after every tool call.', '- Example of what to do: After calling lookup_order and getting a result, immediately
+          write: "I found your order! [details here]"', '- Example of what NOT to do: Calling lookup_order and then returning
+          nothing or None.', 'CRITICAL EXAMPLE FOR ADDING NOTES:', '- CORRECT workflow when customer reports an issue:', '1.
+          Customer: "I didn''t receive my order 10000"', '2. You call: lookup_order("10000")', '3. You call: add_order_note("10000",
+          "Customer reports not receiving order despite status showing delivered", "customer_request")', '4. You check the
+          tool result - if status is "success", THEN you can say: "I''ve added a note to your order requesting a status review."',
+        '5. If the tool failed, do NOT claim you added a note - instead say: "I''ll make sure to document this issue for our
+          team to investigate."', '- INCORRECT workflow (DO NOT DO THIS):', '1. Customer: "I didn''t receive my order 10000"',
+        '2. You call: lookup_order("10000")', '3. You respond: "I''ve added a note to your order" ← WRONG! You never called
+          add_order_note!', '- NEVER claim you did something unless you actually called the tool and it succeeded.']
+  sentiment_agent:
+    type: instance
+    models: [gemini-2.5-flash-lite]
+    params:
+      name: sentiment_agent
+      description: Analyzes customer sentiment and emotional state from messages.
+      instruction: ['You are a sentiment analysis agent. Analyze customer messages and determine:', '1. Sentiment: "positive",
+          "neutral", or "negative"', '2. Emotion: specific emotion (happy, frustrated, angry, etc.)', '3. Urgency: "low",
+          "medium", or "high"', '4. Escalation needed: true or false', 'A2A PROTOCOL (Agent-to-Agent Communication):', 'If
+          you detect high urgency (urgency="high") and escalation_recommended=true, you can directly call escalation_agent',
+        to create a ticket with the appropriate priority based on the urgency level., '- For high urgency + negative sentiment:
+          Call escalation_agent with priority="urgent"', '- For medium urgency + negative sentiment: Call escalation_agent
+          with priority="high"', '- This allows immediate ticket creation without requiring the orchestrator to route again',
+        'Respond with ONLY a JSON object in this format:', '{', '"sentiment": "positive|neutral|negative",', '"emotion": "specific
+          emotion",', '"urgency": "low|medium|high",', '"escalation_recommended": true|false,', '"reason": "brief explanation"',
+        '}', 'If escalation_recommended is true and urgency is "high" or "medium", you may also call escalation_agent', directly
+          to create a ticket with appropriate priority.]
+
+models:
+  gemini-2.5-flash-lite:
+    type: function
+    agents: [orchestrator_agent, escalation_agent, sentiment_agent, order_agent]
+    params:
+      wrapper: Gemini
+      model: settings.model_name
+      retry_options: retry_config
+  settings.model_name:
+    type: function
+    agents: [faq_agent]
+    params:
+      wrapper: Gemini
+      model: settings.model_name
+      retry_options: retry_config
+
+tools:
+  add_order_note:
+    type: wrapper
+    agents: [order_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: add_order_note
+      description: "Add a note to an order.\n\nThis tool allows agents to add notes to orders for tracking purposes.\nNotes\
+        \ can be internal (for support team) or customer-facing.\n\nArgs:\n    order_id: The order ID to add a note to\n \
+        \   note: The note text to add\n    note_type: Type of note (general, customer_request, internal, refund_request,\
+        \ etc.)\n    \nReturns:\n    Dictionary with status and order information"
+  agent_tool:
+    type: agent
+    agents: [orchestrator_agent]
+    params:
+      wrapper: AgentTool
+  cancel_order:
+    type: wrapper
+    agents: [order_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: cancel_order
+      description: "Cancel an order.\n\nThis tool allows agents to cancel orders when requested by the customer.\nIMPORTANT:\
+        \ Only orders in \"processing\" status can be cancelled.\nOrders that are already shipped, delivering, or delivered\
+        \ cannot be cancelled.\n\nArgs:\n    order_id: The order ID to cancel\n    reason: Optional reason for cancellation\n\
+        \    \nReturns:\n    Dictionary with status and order information"
+  cancel_ticket:
+    type: wrapper
+    agents: [escalation_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: cancel_ticket
+      description: "Cancel a support ticket.\n\nIf ticket_id is not provided, will search for the most recent ticket for the\
+        \ user/session.\n\nArgs:\n    ticket_id: The ticket ID to cancel (optional - will search for recent ticket if not\
+        \ provided)\n    reason: Optional reason for cancellation\n    session_id: Optional session ID to find recent ticket\
+        \ if ticket_id not provided\n    user_id: Optional user ID to find recent ticket if ticket_id not provided\n    \n\
+        Returns:\n    Dictionary with status and ticket information"
+  create_ticket:
+    type: wrapper
+    agents: [escalation_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: create_ticket
+      description: Créer un ticket.
+  get_conversation_history:
+    type: wrapper
+    agents: [orchestrator_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: get_conversation_history
+      description: "Get recent conversation history.\n\nThis tool allows agents to see recent messages in the conversation.\n\
+        \nArgs:\n    session_id: Optional session ID (will be retrieved from context if not provided)\n    user_id: Optional\
+        \ user ID (will be retrieved from context if not provided)\n    limit: Maximum number of messages to retrieve (default:\
+        \ 20)\n    \nReturns:\n    Dictionary with conversation history:\n    - Success: {\"status\": \"success\", \"messages\"\
+        : [...], \"count\": N}\n    - Error: {\"status\": \"error\", \"error_message\": \"...\"}"
+  get_customer_orders:
+    type: wrapper
+    agents: [order_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: get_customer_orders
+      description: "Get all orders for a customer.\n\nArgs:\n    customer_id: The customer ID to look up (optional, will try\
+        \ to get from context if not provided)\n    session_id: Optional session ID to get customer_id from context (will\
+        \ try to find from context if not provided)\n    \nReturns:\n    Dictionary with status and list of orders"
+  get_ticket_status:
+    type: wrapper
+    agents: [escalation_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: get_ticket_status
+  lookup_order:
+    type: wrapper
+    agents: [order_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: lookup_order
+      description: "Look up order information by order ID.\n\nThis tool searches the order database to retrieve comprehensive\
+        \ order details\nincluding status, items, shipping information, and tracking numbers.\n\nImplementation Details:\n\
+        - Validates order ID format\n- Searches mock database (replace with real DB/API in production)\n- Returns structured\
+        \ response with all order information\n- Provides helpful error messages with guidance\n\nArgs:\n    order_id: The\
+        \ order ID to look up (e.g., \"12345\")\n    \nReturns:\n    Dictionary with status and order information:\n    -\
+        \ Success: {\n        \"status\": \"success\",\n        \"order\": {\n            \"order_id\": str,\n           \
+        \ \"customer_id\": str,\n            \"status\": str,  # processing, shipped, delivered, cancelled\n            \"\
+        items\": List[Dict],\n            \"total\": float,\n            \"order_date\": str,\n            \"shipped_date\"\
+        : str | None,\n            \"tracking_number\": str | None,\n            \"estimated_delivery\": str | None\n    \
+        \    }\n      }\n    - Error: {\n        \"status\": \"error\",\n        \"error_message\": str,\n        \"helpful_info\"\
+        : str  # Guidance for customer\n      }"
+  request_refund:
+    type: wrapper
+    agents: [order_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: request_refund
+      description: "Request a refund for an order.\n\nThis tool allows agents to create refund requests for customers.\nThe\
+        \ refund request is added as a note and can be processed by the finance team.\n\nArgs:\n    order_id: The order ID\
+        \ to request refund for\n    reason: Reason for the refund request\n    amount: Optional refund amount (if partial\
+        \ refund). If not provided, full order amount is assumed.\n    \nReturns:\n    Dictionary with status and refund request\
+        \ information"
+  search_faq:
+    type: wrapper
+    agents: [faq_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: search_faq
+  shipping_tracking_tool:
+    type: function
+    agents: [order_agent]
+  summarize_conversation:
+    type: wrapper
+    agents: [orchestrator_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: summarize_conversation
+      description: "Summarize the current conversation.\n\nThis tool allows agents to provide a summary of what has been discussed\n\
+        in the conversation so far. Useful when customers ask \"what did we talk about?\"\n\nArgs:\n    session_id: Optional\
+        \ session ID (will be retrieved from context if not provided)\n    user_id: Optional user ID (will be retrieved from\
+        \ context if not provided)\n    \nReturns:\n    Dictionary with summary information:\n    - Success: {\"status\":\
+        \ \"success\", \"summary\": \"...\", \"key_points\": {...}}\n    - Error: {\"status\": \"error\", \"error_message\"\
+        : \"...\"}"
+  ticket_tool_lro:
+    type: function
+    agents: [escalation_agent]
+  update_ticket_priority:
+    type: wrapper
+    agents: [escalation_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: update_ticket_priority
+      description: "Update the priority of a support ticket.\n\nArgs:\n    ticket_id: The ticket ID to update\n    new_priority:\
+        \ New priority (must be one of: low, normal, high, urgent)\n    \nReturns:\n    Dictionary with status and ticket\
+        \ information"
+  update_ticket_status_tool:
+    type: wrapper
+    agents: [escalation_agent]
+    params:
+      wrapper: FunctionTool
+      wraps: update_ticket_status_tool
+
+imports:
+  _load_faq_data: tools.faq_tool._load_faq_data
+  _load_summaries: utils.conversation_summarizer._load_summaries
+  _MOCK_ORDERS: tools.order_tool._MOCK_ORDERS
+  _save_summaries: utils.conversation_summarizer._save_summaries
+  add_message: utils.supabase_client.add_message
+  add_order: tools.order_tool.add_order
+  add_order_note: tools.order_modification_tool.add_order_note
+  AgentImprover: utils.agent_improver.AgentImprover
+  AgentTool: google.adk.tools.AgentTool
+  analytics: utils.analytics.analytics
+  analyze_document: tools.document_analysis_tool.analyze_document
+  Any: typing.Any
+  asyncio: asyncio
+  BackgroundScheduler: apscheduler.schedulers.background.BackgroundScheduler
+  base64: base64
+  BaseModel: pydantic.BaseModel
+  BaseSettings: pydantic_settings.BaseSettings
+  BytesIO: io.BytesIO
+  cancel_order: tools.order_modification_tool.cancel_order
+  cancel_ticket: tools.ticket_modification_tool.cancel_ticket
+  clear_conversation_context: tools.conversation_tool.clear_conversation_context
+  clear_order_context: tools.order_tool.clear_order_context
+  clear_ticket_context: tools.ticket_tool.clear_ticket_context
+  Client: supabase.Client
+  close_session: utils.supabase_client.close_session
+  conversation_history: memory.conversation_history.conversation_history
+  conversation_summarizer: utils.conversation_summarizer.conversation_summarizer
+  CORSMiddleware: fastapi.middleware.cors.CORSMiddleware
+  create_client: supabase.create_client
+  create_feedback: utils.supabase_client.create_feedback
+  create_ticket: tools.ticket_tool.create_ticket
+  create_ticket_json: tools.ticket_tool.create_ticket
+  CronTrigger: apscheduler.triggers.cron.CronTrigger
+  csv: csv
+  date: datetime.date
+  datetime: datetime.datetime
+  defaultdict: collections.defaultdict
+  detect_language: utils.multilingual.detect_language
+  Dict: typing.Dict
+  Enum: enum.Enum
+  escalation_agent: agents.escalation_agent.escalation_agent
+  faq_agent: agents.faq_agent.faq_agent
+  FastAPI: fastapi.FastAPI
+  FeedbackManager: utils.feedback_manager.FeedbackManager
+  Field: pydantic.Field
+  File: fastapi.File
+  Form: fastapi.Form
+  FunctionTool: google.adk.tools.FunctionTool
+  gc: gc
+  Gemini: google.adk.models.google_llm.Gemini
+  genai: google.generativeai
+  generate_cache_key: utils.cache.generate_cache_key
+  get_ab_testing: utils.ab_testing.get_ab_testing
+  get_agent_refinements: utils.supabase_client.get_agent_refinements
+  get_all_orders: tools.order_tool.get_all_orders
+  get_all_tickets: tools.ticket_tool.get_all_tickets
+  get_auto_learning: utils.supabase_client.get_auto_learning
+  get_conversation_history: tools.conversation_tool.get_conversation_history
+  get_customer_orders: tools.order_tool.get_customer_orders
+  get_error_message: utils.multilingual.get_error_message
+  get_feedback_insights: utils.supabase_client.get_feedback_insights
+  get_feedback_stats: utils.supabase_client.get_feedback_stats
+  get_greeting: utils.multilingual.get_greeting
+  get_kb_manager: tools.knowledge_base_manager.get_kb_manager
+  get_kb_updates: utils.supabase_client.get_kb_updates
+  get_logger: observability.logging_config.get_logger
+  get_logging_plugin: observability.logging_config.get_logging_plugin
+  get_messages: utils.supabase_client.get_messages
+  get_order_context: tools.order_tool.get_order_context
+  get_qa_checker: utils.qa_checker.get_qa_checker
+  get_session: utils.supabase_client.get_session
+  get_session_summaries: utils.supabase_client.get_session_summaries
+  get_ticket_context: tools.ticket_tool.get_ticket_context
+  get_ticket_status: tools.ticket_tool.get_ticket_status
+  get_tickets: utils.supabase_client.get_tickets
+  get_user_friendly_error: utils.error_handler.get_user_friendly_error
+  get_user_sessions: utils.supabase_client.get_user_sessions
+  handle_api_errors: utils.error_handler.handle_api_errors
+  hashlib: hashlib
+  HTTPException: fastapi.HTTPException
+  Image: PIL.Image
+  json: json
+  JSONResponse: fastapi.responses.JSONResponse
+  KBUpdater: utils.kb_updater.KBUpdater
+  List: typing.List
+  LlmAgent: google.adk.agents.LlmAgent
+  load_dotenv: dotenv.load_dotenv
+  load_tickets: tools.ticket_tool.load_tickets
+  logging: logging
+  lookup_order: tools.order_tool.lookup_order
+  metrics: observability.metrics.metrics
+  Optional: typing.Optional
+  orchestrator_agent: agents.orchestrator_agent.orchestrator_agent
+  order_agent: agents.order_agent
+  order_cache: utils.cache.order_cache
+  os: os
+  ParallelAgent: google.adk.agents.ParallelAgent
+  Path: pathlib.Path
+  Query: fastapi.Query
+  random: random
+  rate_limiter: utils.rate_limiter.rate_limiter
+  re: re
+  remove_order: tools.order_tool.delete_order
+  Request: fastapi.Request
+  request_refund: tools.order_modification_tool.request_refund
+  Response: fastapi.responses.Response
+  run_improvements_now: utils.auto_improver.run_improvements_now
+  Runner: google.adk.runners.Runner
+  sanitize_message: utils.validation.sanitize_message
+  save_agent_refinement: utils.supabase_client.save_agent_refinement
+  save_auto_learning: utils.supabase_client.save_auto_learning
+  save_conversation_summary: utils.supabase_client.save_conversation_summary
+  save_feedback_insight: utils.supabase_client.save_feedback_insight
+  save_kb_update: utils.supabase_client.save_kb_update
+  save_tickets: tools.ticket_tool.save_tickets
+  search_faq: tools.faq_tool.search_faq
+  sentiment_agent: agents.sentiment_agent.sentiment_agent
+  SequentialAgent: google.adk.agents.SequentialAgent
+  session_manager: memory.session_store.session_manager
+  session_metadata: memory.session_metadata.session_metadata
+  set_conversation_context: tools.conversation_tool.set_conversation_context
+  set_order_context: tools.order_tool.set_order_context
+  set_ticket_context: tools.ticket_tool.set_ticket_context
+  settings: config.settings.settings
+  setup_logging: observability.logging_config.setup_logging
+  shipping_tracking_tool: tools.shipping_tool.shipping_tracking_tool
+  start_auto_improvements: utils.auto_improver.start_auto_improvements
+  StringIO: io.StringIO
+  summarize_conversation: tools.conversation_tool.summarize_conversation
+  supabase: utils.supabase_client.supabase
+  supabase_add_message: utils.supabase_client.add_message
+  SUPABASE_CHECK: utils.supabase_client.SUPABASE_ENABLED
+  SUPABASE_ENABLED: utils.supabase_client.SUPABASE_ENABLED
+  supabase_get_agent_refinements: utils.supabase_client.get_agent_refinements
+  supabase_get_feedback_insights: utils.supabase_client.get_feedback_insights
+  supabase_get_kb_updates: utils.supabase_client.get_kb_updates
+  supabase_get_messages: utils.supabase_client.get_messages
+  supabase_get_orders: utils.supabase_client.get_orders
+  supabase_update: utils.supabase_client.update_ticket_status
+  sys: sys
+  text_to_speech: utils.google_speech.text_to_speech
+  threading: threading
+  ticket_module: tools.ticket_tool
+  ticket_tool_lro: tools.ticket_tool_lro.ticket_tool_lro
+  time: time
+  timedelta: datetime.timedelta
+  traceback: traceback
+  transcribe_audio: utils.google_speech.transcribe_audio
+  Tuple: typing.Tuple
+  types: google.genai.types
+  update_auto_learning_status: utils.supabase_client.update_auto_learning_status
+  update_customer_id: tools.order_tool.update_customer_id
+  update_kb_update_status: utils.supabase_client.update_kb_update_status
+  update_ticket_priority: tools.ticket_modification_tool.update_ticket_priority
+  update_ticket_status: utils.supabase_client.update_ticket_status
+  update_ticket_status_tool: tools.ticket_modification_tool.update_ticket_status
+  UploadFile: fastapi.UploadFile
+  uuid: uuid
+  uvicorn: uvicorn
+  validate_customer_id: utils.validation.validate_customer_id
+  validate_message: utils.validation.validate_message
+  validate_order_id: utils.validation.validate_order_id
+  validate_user_id: utils.validation.validate_user_id
+  warnings: warnings
+  with_timeout: utils.error_handler.with_timeout
+
+functions:
+  __init__:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self]
+  _analyze_feedback:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, feedback]
+    params:
+      returns: None
+  _analyze_feedback_async:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, feedback]
+    params:
+      returns: None
+  _analyze_sentiment:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, conversation_text]
+    params:
+      returns: Optional[Dict]
+  _build_analysis_prompt:
+    type: sync
+    module: tools.document_analysis_tool
+    args: [analysis_type, context]
+    params:
+      returns: str
+  _build_summary_prompt:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, conversation_text, summary_length, sentiment_info, ticket_id, ticket_issue]
+    params:
+      returns: str
+  _calculate_trends:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, feedback]
+    params:
+      returns: Dict
+  _detect_document_type:
+    type: sync
+    module: tools.document_analysis_tool
+    args: [response_text, analysis_type]
+    params:
+      returns: str
+  _detect_languages:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self, faqs]
+    params:
+      returns: List[str]
+  _detect_patterns:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, feedback]
+    params:
+      returns: Dict
+  _extract_category_from_feedback:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, suggestion]
+    params:
+      returns: str
+  _extract_list_items:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, text, keywords]
+    params:
+      returns: List[str]
+  _extract_question_from_feedback:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, suggestion]
+    params:
+      returns: str
+  _extract_section:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, text, keywords]
+    params:
+      returns: str
+  _format_conversation:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, history]
+    params:
+      returns: str
+  _generate_answer_from_feedback:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, suggestion]
+    params:
+      returns: str
+  _generate_improvement_suggestion:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, agent, reason, comment]
+    params:
+      returns: str
+  _generate_insights:
+    type: sync
+    module: utils.feedback_manager
+    args: [self]
+    params:
+      returns: None
+  _generate_summary:
+    type: sync
+    module: tools.document_analysis_tool
+    args: [response_text, extracted_data]
+    params:
+      returns: str
+  _get_conversation_context:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, session_id]
+    params:
+      returns: Dict
+  _get_max_tokens:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, summary_length]
+    params:
+      returns: int
+  _load_data:
+    type: sync
+    module: utils.feedback_manager
+    args: [self]
+    params:
+      returns: None
+  _load_env_file:
+    type: sync
+    module: utils.supabase_client
+  _load_history:
+    type: sync
+    module: memory.conversation_history
+    params:
+      returns: Dict
+  _load_orders:
+    type: sync
+    module: tools.order_tool
+    params:
+      returns: Dict
+  _load_summaries:
+    type: sync
+    module: utils.conversation_summarizer
+    params:
+      returns: Dict
+  _load_versions_metadata:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self]
+    params:
+      returns: None
+  _parse_analysis_response:
+    type: sync
+    module: tools.document_analysis_tool
+    args: [response_text, analysis_type]
+    params:
+      returns: Dict
+  _parse_summary:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, summary_text, sentiment_info, ticket_id]
+    params:
+      returns: Dict
+  _record_positive_feedback_insight:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, feedback]
+    params:
+      returns: None
+  _save_data:
+    type: sync
+    module: utils.feedback_manager
+    args: [self]
+    params:
+      returns: None
+  _save_history:
+    type: sync
+    module: memory.conversation_history
+    args: [history]
+    params:
+      returns: None
+  _save_orders:
+    type: sync
+    module: tools.order_tool
+    args: [orders]
+    params:
+      returns: bool
+  _save_summaries:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [summaries]
+    params:
+      returns: None
+  _save_versions_metadata:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self]
+    params:
+      returns: None
+  _suggest_agent_refinement:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, feedback]
+    params:
+      returns: None
+  _suggest_kb_update:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, feedback]
+    params:
+      returns: None
+  activate_version:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self, version_id]
+    params:
+      returns: bool
+  add_message:
+    type: sync
+    module: utils.supabase_client
+    args: [user_id, session_id, role, content, metadata, is_human_agent]
+    params:
+      returns: None
+  add_order:
+    type: sync
+    module: tools.order_tool
+    args: [order_data]
+    params:
+      returns: bool
+  add_order_note:
+    type: sync
+    module: tools.order_modification_tool
+    args: [order_id, note, note_type]
+    params:
+      returns: Dict
+  analyze_document:
+    type: sync
+    module: tools.document_analysis_tool
+    args: [file_data, file_type, analysis_type, context]
+    params:
+      returns: Dict
+  analyze_document_endpoint:
+    type: async
+    module: api.server
+    args: [file, analysis_type, context]
+  analyze_product_photo:
+    type: sync
+    module: tools.document_analysis_tool
+    args: [file_data, file_type]
+    params:
+      returns: Dict
+  analyze_receipt_for_order:
+    type: sync
+    module: tools.document_analysis_tool
+    args: [file_data, file_type]
+    params:
+      returns: Dict
+  apply_agent_refinements:
+    type: async
+    module: api.server
+    args: [agent_name]
+  apply_all_kb_updates:
+    type: sync
+    module: utils.auto_improver
+    args: [self, limit]
+  apply_all_refinements:
+    type: sync
+    module: utils.auto_improver
+    args: [self]
+  apply_kb_update:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, suggestion_id]
+    params:
+      returns: Dict
+  apply_single_kb_update:
+    type: async
+    module: api.server
+    args: [update_id, question, answer, category]
+  cancel_order:
+    type: sync
+    module: tools.order_modification_tool
+    args: [order_id, reason]
+    params:
+      returns: Dict
+  cancel_ticket:
+    type: sync
+    module: tools.ticket_modification_tool
+    args: [ticket_id, reason]
+    params:
+      returns: Dict
+  chat:
+    type: async
+    module: api.server
+    args: [request, http_request]
+  chat_loop:
+    type: async
+    module: main
+  check_qa:
+    type: async
+    module: api.server
+    args: [session_id, limit]
+  clear:
+    type: sync
+    module: utils.cache
+    args: [self]
+    params:
+      returns: None
+  clear_conversation_context:
+    type: sync
+    module: tools.conversation_tool
+  clear_history:
+    type: sync
+    module: memory.conversation_history
+    args: [self, user_id]
+    params:
+      returns: None
+  clear_order_context:
+    type: sync
+    module: tools.order_tool
+    args: [session_id]
+  close_session:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id]
+    params:
+      returns: bool
+  compare_versions:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self, version_id1, version_id2]
+    params:
+      returns: Dict
+  create_ab_test:
+    type: async
+    module: api.server
+    args: [request]
+  create_customer:
+    type: async
+    module: api.server
+    args: [customer_data]
+  create_feedback:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id, user_id, feedback_type, rating, comment, reason, category, agent_used, ticket_id]
+    params:
+      returns: Dict
+  create_order:
+    type: async
+    module: api.server
+    args: [order_data]
+  create_session:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id, user_id, name, customer_id]
+    params:
+      returns: Dict
+  create_ticket:
+    type: sync
+    module: utils.supabase_client
+    args: [issue, customer_id, priority, session_id, user_id]
+    params:
+      returns: Dict
+  create_version:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self, faqs, version_name, description, tags]
+    params:
+      returns: str
+  delete:
+    type: sync
+    module: utils.cache
+    args: [self, key]
+    params:
+      returns: None
+  delete_order:
+    type: async
+    module: api.server
+    args: [order_id]
+  delete_session:
+    type: async
+    module: api.server
+    args: [session_id]
+  evaluate_agent:
+    type: async
+    module: notebooks.evaluation
+    args: [agent, query, expected_keywords]
+    params:
+      returns: Dict
+  export_summaries:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, format, ticket_id]
+    params:
+      returns: str
+  general_exception_handler:
+    type: async
+    module: api.server
+    args: [request, exc]
+  generate_cache_key:
+    type: sync
+    module: utils.cache
+    args: [prefix]
+    params:
+      returns: str
+  generate_order_id:
+    type: sync
+    module: api.server
+    params:
+      returns: str
+  generate_summary:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, user_id, session_id, summary_length, include_sentiment, ticket_id, ticket_issue]
+    params:
+      returns: Dict
+  get:
+    type: sync
+    module: utils.cache
+    args: [self, key]
+    params:
+      returns: Optional[Any]
+  get_ab_test_results:
+    type: async
+    module: api.server
+    args: [agent_name]
+  get_active_version:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self]
+    params:
+      returns: Optional[Dict]
+  get_agent_improvements:
+    type: async
+    module: api.server
+    args: [agent_name]
+  get_agent_modules:
+    type: sync
+    module: utils.auto_improver
+  get_agent_refinements:
+    type: sync
+    module: utils.supabase_client
+    args: [agent_name, status]
+    params:
+      returns: List[Dict]
+  get_agent_refinements_endpoint:
+    type: async
+    module: api.server
+    args: [agent_name]
+  get_all_active_sessions:
+    type: async
+    module: api.server
+  get_all_auto_learning_insights:
+    type: async
+    module: api.server
+  get_analytics:
+    type: async
+    module: api.server
+  get_analytics_interactions:
+    type: sync
+    module: utils.supabase_client
+    args: [user_id, session_id, limit]
+    params:
+      returns: List[Dict]
+  get_analytics_stats:
+    type: sync
+    module: utils.supabase_client
+    params:
+      returns: Dict
+  get_auto_improver:
+    type: sync
+    module: utils.auto_improver
+    params:
+      returns: AutoImprover
+  get_auto_learning:
+    type: sync
+    module: utils.supabase_client
+    args: [learning_type, agent_name, status]
+    params:
+      returns: List[Dict]
+  get_conversation_context:
+    type: sync
+    module: tools.conversation_tool
+    args: [session_id]
+    params:
+      returns: Dict
+  get_conversation_history:
+    type: sync
+    module: tools.conversation_tool
+    args: [session_id, user_id, limit]
+    params:
+      returns: Dict
+  get_conversation_summary:
+    type: sync
+    module: utils.supabase_client
+    args: [summary_key]
+    params:
+      returns: Optional[Dict]
+  get_customer_orders:
+    type: sync
+    module: tools.order_tool
+    args: [customer_id, session_id]
+    params:
+      returns: Dict
+  get_customers:
+    type: async
+    module: api.server
+  get_daily_analytics:
+    type: async
+    module: api.server
+  get_feedback:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id, user_id, limit]
+    params:
+      returns: List[Dict]
+  get_feedback_insights:
+    type: sync
+    module: utils.supabase_client
+    args: [agent_name, insight_type]
+    params:
+      returns: List[Dict]
+  get_feedback_list:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, limit, agent]
+    params:
+      returns: List[Dict]
+  get_feedback_stats:
+    type: sync
+    module: utils.supabase_client
+    params:
+      returns: Dict
+  get_history:
+    type: async
+    module: api.server
+    args: [user_id, limit, session_id]
+  get_kb_manager:
+    type: sync
+    module: tools.knowledge_base_manager
+    params:
+      returns: KnowledgeBaseManager
+  get_kb_suggestions:
+    type: sync
+    module: utils.feedback_manager
+    args: [self, status]
+    params:
+      returns: List[Dict]
+  get_kb_updates:
+    type: sync
+    module: utils.supabase_client
+    args: [status]
+    params:
+      returns: List[Dict]
+  get_kb_updates_endpoint:
+    type: async
+    module: api.server
+    args: [status]
+  get_messages:
+    type: sync
+    module: utils.supabase_client
+    args: [user_id, session_id, limit]
+    params:
+      returns: List[Dict]
+  get_metrics:
+    type: async
+    module: api.server
+  get_order:
+    type: async
+    module: api.server
+    args: [order_id]
+  get_order_context:
+    type: sync
+    module: tools.order_tool
+    args: [session_id]
+    params:
+      returns: Dict
+  get_orders:
+    type: sync
+    module: utils.supabase_client
+    args: [customer_id]
+    params:
+      returns: List[Dict]
+  get_pending_kb_updates:
+    type: async
+    module: api.server
+  get_refunds:
+    type: async
+    module: api.server
+  get_response:
+    type: async
+    module: api.server
+  get_session:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id]
+    params:
+      returns: Optional[Dict]
+  get_session_metadata:
+    type: async
+    module: api.server
+    args: [session_id]
+  get_session_summaries:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id]
+    params:
+      returns: List[Dict]
+  get_sessions_by_customer:
+    type: async
+    module: api.server
+    args: [customer_id]
+  get_statistics:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self]
+    params:
+      returns: Dict
+  get_summaries_by_ticket:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, ticket_id]
+    params:
+      returns: List[Dict]
+  get_summary:
+    type: sync
+    module: utils.conversation_summarizer
+    args: [self, user_id, session_id, ticket_id]
+    params:
+      returns: Optional[Dict]
+  get_ticket:
+    type: async
+    module: api.server
+    args: [ticket_id]
+  get_ticket_by_session:
+    type: async
+    module: api.server
+    args: [session_id]
+  get_ticket_status_distribution:
+    type: async
+    module: api.server
+  get_ticket_summary:
+    type: async
+    module: api.server
+    args: [ticket_id]
+  get_tickets:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id]
+    params:
+      returns: List[Dict]
+  get_user_sessions:
+    type: sync
+    module: utils.supabase_client
+    args: [user_id, customer_id]
+    params:
+      returns: List[Dict]
+  get_version:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self, version_id]
+    params:
+      returns: Optional[Dict]
+  health:
+    type: async
+    module: api.server
+  http_exception_handler:
+    type: async
+    module: api.server
+    args: [request, exc]
+  increment_message_count:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id]
+    params:
+      returns: None
+  list_versions:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self, status, tags]
+    params:
+      returns: List[Dict]
+  log_analytics_interaction:
+    type: sync
+    module: utils.supabase_client
+    args: [user_id, session_id, query, response_length, agent_used, response_time]
+    params:
+      returns: bool
+  lookup_order:
+    type: sync
+    module: tools.order_tool
+    args: [order_id]
+    params:
+      returns: Dict
+  main:
+    type: sync
+    module: main
+  reject_kb_update:
+    type: async
+    module: api.server
+    args: [update_id, reason]
+  rename_session:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id, new_name]
+    params:
+      returns: bool
+  reopen_session:
+    type: sync
+    module: utils.supabase_client
+    args: [session_id]
+    params:
+      returns: bool
+  request_refund:
+    type: sync
+    module: tools.order_modification_tool
+    args: [order_id, reason, amount]
+    params:
+      returns: Dict
+  reset_metrics:
+    type: async
+    module: api.server
+  root:
+    type: async
+    module: api.server
+  run_evaluation:
+    type: async
+    module: notebooks.evaluation
+  run_improvements:
+    type: sync
+    module: utils.auto_improver
+    args: [self]
+  run_improvements_now:
+    type: sync
+    module: utils.auto_improver
+    params:
+      returns: dict
+  run_improvements_now_endpoint:
+    type: async
+    module: api.server
+  sanitize_message:
+    type: sync
+    module: utils.validation
+    args: [message]
+    params:
+      returns: str
+  save_agent_refinement:
+    type: sync
+    module: utils.supabase_client
+    args: [refinement_key, agent_name, refinement_type, changes, feedback_sources, status, user_input, agent_response, learning_reason,
+      session_id]
+    params:
+      returns: bool
+  save_auto_learning:
+    type: sync
+    module: utils.supabase_client
+    args: [learning_id, learning_type, agent_name, feedback_id, data, status, user_input, agent_response, learning_reason,
+      session_id]
+    params:
+      returns: bool
+  save_conversation_summary:
+    type: sync
+    module: utils.supabase_client
+    args: [summary_key, user_id, session_id, summary, key_points, sentiment, action_items, next_steps, summary_length, ticket_id]
+    params:
+      returns: Dict
+  save_feedback_insight:
+    type: sync
+    module: utils.supabase_client
+    args: [insight_key, agent_name, insight_type, description, sentiment, feedback_sources, insight_data, summary, user_input,
+      agent_response, learning_reason, session_id]
+    params:
+      returns: bool
+  save_kb_update:
+    type: sync
+    module: utils.supabase_client
+    args: [update_id, feedback_id, update_type, content, status, user_input, agent_response, learning_reason, session_id]
+    params:
+      returns: bool
+  send_session_message:
+    type: async
+    module: api.server
+    args: [request]
+  send_ticket_message:
+    type: async
+    module: api.server
+    args: [ticket_id, request]
+  set:
+    type: sync
+    module: utils.cache
+    args: [self, key, value]
+    params:
+      returns: None
+  set_conversation_context:
+    type: sync
+    module: tools.conversation_tool
+    args: [session_id, user_id]
+  set_order_context:
+    type: sync
+    module: tools.order_tool
+    args: [session_id, user_id, customer_id]
+  set_version_status:
+    type: sync
+    module: tools.knowledge_base_manager
+    args: [self, version_id, status]
+    params:
+      returns: bool
+  size:
+    type: sync
+    module: utils.cache
+    args: [self]
+    params:
+      returns: int
+  start_auto_improvements:
+    type: sync
+    module: utils.auto_improver
+    args: [hour, minute]
+    params:
+      returns: bool
+  start_scheduler:
+    type: sync
+    module: utils.auto_improver
+    args: [self, hour, minute]
+  stop_auto_improvements:
+    type: sync
+    module: utils.auto_improver
+    params:
+      returns: bool
+  stop_scheduler:
+    type: sync
+    module: utils.auto_improver
+    args: [self]
+  submit_feedback:
+    type: async
+    module: api.server
+    args: [request]
+  summarize_conversation:
+    type: sync
+    module: tools.conversation_tool
+    args: [session_id, user_id]
+    params:
+      returns: Dict
+  synthesize_speech:
+    type: async
+    module: api.server
+    args: [request]
+  transcribe_speech:
+    type: async
+    module: api.server
+    args: [audio, language_code]
+  update_agent_refinement_status:
+    type: sync
+    module: utils.supabase_client
+    args: [refinement_key, status]
+    params:
+      returns: bool
+  update_auto_learning_status:
+    type: sync
+    module: utils.supabase_client
+    args: [learning_id, status]
+    params:
+      returns: bool
+  update_customer_id:
+    type: sync
+    module: tools.order_tool
+    args: [session_id, customer_id]
+  update_kb_update_status:
+    type: sync
+    module: utils.supabase_client
+    args: [update_id, status]
+    params:
+      returns: bool
+  update_order:
+    type: async
+    module: api.server
+    args: [order_id, order_data]
+  update_order_delivery_date:
+    type: sync
+    module: tools.order_modification_tool
+    args: [order_id, new_delivery_date]
+    params:
+      returns: Dict
+  update_order_status:
+    type: sync
+    module: tools.order_modification_tool
+    args: [order_id, new_status, reason]
+    params:
+      returns: Dict
+  update_refund_status:
+    type: async
+    module: api.server
+    args: [refund_id, request]
+  update_ticket_priority:
+    type: sync
+    module: tools.ticket_modification_tool
+    args: [ticket_id, new_priority]
+    params:
+      returns: Dict
+  update_ticket_status:
+    type: sync
+    module: utils.supabase_client
+    args: [ticket_id, status]
+    params:
+      returns: bool
+  update_ticket_status_endpoint:
+    type: async
+    module: api.server
+    args: [ticket_id, request]
+  validate_customer_id:
+    type: sync
+    module: utils.validation
+    args: [customer_id, custom_pattern]
+    params:
+      returns: tuple
+  validate_message:
+    type: sync
+    module: utils.validation
+    args: [message, max_length]
+    params:
+      returns: tuple
+  validate_order_id:
+    type: sync
+    module: utils.validation
+    args: [order_id]
+    params:
+      returns: tuple
+  validate_user_id:
+    type: sync
+    module: utils.validation
+    args: [user_id]
+    params:
+      returns: tuple
+
+variables:
+  GOOGLE_API_KEY:
+    type: env
+    params:
+      caller: [os.environ]
+  PORT:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [config.settings]
+  PYTEST_CURRENT_TEST:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [tools.order_tool]
+  PYTHONWARNINGS:
+    type: env
+    params:
+      caller: [os.environ]
+  SUPABASE_KEY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [tools.order_tool, api.server, tools.ticket_modification_tool, tools.order_modification_tool, utils.supabase_client]
+  SUPABASE_URL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [tools.order_tool, api.server, tools.ticket_modification_tool, tools.order_modification_tool, utils.supabase_client]
+
+files:
+  .env:
+    type: literal
+    actions: [read]
+    params:
+      caller: [_load_env_file]
+      path: [project_root]
+  .json:
+    type: literal
+    actions: [read]
+    params:
+      caller: [create_version, get_version]
+      path: [self.versions_dir]
+  agent_refinements.json:
+    type: literal
+    actions: [read]
+    params:
+      caller: [__init__]
+      path: [self.data_dir]
+  auto_learning.json:
+    type: literal
+    actions: [read]
+    params:
+      caller: [save_auto_learning, get_auto_learning, update_auto_learning_status]
+      path: [data_dir]
+  auto_learning_file:
+    type: variable
+    actions: [read, write]
+    params:
+      caller: [open, json.load]
+      alias: [f]
+  conversation_history.json:
+    type: literal
+    actions: [read]
+    params:
+      path: [Path.parent.parent]
+  conversation_summaries.json:
+    type: literal
+    actions: [read]
+    params:
+      path: [Path.parent.parent]
+  data_dir:
+    type: variable
+    actions: [read, write]
+    params:
+      caller: [Path, data_dir.mkdir]
+  faq_knowledge_base.json:
+    type: literal
+    actions: [read]
+    params:
+      caller: [apply_single_kb_update]
+      path: [Path.parent.parent]
+  feedback.json:
+    type: literal
+    actions: [read]
+    params:
+      caller: [__init__]
+      path: [self.data_dir]
+  feedback_insights.json:
+    type: literal
+    actions: [read]
+    params:
+      caller: [__init__]
+      path: [self.data_dir]
+  HISTORY_FILE:
+    type: variable
+    actions: [read, write]
+    params:
+      caller: [open, json.load, HISTORY_FILE.parent.mkdir]
+      alias: [f]
+  kb_file:
+    type: variable
+    actions: [read, write]
+    params:
+      caller: [open, json.load]
+      alias: [f]
+  kb_updates_from_feedback.json:
+    type: literal
+    actions: [read]
+    params:
+      caller: [__init__]
+      path: [self.data_dir]
+  metadata_file:
+    type: variable
+    actions: [read, write]
+    params:
+      caller: [open, json.load]
+      alias: [f]
+  orders.json:
+    type: literal
+    actions: [read]
+    params:
+      path: [Path.parent.parent]
+  ORDERS_FILE:
+    type: variable
+    actions: [read, write]
+    params:
+      caller: [open, json.load, ORDERS_FILE.parent.mkdir]
+      alias: [f]
+  SUMMARY_FILE:
+    type: variable
+    actions: [read, write]
+    params:
+      caller: [open, json.load, SUMMARY_FILE.parent.mkdir]
+      alias: [f]
+  version_file:
+    type: variable
+    actions: [write, read]
+    params:
+      caller: [open, json.load]
+      alias: [f]
+  versions_metadata.json:
+    type: literal
+    actions: [read]
+    params:
+      caller: [_load_versions_metadata, _save_versions_metadata]
+      path: [self.versions_dir]
